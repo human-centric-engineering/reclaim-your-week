@@ -1,19 +1,25 @@
-# Daybreak
+# Reclaim Your Week
 
-**Daybreak** is an AI-application framework built on the
-[Sunrise](https://github.com/human-centric-engineering/sunrise) starter
-template. It inherits Sunrise's production-ready foundation — auth, database,
-versioned APIs, security middleware, and a complete AI agent orchestration
-layer — and builds a purpose-built framework on top of it.
+**Reclaim Your Week** is a facilitated programme that takes participants through
+a structured, multi-session course on reclaiming time in their working week. It
+is built on the [Daybreak](https://github.com/human-centric-engineering/daybreak)
+framework, using Daybreak's modules, journey state, facilitation agents and data
+slots to run the programme.
 
-> **Built on Sunrise.** Daybreak tracks Sunrise as an upstream platform: it was
-> forked at Sunrise **v0.4.1** and pulls in later Sunrise releases via the
-> `upstream` remote. The platform is extended through Sunrise's designed seams
-> rather than edited in place, so upgrades stay clean merges. If you're working
-> in this repo, start with the fork banner in [`CLAUDE.md`](./CLAUDE.md) and the
-> full guide in [`CUSTOMIZATION.md`](./CUSTOMIZATION.md) /
-> [`.context/framework/README.md`](./.context/framework/README.md) (the three-tier
-> model — apps fork Daybreak, so `.context/app/` and `lib/app/*` are reserved for them).
+> **Built on Daybreak.** Three tiers stack here:
+> **[Sunrise](https://github.com/human-centric-engineering/sunrise)** (the
+> platform — auth, database, versioned APIs, security middleware, AI agent
+> orchestration) → **Daybreak** (the facilitation framework) → **this app** (the
+> programme itself). Daybreak is the `upstream` remote and Sunrise reaches us
+> through it; `origin` is this repo. Both lower tiers are extended through their
+> designed seams rather than edited in place, so upgrades stay clean merges.
+>
+> If you're working in this repo, start with the banner in
+> [`CLAUDE.md`](./CLAUDE.md) and this app's docs at
+> [`.context/app/README.md`](./.context/app/README.md). The framework itself is
+> documented at
+> [`.context/framework/README.md`](./.context/framework/README.md) and the seam
+> model at [`CUSTOMIZATION.md`](./CUSTOMIZATION.md).
 
 ## Foundation (inherited from Sunrise)
 
