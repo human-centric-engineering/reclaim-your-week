@@ -1,88 +1,111 @@
 # CLAUDE.md
 
-> ## ⚠️ This is Daybreak — a fork of Sunrise. Read this first.
+> ## ⚠️ This is Reclaim Your Week — a leaf app on Daybreak. Read this first.
 >
-> This repository is **Daybreak**, an AI-application framework built **on** the
-> Sunrise platform (`human-centric-engineering/sunrise`), forked at Sunrise
-> **v0.4.1**. You are **building on Sunrise, not developing Sunrise itself.**
+> This repository is **Reclaim Your Week**, a facilitated programme that takes
+> participants through a structured, multi-session course on reclaiming time in
+> their working week. It is built **on** the Daybreak framework
+> (`human-centric-engineering/daybreak`), which is itself built on the Sunrise
+> platform. You are **building an app on Daybreak — you are not developing
+> Daybreak or Sunrise.**
 >
-> Everything below this banner is **Sunrise's own platform documentation**. Its
-> guidance about how the codebase works still applies — but the _maintainer_
-> workflows in it are **Sunrise's, not yours**: cutting Sunrise releases,
-> "CHANGELOG follows the public surface", the public-surface `/pre-pr` checks,
-> and `VERSIONING.md` all describe how the _platform_ is maintained upstream. In
-> Daybreak you consume the platform; you don't version or release it.
+> Everything below this banner is **Sunrise's own platform documentation**,
+> inherited through Daybreak. Its guidance about how the codebase works still
+> applies — but the _maintainer_ workflows in it belong to the tiers below you:
+> cutting releases, "CHANGELOG follows the public surface", the public-surface
+> `/pre-pr` checks, and `VERSIONING.md` all describe how the _platform_ is
+> maintained upstream. Here you consume both lower tiers; you don't version or
+> release them.
 >
-> ### The golden rule: extend through the seams; don't edit platform-owned files.
+> ### The golden rule: extend through the seams; don't edit files the tiers below own.
 >
-> Every Sunrise-owned file you edit becomes a merge conflict the next time you
-> pull a Sunrise release. Prefer adding new files and using the designed seams.
-> Full playbook: [`CUSTOMIZATION.md`](./CUSTOMIZATION.md) (§0 app/platform model,
-> §9 upstream sync) and [`.context/framework/README.md`](./.context/framework/README.md)
-> (the three-tier model + ownership table).
+> Every Daybreak- or Sunrise-owned file you edit becomes a merge conflict the
+> next time you pull upstream. Prefer adding new files and using the designed
+> seams. Full playbook: [`CUSTOMIZATION.md`](./CUSTOMIZATION.md) (§0 app/platform
+> model, §9 upstream sync) and
+> [`.context/framework/README.md`](./.context/framework/README.md) (the three-tier
+> model + ownership table).
 >
-> **Building or picking up a framework feature?** Start with
-> [`.context/framework/planning/building-a-feature.md`](./.context/framework/planning/building-a-feature.md)
-> — the operational flow (plan-first → per-task gate loop → close-out) — and the
-> [board in `plan.md`](./.context/framework/planning/plan.md) for what's claimable. This saves
-> you the learning curve the first features went through.
+> **Three tiers: Sunrise → Daybreak → this app.** Each tier extends the one below
+> through seams and never occupies the surface it reserves for its own forks. You
+> are the **leaf** — the bottom tier. Nothing forks you, so you reserve nothing:
+> the `lib/app/*` surface that Sunrise and Daybreak both kept empty is **yours to
+> fill**.
 >
-> **Three tiers: Sunrise → Daybreak → app.** Apps are built by forking **Daybreak**,
-> not Sunrise. So Daybreak applies Sunrise's fork discipline _one level up_: it owns the
-> framework layer and **reserves the leaf-app surface empty** for its own forks. Working in
-> **this** repo you are building **Daybreak** — edit the framework layer, never the reserved
-> leaf surface.
+> **Yours (the leaf app — edit these):**
 >
-> **Daybreak-owned (the framework — edit these):**
+> - The `lib/app/*` leaf scaffolds — `env.ts` (`appEnvSchema`), `capabilities.ts`
+>   (`initAppCapabilities()`), `context-contributors.ts`,
+>   `knowledge-access-contributors.ts`, `guard-floor-contributors.ts`,
+>   `guard-event-contributors.ts`, `rate-limit.ts`, `protected-routes.ts`,
+>   `public-nav.ts`, `emails.ts`, `agent-fields.ts`, `surface.ts`. Each is
+>   auto-wired by the core consumer in the right runtime: keep the **export name
+>   and signature**, the body is yours.
+> - **The three `leaf-*` hooks** — `leaf-bootstrap.ts` (`initLeafApp()`),
+>   `leaf-admin-nav.ts` (`initLeafAdminNav()`), `leaf-db-drift.ts`
+>   (`registerLeafDriftProbes()`). These exist **specifically for you**; see the
+>   bridge note below.
+> - `prisma/schema/app-*.prisma` (new files — `app.prisma` still holds Sunrise's
+>   own models) + `app_…`-prefixed migrations
+> - **`.context/app/`** — this app's documentation tree. Start at
+>   [`.context/app/README.md`](./.context/app/README.md).
+> - App identity: `package.json`, `README.md`, `.env*`, brand env
+>   (`NEXT_PUBLIC_APP_NAME`, `NEXT_PUBLIC_LEGAL_NAME`) — not by editing
+>   `lib/brand.ts` — plus `components/brand/brand-mark.tsx` and
+>   `app/brand-theme.css`
+> - New app files anywhere (routes, pages, components)
 >
-> - `lib/framework/` — the framework code and its registration seams
->   (`registerModule()`, the map, slots, guidance, …); register into Sunrise's seams
->   **from here**, driven by `initFramework()`
-> - `prisma/schema/framework-*.prisma` (your models) + `framework_…` migrations touching
->   only `framework_*` tables (the boundary CI keys on this prefix)
-> - **`.context/framework/`** — Daybreak's own documentation tree
-> - Daybreak identity: `package.json`, `README.md`, `CUSTOMIZATION.md`, `.env*`, and brand
->   env (`NEXT_PUBLIC_APP_NAME`, `NEXT_PUBLIC_LEGAL_NAME`) — not by editing `lib/brand.ts`
-> - New framework files anywhere (admin pages/routes under a `framework` segment, `components/`)
+> **Daybreak-owned (do NOT edit — it merges down from `upstream`):**
 >
-> **Reserved for leaf apps (Daybreak keeps these EMPTY — do NOT fill):**
->
-> - The `lib/app/*` **leaf** scaffolds (`env.ts`, `capabilities.ts`, `context-contributors.ts`,
->   `leaf-bootstrap.ts`, `leaf-admin-nav.ts`, …) — Sunrise ships them empty; Daybreak keeps them
->   empty for the app. Filling one collides with a leaf's registrations on a Daybreak upgrade.
->   **Exception — the two `lib/app/*` _bridges_ Daybreak DOES fill:** `bootstrap.ts` (server boot →
->   `initFramework()`) and `admin-nav.ts` (client sidebar → the framework nav section). A framework
->   registration that must run in a realm `initFramework()` can't reach — server-boot, or the
->   client sidebar — has nowhere else to go; each bridge delegates to a reserved leaf hook
->   (`leaf-bootstrap.ts` / `leaf-admin-nav.ts`) so the leaf's own registrations never collide.
-> - `prisma/schema/app.prisma` + `app_…` migrations, `app/brand-theme.css`, and **`.context/app/`**
+> - `lib/framework/**` — the framework code and its registration seams
+>   (`registerModule()`, the map, slots, guidance, …), driven by `initFramework()`
+> - `prisma/schema/framework-*.prisma` + `framework_…` migrations touching only
+>   `framework_*` tables (the boundary CI check keys on this prefix)
+> - **`.context/framework/`** — Daybreak's documentation tree. Read it to
+>   understand the framework; don't edit it.
+> - **The three `lib/app/*` _bridges_ Daybreak fills: `bootstrap.ts`,
+>   `admin-nav.ts`, `db-drift.ts`.** A framework registration that must run in a
+>   realm `initFramework()` can't reach — server boot, the client sidebar, the
+>   drift checker — has nowhere else to go. Each bridge runs Daybreak's
+>   registration and **then delegates to your reserved hook**
+>   (`leaf-bootstrap.ts` / `leaf-admin-nav.ts` / `leaf-db-drift.ts`). Edit the
+>   `leaf-*` file, **never the bridge** — editing a bridge conflicts on every
+>   Daybreak upgrade.
+> - `npm run app:ci-checks` is Daybreak's (it runs `framework:boundary`). It has
+>   been **wrapped, not replaced**: add your own checks to `leaf:checks`.
 >
 > **Sunrise-owned (do NOT edit; extend through a seam instead):**
 >
 > - Core `lib/` utilities, core `app/api/v1` routes, core `components/`, the
 >   security / rate-limit middleware (`proxy.ts`, `lib/security/**`)
 > - `lib/sunrise-version.ts`, `VERSIONING.md`, `CHANGELOG.md`, and `.context/**`
->   **except `.context/framework/` and `.context/app/`**, plus the SQL of any **Sunrise** migration
-> - This `CLAUDE.md` **below the banner** — keep Daybreak-specific instructions
->   in this banner or in [`.context/framework/README.md`](./.context/framework/README.md), so
->   upstream `CLAUDE.md` edits merge cleanly
-> - If you genuinely must change platform behaviour and no seam exists, keep the
->   edit minimal and add a follow-up rather than rewriting Sunrise's file — a
->   one-line "keep mine" is a cheap merge; a rewritten platform file is not
+>   **except `.context/framework/` and `.context/app/`**, plus the SQL of any
+>   **Sunrise** or **Daybreak** migration
+> - This `CLAUDE.md` **below the banner** — keep app-specific instructions in this
+>   banner or in [`.context/app/README.md`](./.context/app/README.md), so upstream
+>   `CLAUDE.md` edits merge cleanly
+> - If you genuinely must change lower-tier behaviour and no seam exists, keep the
+>   edit minimal and add a follow-up rather than rewriting the file — a one-line
+>   "keep mine" is a cheap merge; a rewritten platform file is not
 >
 > ### Version model
 >
-> `package.json.version` is **Daybreak's** app version (surfaced via
-> `lib/app-version.ts` → `/api/health` `version`). `lib/sunrise-version.ts` is
-> the **Sunrise platform** version you forked from — you merge it through on
-> upstream syncs; never edit it directly.
+> `package.json.version` is **this app's** version (surfaced via
+> `lib/app-version.ts` → `/api/health` `version`). `lib/sunrise-version.ts` is the
+> **Sunrise platform** version — it merges through on syncs; never edit it.
+> Daybreak has no version file of its own yet, so to find which Daybreak commit
+> you are on, run `git merge-base HEAD upstream/main` (recorded on each sync in
+> [`.context/app/README.md`](./.context/app/README.md)).
 >
-> ### Pulling upstream Sunrise
+> ### Pulling upstream Daybreak
 >
-> Sunrise is the `upstream` remote. To adopt a release:
-> `git fetch upstream --tags && git merge vX.Y.Z`. Resolve conflicts by keeping
+> **Daybreak is the `upstream` remote; `origin` is this app's repo.** `upstream`'s
+> push URL is deliberately disabled — you can fetch from Daybreak but never push
+> to it. Sunrise reaches you _through_ Daybreak; you do not merge Sunrise
+> directly. To adopt changes:
+> `git fetch upstream && git merge upstream/main`. Resolve conflicts by keeping
 > your version and adding follow-ups; then run `npm run db:migrate:status` →
-> `db:migrate:dev` to apply newly-merged Sunrise migrations. See
+> `db:migrate:dev` to apply newly-merged migrations. See
 > [`CUSTOMIZATION.md` §9](./CUSTOMIZATION.md).
 
 Instructions for Claude Code when working in this repository.
