@@ -61,9 +61,10 @@ Editing a bridge conflicts on every Daybreak upgrade. Always edit the `leaf-*` f
 Daybreak has no version file of its own, so we record the commit instead. To find
 where we currently sit: `git merge-base HEAD upstream/main`.
 
-| Date       | Daybreak commit | Sunrise version | Notes                     |
-| ---------- | --------------- | --------------- | ------------------------- |
-| 2026-07-21 | `3846f4c0`      | 0.7.0           | Forked from Daybreak main |
+| Date       | Daybreak commit | Sunrise version | Notes                                                 |
+| ---------- | --------------- | --------------- | ----------------------------------------------------- |
+| 2026-07-21 | `3846f4c0`      | 0.7.0           | Forked from Daybreak main                             |
+| 2026-07-21 | `c9e9fa26`      | 0.7.0           | daybreak#154 — cold-lint fix, needed for our first CI |
 
 To sync: `git fetch upstream && git merge upstream/main`, then
 `npm run db:migrate:status` → `db:migrate:dev`. Resolve conflicts by keeping our
