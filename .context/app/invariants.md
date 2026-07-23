@@ -181,8 +181,25 @@ their own PR, reviewed separately, before any leaf work depends on them. No othe
 ## I11 — Content is loaded, not authored
 
 The nine bucket definitions, benchmark ranges, hour bands, colour codes, phase language, and the
-summary footnote are **Rashmir's IP**. They live verbatim in `content-source.md` and load into
-`Module.config` defaults.
+summary footnote are **Rashmir's IP**. The authority is `.context/app/sources/` — her five original
+documents, byte-identical and read-only. `content-source.md` is a working **extract** of them, and
+loads into `Module.config` defaults.
+
+**The chain of custody has two hops, and both are enforced:**
+
+| Hop                                   | Check                                          | Catches                           |
+| ------------------------------------- | ---------------------------------------------- | --------------------------------- |
+| `sources/` → `content-source.md`      | `npm run leaf:content-diff` (in `leaf:checks`) | a paraphrase entering the extract |
+| `content-source.md` → `Module.config` | F2 t-3 test                                    | a paraphrase entering the code    |
+
+Neither substitutes for the other. Until 2026-07-23 only the second was planned, and the sources
+lived outside the repo — so the guard compared a transcription against itself. The first machine run
+against the real originals found **nine altered blockquotes out of seventy**, three material,
+including calendar export steps present in no source document. Every one would have passed a
+config-only guard.
+
+`leaf:content-diff` also asserts the sources still match `sources/CHECKSUMS.txt`, because a check
+whose reference file can be edited is not a check.
 
 Do not paraphrase, summarise, tighten, or improve any of it. "Recommended ceiling: 10-15% for a
 senior leader. Above this is often a signal of under-delegation or difficulty letting go of an
@@ -325,7 +342,7 @@ auto-advance through a reflection the person is still sitting with.
 | I8          | Hours, never percentages                                                       |
 | I9          | Reflection enforced server-side, `422 REFLECTION_REQUIRED`                     |
 | I10         | Tier boundaries; never edit `lib/framework/**` or the bridges                  |
-| I11         | Content loaded verbatim, never paraphrased                                     |
+| I11         | Content loaded verbatim from `sources/`, never paraphrased                     |
 | I12         | Chart and interpretation are separate beats                                    |
 | I13         | Refer-back is a data flow, not a prompt                                        |
 | I14         | Entitlement at run creation                                                    |

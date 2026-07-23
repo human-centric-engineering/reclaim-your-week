@@ -202,7 +202,7 @@ success. Load content, don't author it (I11).
 
 - **t-1** — `registerModule('reclaim-audit')` from `initLeafApp()` in `lib/app/leaf-bootstrap.ts` (never the `bootstrap.ts` bridge); a `configSchema` making every coach-editable value changeable without a deploy — nine bucket titles/descriptions, benchmark ranges, hour bands, consultation email, footnote.
 - **t-2** — Declare all **95** slot definitions from [[slot-spec]], exact slugs, per-bucket slots generated from the canonical list. Sensitivity as specified; nothing `special_category` (I5).
-- **t-3** — Load content from [[content-source]] into config defaults **verbatim** — §0 frame, nine buckets, bands, footnote, phase language. No paraphrase. Plus the guard that makes I11 mechanical: a test that parses the blockquotes out of `.context/app/content-source.md` and asserts the nine bucket descriptions and the footnote are character-identical to the config defaults. Nothing else catches a plausible rewording.
+- **t-3** — Load content from [[content-source]] into config defaults **verbatim** — §0 frame, nine buckets, bands, footnote, phase language. No paraphrase. Plus the **second hop** of the I11 guard: a test parsing the blockquotes out of `.context/app/content-source.md` and asserting the nine bucket descriptions and the footnote are character-identical to the config defaults. The **first hop already exists** — `npm run leaf:content-diff` (in `leaf:checks`) asserts every blockquote in `content-source.md` appears verbatim in `.context/app/sources/`, and that the sources still match their SHA-256 manifest. Both hops are needed and neither substitutes for the other: config-vs-extract proves the code matches the extract and says nothing about whether the extract matches Rashmir, which is precisely how nine altered blockquotes survived to 2026-07-23.
 - **t-4** — Author the agent (`Persona → systemInstructions → Guardrails → Brand Voice`): third-person (I1), banned lexicon + no em dashes + no conversational bullets (I2), scope + anti-replication guardrails ([[content-source]] §7), read-only capabilities (`get_journey_state`, `get_next_steps`, `get_state`), exposure allowlist permitting writes only to `reclaim_profile_*` (I6). Plus the invariant tests: voice, slot-sensitivity, agent-caps (in `tests/unit/invariants/`), **wired into `leaf:checks`** — the script is `exit 0` today and is the one hook CI already runs for us.
 
 _Done when:_ all 95 slugs match the spec; bucket descriptions + footnote character-identical to source; three invariant tests pass; boundary green.
@@ -462,8 +462,11 @@ Append-only. Newest at the top.
 
 ## References
 
-- [[content-source]] — Rashmir's IP, extracted verbatim (the nine buckets, bands, phase language,
-  voice rules, footnote). Load it; never paraphrase it (I11).
+- [[../sources/README|.context/app/sources/]] — **the authority.** Rashmir's five original documents,
+  byte-identical and read-only behind a SHA-256 manifest. Everything else derives from these.
+- [[content-source]] — the working extract of `sources/` (the nine buckets, bands, phase language,
+  voice rules, footnote). Load it; never paraphrase it (I11). `npm run leaf:content-diff` proves it
+  against the originals.
 - [[slot-spec]] — the 95 slot definitions, exact slugs, dataType, sensitivity.
 - [[invariants]] — I1–I18 plus I-frame and I-composite, the rules that don't survive between
   sessions on their own. Read before any task.
