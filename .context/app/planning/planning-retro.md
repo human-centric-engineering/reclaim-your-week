@@ -69,8 +69,12 @@ refuting them is a deliberate act rather than a silent drift.
 - **The voice regresses without a test (I1).** The source system prompt is first-person as Rashmir.
   Any feature that ports prompt text will carry the wrong persona unless re-pointed. F2's voice test is
   the guard; if a later feature adds agent-facing copy, it needs the same check.
-- **Paraphrase looks like success (I11).** F2's bucket descriptions must be diffed against
-  `content-source.md` by a human; a plausible rewording passes every automated test and is still wrong.
+- **Paraphrase looks like success (I11) — but it is now machine-caught, in one direction.**
+  `npm run leaf:content-diff` compares every blockquote in `content-source.md` against
+  `.context/app/sources/` and is tamper-tested to catch a five-word reordering ("IP creation" →
+  "creating IP"). Trust it for that hop. **The second hop is still unbuilt**: F2 t-3 must assert the
+  `Module.config` defaults match the extract. Until that lands, config content genuinely does need a
+  human diff — which was the original form of this expectation, written when neither hop existed.
 - **`/code-review` pays for itself on data-model and UI-over-backend tasks.** The framework build found
   this repeatedly (its retro §B). F4's schema + cascades and F6's charts are where to expect real
   findings.
