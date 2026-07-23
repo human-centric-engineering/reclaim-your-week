@@ -42,8 +42,13 @@ aspirational.
 ## Checking
 
 ```bash
-npm run leaf:content-diff    # every blockquote in content-source.md appears verbatim in sources/
+npm run leaf:content-diff    # 1. these files still match CHECKSUMS.txt
+                             # 2. every blockquote in content-source.md is verbatim in one of them
 ```
+
+`CHECKSUMS.txt` is what makes "read-only" enforced rather than requested. These files are also in
+`.prettierignore`: a `prettier --write` across the tree came within one commit hook of reformatting
+them, which would have moved the authority without anyone noticing.
 
 Legitimate exceptions the check tolerates, and nothing else:
 
@@ -57,5 +62,11 @@ put the reworded version alongside it as commentary, clearly not a quote.
 
 ## If Rashmir sends a new version
 
-Replace the file, re-run the check, and reconcile `content-source.md` against it. Do not edit a
-source file in place to match the extract — that inverts the whole point.
+Replace the file, regenerate the manifest, re-run the check, and reconcile `content-source.md`
+against it:
+
+```bash
+cd .context/app/sources && shasum -a 256 *.md | grep -v ' README.md$' > CHECKSUMS.txt
+```
+
+Do not edit a source file in place to match the extract — that inverts the whole point.

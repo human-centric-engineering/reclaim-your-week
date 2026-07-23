@@ -22,6 +22,7 @@
  * Usage: `npm run leaf:content-diff` (leaf tier owns the `leaf:*` namespace).
  */
 
+import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 
@@ -31,8 +32,49 @@ import { checkContentSource, type Classified, type Verdict } from '@/scripts/con
 const ROOT = process.cwd();
 const SOURCES_DIR = path.join(ROOT, '.context/app/sources');
 const CONTENT_SOURCE = path.join(ROOT, '.context/app/content-source.md');
+const MANIFEST = path.join(SOURCES_DIR, 'CHECKSUMS.txt');
 // The folder's own README documents the originals; it is not one of them.
 const NOT_A_SOURCE = new Set(['README.md']);
+
+/**
+ * Assert the sources are still the bytes Rashmir sent.
+ *
+ * They are read-only, but nothing stops a formatter or a well-meaning edit from
+ * rewriting them — a `prettier --write` over the whole tree nearly did on the day
+ * they were checked in. Without this, such a change would silently move the
+ * authority that every verbatim claim is measured against, and the diff below
+ * would keep passing.
+ */
+function assertSourcesUnmodified(sources: Map<string, string>): boolean {
+  const expected = new Map(
+    readFileSync(MANIFEST, 'utf8')
+      .split('\n')
+      .filter((line) => line.trim().length > 0)
+      .map((line) => {
+        const [digest, ...name] = line.trim().split(/\s+/);
+        return [name.join(' '), digest] as const;
+      })
+  );
+
+  let ok = true;
+  for (const [file, body] of sources) {
+    const actual = createHash('sha256').update(body, 'utf8').digest('hex');
+    if (expected.get(file) === actual) continue;
+    ok = false;
+    logger.error(
+      expected.has(file)
+        ? `  FAIL  ${file} has been modified since it was checked in`
+        : `  FAIL  ${file} is not listed in CHECKSUMS.txt`
+    );
+  }
+  for (const file of expected.keys()) {
+    if (sources.has(file)) continue;
+    ok = false;
+    logger.error(`  FAIL  ${file} is in CHECKSUMS.txt but missing from the folder`);
+  }
+  if (ok) logger.info(`  OK    ${sources.size} source documents match CHECKSUMS.txt`);
+  return ok;
+}
 
 function loadSources(): Map<string, string> {
   const sources = new Map<string, string>();
@@ -61,6 +103,13 @@ function main(): void {
   const sources = loadSources();
   if (sources.size === 0) {
     logger.error(`  FAIL  No source documents found in ${path.relative(ROOT, SOURCES_DIR)}`);
+    process.exit(1);
+  }
+
+  if (!assertSourcesUnmodified(sources)) {
+    logger.error(
+      'The source documents are the authority and must not be edited. Restore them, or if Rashmir sent a new version, regenerate CHECKSUMS.txt and reconcile content-source.md against it.'
+    );
     process.exit(1);
   }
 
