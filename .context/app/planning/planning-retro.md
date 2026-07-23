@@ -48,7 +48,7 @@ way the framework retro does.
 
 ## §B — feature-plan authoring
 
-- _(none yet. Candidates the build is likely to surface: whether the 95-slot declaration in F2 wants
+- _(none yet. Candidates the build is likely to surface: whether the 105-slot declaration in F2 wants
   splitting from content-loading; whether the `<ReclaimChart>` family in F6 is honestly one task or
   three; whether the refer-back context contributor in F7 needs a seam the framework doesn't expose.)_
 

@@ -86,7 +86,7 @@ deploy.
 
 **`programme` is the surface, `reclaim` is the module.** Routes, URLs, UI folders and shared leaf
 plumbing are `programme` — they are module-agnostic, and the Parked life-wheel would live behind the
-same surface. Identity and persistence are `reclaim`: the module slug `reclaim-audit`, the 95
+same surface. Identity and persistence are `reclaim`: the module slug `reclaim-audit`, the 105
 `reclaim_*` slots, the `app_reclaim_*` tables, `prisma/seeds/app-reclaim/`, `smoke:reclaim`. Do not
 introduce per-module subfolders under `lib/app/programme/` until there is a second module.
 

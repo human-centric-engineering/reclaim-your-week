@@ -475,4 +475,6 @@ the F7.4 share step, not a placeholder.
 - `reclaim_calendar_reactive_time` (text) — whether unscheduled time stays protected
 - `reclaim_gap_strategy_mirror` (text) — the stranger-reading-your-calendar answer
 
-Slot count moves from 91 to **95**.
+Slot count moves from 91 to **95**. _(Second pass, 2026-07-23: 95 → **105**, adding the
+`reclaim_composite` group. That gap was not a source-coverage failure and so is not listed here — see
+[The gap that was in neither part](#the-gap-that-was-in-neither-part).)_
