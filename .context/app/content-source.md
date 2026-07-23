@@ -1,9 +1,25 @@
 # Reclaim Your Week — canonical content source
 
-**This file is the single source of truth for Rashmir's IP.** Every string below is extracted
-**verbatim** from `Time_Audit_Tool_Prompt_Text.md`. Do not paraphrase, summarise, tighten, or
+**This file is the working extract of Rashmir's IP.** Every blockquote below is taken **verbatim**
+from the originals in [`sources/`](./sources/) — chiefly `Time_Audit_Tool_Prompt_Text.md`, with the
+Brief and Setup Guide cited where they contribute. Do not paraphrase, summarise, tighten, or
 "improve" any of it when moving it into code. It is her framework, her diagnostic language, and
 her voice.
+
+> **The originals are the authority, not this file.** `sources/` holds the five documents Rashmir
+> and John wrote, byte-identical and read-only. This file is a working extract of them; where the
+> two disagree, `sources/` wins. Verify with `npm run leaf:content-diff`, which asserts every
+> blockquote here appears verbatim in a source file. A verbatim guard that only compares this file
+> against `Module.config` locks in whatever drift is already here — that is exactly what happened
+> before the sources were checked in (see the drift note below).
+
+> **Drift correction (2026-07-23).** A machine diff of all 70 blockquotes against `sources/` found
+> nine that had been altered in transcription. Three were material: the perception-vs-reality
+> example had been moved from delivery-and-operations to strategic planning and given an invented
+> closing question; the three calendar export walkthroughs were labelled verbatim but were
+> rewritten, with Outlook's "Save Calendar" and "Full Details" steps appearing in no source
+> document at all; and the 55-hours line was a synthesis presented as a quote. All nine are now
+> corrected against `sources/`, and §8's duplicated completeness question is merged.
 
 Feature F2 loads this content into `Module.config` defaults. Nothing else authors it.
 
@@ -228,7 +244,8 @@ a short form (F6 t-1) rather than ten chat turns, but the wording and intent car
 **The recent-audit shortcut** (feeds F9 t-2 — the returning-user path):
 
 > If the client has completed a time audit within the last month and their previous summary is
-> available, do not repeat the context questions. Instead, briefly confirm that the context from
+> available (either in the project files or pasted in), do not repeat the context questions.
+> Instead, briefly confirm that the context from
 > last time still applies: "I can see from your recent audit that you are [role] at [organisation],
 > working around [hours] per week, with [priorities]. Is all of that still accurate, or has anything
 > changed?" Only re-ask questions where the answer may have shifted. Move quickly into the calendar
@@ -391,12 +408,19 @@ Rashmir's additions, to be built as structure rather than left to prompt text:
 > and we will compare what you have estimated against what your calendar actually shows. This is
 > optional but can be very revealing. Would you like to do that?"
 
-### Phase 1 — calendar completeness framing question
+### Phase 1 — calendar completeness framing question (asked before upload)
+
+The first of the two framing questions, asked as soon as they say yes to the calendar branch and
+before any export instructions.
 
 > "Before we do that, a quick question. How much does your calendar reflect your actual working
 > life? Some leaders live and die by their calendar, everything scheduled. Others have a looser
 > relationship with it, where meetings are there but a lot of work happens in the gaps and never
 > gets scheduled. Where do you fall?"
+
+The answer modulates everything after: a leader whose calendar is near-complete gets a lighter
+"what's missing" pass; a leader with a loose relationship gets a heavier one, and their
+perception-vs-reality gap is read as off-calendar work rather than misestimation.
 
 ### Phase 1 — the fragmentation cost
 
@@ -415,20 +439,12 @@ Rashmir's additions, to be built as structure rather than left to prompt text:
 > "Are there regular commitments or tasks that consume significant time but never make it onto your
 > calendar?"
 
-### Phase 1 — calendar completeness framing question (asked before upload)
-
-> "Before we do that, a quick question. How much does your calendar reflect your actual working
-> life? Some leaders live and die by their calendar, everything scheduled. Others have a looser
-> relationship with it, where meetings are there but a lot of work happens in the gaps and never
-> gets scheduled. Where do you fall?"
-
-The answer modulates everything after: a leader whose calendar is near-complete gets a lighter
-"what's missing" pass; a leader with a loose relationship gets a heavier one, and their
-perception-vs-reality gap is read as off-calendar work rather than misestimation.
-
 ### Phase 1 — the calendar period and the overlap rule
 
-> "What period would you like me to analyse?"
+> "What period would you like me to analyse? I can look at the same period you reflected on, or I
+> can analyse a longer window. A longer window is useful for spotting seasonal patterns, but the
+> comparison against your estimates will be most meaningful if we look at the same time period.
+> What would you prefer?"
 
 Analyse the full uploaded period, but focus the perception-vs-reality comparison on the **overlap**
 with the period they estimated in Phase 0. Surface any seasonal patterns a longer window reveals as
@@ -453,7 +469,7 @@ an additional insight, separately, rather than letting them distort the like-for
 Present the categorisation **by bucket**, not event by event: events, hours, and percentage per
 bucket, with ambiguous items listed individually. Then:
 
-> "Does this look right? Anything you would move?"
+> "Does this look right? Anything you would move to a different category?"
 
 **Do not proceed until the user has confirmed or corrected.** This is a gate.
 
@@ -464,7 +480,7 @@ uninterrupted block, and how frequently they switch between fundamentally differ
 a day), ask:
 
 > "On a typical day, how often do you switch between fundamentally different types of work? And when
-> you have unscheduled time, does it stay protected, or does it get consumed by reactive work?"
+> you have unscheduled time, does it stay protected or does it get consumed by reactive work?"
 
 ### Phase 1 — the perception vs reality comparison (a hard gate)
 
@@ -475,8 +491,12 @@ Show a grouped bar chart, same colour coding, comparing what they estimated agai
 calendar shows. Include a gap summary, any seasonal patterns, and emerging habits. **Name the gaps
 specifically**, for example:
 
-> "You estimated strategic planning at around 15% of your time. Your calendar shows closer to 30%.
-> What do you make of that?"
+> "In your reflection, you estimated you were spending about 15% on delivery and operations. Your
+> calendar shows it is closer to 30%."
+
+The example is delivery and operations, and that is not incidental. Over-investment there is the
+pattern this tool exists to surface, and it is the one the §0 frame reads as identity rather than
+efficiency. Do not substitute a different bucket when illustrating this moment.
 
 **Crucially:** where their completeness answer said the calendar does not capture all their work,
 frame a gap as the calendar not capturing everything, **not** as their estimate being wrong. The
@@ -510,23 +530,34 @@ element, not left to prose.
 
 Users need these at the moment they choose to upload. All three, verbatim.
 
-**Google Calendar:**
+**For Google Calendar:**
 
-> Go to Google Calendar settings (the gear icon, then Settings). In the left menu, click Import &
-> export. Under Export, click Export. This downloads a .zip file. Unzip it to find your .ics file,
-> and upload that here.
+> 1. Open Google Calendar in a web browser (not the mobile app)
+> 2. Click the gear icon (Settings) in the top right
+> 3. Click Settings
+> 4. In the left sidebar, click Import & export
+> 5. Click Export
+> 6. A .zip file will download. Unzip it to find one or more .ics files
+> 7. Upload the .ics file for your main work calendar here
 
-**Outlook:**
+**For Outlook / Microsoft 365:**
 
-> Open Outlook Calendar. Go to File, then Save Calendar. Choose the date range you want, set the
-> detail level to Full Details, save the .ics file, and upload it here.
+> 1. Open Outlook on the web or desktop
+> 2. Go to Calendar
+> 3. Click File (desktop) or Settings gear (web)
+> 4. Look for Export or Share calendar
+> 5. Choose the date range and save as .ics file
+> 6. Upload the .ics file here
 
-**Apple Calendar:**
+**For Apple Calendar:**
 
-> Open Calendar on your Mac. Select the calendar you want to export in the sidebar. Go to File, then
-> Export, then Export again. Save the .ics file and upload it here.
+> 1. Open the Calendar app on Mac
+> 2. In the left sidebar, right-click the calendar you want to export
+> 3. Click Export
+> 4. Save the .ics file
+> 5. Upload it here
 
-Then: "Take your time. When you have the file, upload it here."
+Then: "Take your time. When you have the file, upload it here and we will continue."
 
 ### Phase 2 — energy questions
 
@@ -553,7 +584,8 @@ offered lightly, and never as a pitch (§10 governs the consultation offer).
 > Gently challenge any ideal week that looks suspiciously similar to their current reality —
 > especially if delivery and operations remains high, or recovery remains near zero.
 
-> Frame this as a realistic target, not a fantasy.
+> Frame this as a realistic target, not a fantasy — grounded in what they now know about their
+> energy, their priorities, and where the gaps are.
 
 ### Phase 4 — the under-delegation invitation
 
@@ -567,8 +599,9 @@ offered lightly, and never as a pitch (§10 governs the consultation offer).
 
 At 55+ weekly hours, name the hours directly rather than only reallocating:
 
-> Sometimes the most strategic thing a leader can do is stop — reclaiming sustainable hours, not
-> just redistributing the ones they have.
+> For leaders running at 55+ hours, name the hours question clearly: the goal is not just to
+> reallocate time but to reclaim a sustainable way of working. Sometimes the most strategic thing a
+> leader can do is stop.
 
 The strategy mirror, used once where it lands (Brief §5):
 
@@ -625,7 +658,8 @@ The strategy mirror, used once where it lands (Brief §5):
 
 And the distinct path for people already in her orbit:
 
-> For clients already working with Rashmir, invite them to share ahead of their next session.
+> For clients already working with Rashmir, invite them to share their results ahead of their next
+> session.
 
 F8's client tier is what makes this branch knowable.
 
