@@ -27,9 +27,24 @@ way the framework retro does.
 
 ## §A — overall-plan authoring
 
-- _(none yet — the first will likely come from F3 `ryw-firstlight`, the spike: if the framework
-  surfaces more than the budgeted two to three defects, that is a §A lesson about how much end-to-end
-  risk a first-consumer plan should price in.)_
+- **Failures live in the joins between documents, not inside them.** Three times now, every document
+  has been internally coherent and the defect has been in the space between two of them. (1) The
+  verbatim guard compared `content-source.md` to `Module.config` and had no anchor above the extract —
+  nine altered blockquotes passed, three materially. (2) `coverage-audit.md` audited the system
+  prompt instruction by instruction and the Brief section by section — six items marked ✅ at section
+  grain were not captured at all. (3) I-composite was written as an invariant and cited in three
+  docs, and `slot-spec.md` had no slot for it to write to. **Whatever you check, check it across a
+  boundary**: extract against source, spec against invariant, section against instruction.
+
+- **A grep is not a read, and confidence should track which one you did.** Every gap above survived
+  targeted searching and died on an end-to-end read. Searching confirms that something you already
+  thought of is present; it cannot surface the thing you did not think to look for. When planning a
+  feature, read its spec sections whole — and say plainly which documents you have read whole, so a
+  reader can calibrate.
+
+- _(F3 `ryw-firstlight` will likely add the next: if the framework surfaces more than the budgeted
+  two to three defects, that is a §A lesson about how much end-to-end risk a first-consumer plan
+  should price in.)_
 
 ## §B — feature-plan authoring
 

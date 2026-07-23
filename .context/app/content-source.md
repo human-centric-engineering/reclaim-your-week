@@ -754,7 +754,41 @@ slows, holds, and names the referral path to Rashmir.
 
 ## 12. The reassurance register — landing page and opening
 
-From the Setup Guide, in Rashmir's own words. This is the Brief §7 register made concrete, and it
+### 12a. Brief §7 — the register itself, and the five statements that carry it
+
+**This is a design constraint on the whole product, not page copy Rashmir owes.** Brief §7:
+
+> The register of the whole product matters as much as any single page. This can be a stressful
+> exercise for people, so the landing page, setup flow, and audit itself should carry a consistent
+> reassurance: it is okay if you are not using your time optimally yet; this is not about achieving
+> a perfect calendar; it's fine to do this during an atypical week; it is better to know; no one is
+> judging you. The tool helps you make better decisions about what matters to you and to align your
+> time, energy and attention accordingly.
+
+Five distinct reassurances, each of which has to be reachable somewhere in the flow:
+
+1. It is okay if you are not using your time optimally yet.
+2. This is not about achieving a perfect calendar.
+3. It's fine to do this during an atypical week.
+4. It is better to know.
+5. No one is judging you.
+
+**Number 3 does real work and appears nowhere else in any source.** A leader auditing an unusual
+week is the most likely to abandon, because the data feels invalid. It belongs at the point they
+choose the audit period (`reclaim_setup_audit_period`), not only on the landing page.
+
+The closing sentence is the product's own mission statement in her words, and is the natural landing
+subtitle beneath the line below.
+
+### 12b. The landing line
+
+Brief header, her words, to be used rather than rewritten:
+
+> Align your time and energy with what matters most to you.
+
+### 12c. Setup Guide — the register made concrete
+
+From the Setup Guide, in Rashmir's own words. This is Brief §7's register in practice, and it
 belongs on the landing page and in the run's warm opening.
 
 > The audit is only as useful as the honesty you bring to it. [The tool] will not judge you. What

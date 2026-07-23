@@ -300,7 +300,15 @@ calendar does not capture all your work" rather than "your estimate was wrong" �
 the second judges (`content-source.md` §8, Phase 1). It also depends on the completeness answer
 (`reclaim_calendar_completeness`), which is why that slot is captured before the upload.
 
-Honoured in F6 t-3, alongside I12.
+**Where it lands:** `reclaim_composite_hours__<bucket>` plus `reclaim_composite_variance_note`
+(`slot-spec.md`). Those slots did not exist until 2026-07-23 — this invariant was written, cited in
+three documents, and had **nowhere to write to**: `reclaim_current_*` holds the estimate,
+`reclaim_calendar_*` holds the calendar, and the composite of the two had no home, so the chart could
+only ever have plotted one of them. Do not implement it by appending a second version to
+`reclaim_current_hours__*`; slot history would hold both, but "version 2 means composite" is not a
+contract, and the perception-vs-reality chart needs both figures at once.
+
+Computed in F5 t-3 (where the calendar reconciliation happens), plotted in F6 t-3, alongside I12.
 
 ---
 

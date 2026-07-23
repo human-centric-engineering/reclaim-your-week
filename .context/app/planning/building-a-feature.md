@@ -108,11 +108,13 @@ Docs-only changes still go on a branch + PR, but skip `/security-review` and `/c
   (`ryw-provenance`), which lands two additive framework changes as its own upstream-style PR before
   anything depends on them, and ledgers them in [`daybreak-asks.md`](../daybreak-asks.md) so the next
   sync delegates instead of carrying them forever. Full ownership table: [`.context/app/README.md`](../README.md).
-- **Content is loaded, not authored** (I11). Rashmir's IP lives verbatim in
-  [`content-source.md`](../content-source.md) and loads into `Module.config`. Never paraphrase it. F2
-  t-3 builds the guard that makes this mechanical — a test that parses the blockquotes out of
-  `content-source.md` and asserts character-identity — because no ordinary test catches a plausible
-  rewording.
+- **Content is loaded, not authored** (I11). The authority is [`sources/`](../sources/README.md) —
+  Rashmir's five originals, byte-identical and read-only. [`content-source.md`](../content-source.md)
+  is a working **extract** of them and loads into `Module.config`. Never paraphrase either. The guard
+  has **two hops** and both are needed: `npm run leaf:content-diff` (already built, in `leaf:checks`)
+  asserts every blockquote in the extract appears verbatim in a source, and F2 t-3 asserts the config
+  matches the extract. A config-only guard proves the code matches the extract and nothing about
+  whether the extract matches Rashmir — which is how nine altered blockquotes survived to 2026-07-23.
 - **The invariants don't travel on their own.** I1 (third-person voice) and I3 (one write path) are the
   two most likely to regress across sessions. Each feature prompt opens by reading
   [`invariants.md`](../invariants.md); each touched invariant has a test.

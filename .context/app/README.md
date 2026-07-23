@@ -41,14 +41,15 @@ Editing a bridge conflicts on every Daybreak upgrade. Always edit the `leaf-*` f
 
 ## What is in this folder
 
-| Doc                                        | Is                                                                              |
-| ------------------------------------------ | ------------------------------------------------------------------------------- |
-| [`invariants.md`](./invariants.md)         | **Read before writing any code.** I1–I18 + I-frame + I-composite                |
-| [`content-source.md`](./content-source.md) | Rashmir's IP, verbatim. Load it into `Module.config`; never paraphrase it (I11) |
-| [`slot-spec.md`](./slot-spec.md)           | The 95 slot definitions — exact slugs, dataType, sensitivity                    |
-| [`coverage-audit.md`](./coverage-audit.md) | The source-instruction audit: carries / becomes UI / retired / gap              |
-| [`daybreak-asks.md`](./daybreak-asks.md)   | Framework changes we carry + defects we find, so a sync knows what to delegate  |
-| [`planning/`](./planning/README.md)        | The feature board, the execution rhythm, and the retro                          |
+| Doc                                        | Is                                                                             |
+| ------------------------------------------ | ------------------------------------------------------------------------------ |
+| [`sources/`](./sources/README.md)          | **The authority.** Rashmir's five originals, byte-identical and **read-only**  |
+| [`invariants.md`](./invariants.md)         | **Read before writing any code.** I1–I18 + I-frame + I-composite               |
+| [`content-source.md`](./content-source.md) | Working extract of `sources/`, verbatim. Loads into `Module.config` (I11)      |
+| [`slot-spec.md`](./slot-spec.md)           | The 105 slot definitions — exact slugs, dataType, sensitivity                  |
+| [`coverage-audit.md`](./coverage-audit.md) | The source-instruction audit: carries / becomes UI / retired / gap             |
+| [`daybreak-asks.md`](./daybreak-asks.md)   | Framework changes we carry + defects we find, so a sync knows what to delegate |
+| [`planning/`](./planning/README.md)        | The feature board, the execution rhythm, and the retro                         |
 
 The first four are the **system of record** for content, data shape, and rules. `planning/plan.md` is
 the build breakdown that consumes them. Start a feature at
@@ -66,6 +67,22 @@ the build breakdown that consumes them. Start a feature at
 | End-user UI  | `app/(protected)/programme/**`     |
 | Models       | `prisma/schema/app-reclaim.prisma` |
 | Migrations   | `<timestamp>_app_<feature>`        |
+
+### The working title is baked into the identifiers, deliberately
+
+Brief header: _"The name is a working title. It will be tested against real audiences before launch,
+so please treat it as good enough to build with rather than final branding."_
+
+It is nonetheless the root of the module slug `reclaim-audit`, 105 `reclaim_*` slot slugs, eight
+`app_reclaim_*` tables, `prisma/seeds/app-reclaim/` and `smoke:reclaim` — and I7 says canonical slugs
+never change. **That is the intended outcome, not an oversight.** These identifiers are internal
+storage keys that no user ever sees; renaming them on a rebrand would mean a data migration across
+every slot value and audit run, for zero user-visible gain. A rebrand changes
+`NEXT_PUBLIC_APP_NAME`, the brand mark, and the copy. It does not change the slugs.
+
+The one thing to keep honest: never let the working title leak into user-facing strings via a slug.
+User-facing names come from `Module.config` and brand env, both of which Rashmir can change without a
+deploy.
 
 **`programme` is the surface, `reclaim` is the module.** Routes, URLs, UI folders and shared leaf
 plumbing are `programme` — they are module-agnostic, and the Parked life-wheel would live behind the

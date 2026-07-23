@@ -1,15 +1,26 @@
 # Reclaim Your Week — source coverage audit
 
-> **Status (2026-07-23): all 19 numbered gaps resolved, plus the four unnumbered ✗ items in the
-> body (Phase 2 brainstorm + coaching signal, Phase 3 "realistic target", Phase 6 existing-client
-> close).** The fixes listed at the end of this document have
-> been folded into `content-source.md` (§0, §4a, §8 expansions, §11, §12, the checkpoint decision),
-> `slot-spec.md` (four new slots, 91 → 95), and `invariants.md` (I16, I-frame, I17, I18). This file
-> is retained as the audit trail — it shows _what_ each source instruction became and _why_, which
-> is the reasoning a feature plan needs when it decides how to honour a given instruction. Read it
-> when planning a feature that touches the calendar branch (F5), the perception-vs-reality moment or
-> priority-gap (F6), or the refer-back (F7), where the "carries / becomes UI / retired" calls matter
-> most.
+> **Status (2026-07-23, second pass): all 19 numbered gaps resolved, and all unnumbered ✗ items in
+> the body now accounted for — see [Part 2 revisited](#part-2-revisited--the-brief-at-instruction-grain).**
+> The fixes listed at the end have been folded into `content-source.md` (§0, §4a, §8 expansions,
+> §11, §12), `slot-spec.md` (91 → 95 → **105**), and `invariants.md` (I16, I-frame, I17, I18).
+>
+> **Read this first: the ✗ marks below are a snapshot, not a to-do list.** They record what each
+> instruction's status was _at audit time_. Resolution is tracked here in the header and in Part 2
+> revisited, never by editing the body — the body is the audit trail, and rewriting it would destroy
+> the reasoning a feature plan needs when it decides how to honour a given instruction.
+>
+> **The first pass claimed more completeness than it had, and the reason is methodological.** Part 1
+> audited the system prompt _instruction by instruction_ across 250 lines. Part 2 audited the Brief
+> in a _ten-row table, one row per section_. Four material items were marked "✅ Captured" at section
+> grain that were not captured at all: consent capture, open-signup readiness, the sequencing of
+> bucket relabelling, and the brand values Rashmir had already supplied. Two more were missed
+> entirely: her landing line and the five reassurance statements of §7. A section-grain audit cannot
+> see inside a section. Part 2 revisited redoes the Brief at the grain Part 1 used.
+
+Read it when planning a feature that touches the calendar branch (F5), the perception-vs-reality
+moment or priority-gap (F6), or the refer-back (F7), where the "carries / becomes UI / retired"
+calls matter most.
 
 Every instruction in the four source documents, checked against the build plan. Each carries a
 disposition:
@@ -319,6 +330,68 @@ Checked section by section. **Well covered**, with three exceptions.
 | §8 Access tiers                                      | ✅ Captured                                                                                                                                                                                                                                                                 |
 | §9 V2 horizon                                        | ✅ Out of scope, seams noted                                                                                                                                                                                                                                                |
 | §10 Costs and platform                               | ✅ Claude-only captured                                                                                                                                                                                                                                                     |
+
+---
+
+# Part 2 revisited — the Brief at instruction grain
+
+**Added 2026-07-23 (second pass).** The table above audits the Brief one row per section. That grain
+is too coarse: a section can be 90% captured and the remaining 10% be the commercial point of the
+product. Every instruction below was checked individually against `plan.md`, `content-source.md`,
+`slot-spec.md` and `invariants.md` as they stood after the first pass.
+
+| Brief | Instruction                                                                                          | First pass | Actual                                                                         |
+| ----- | ---------------------------------------------------------------------------------------------------- | ---------- | ------------------------------------------------------------------------------ |
+| hdr   | Landing line: "Align your time and energy with what matters most to you."                            | ✅         | **✗ absent** → now `content-source.md` §12b                                    |
+| hdr   | Name is a working title, to be audience-tested                                                       | —          | **✗ undecided** → now a recorded decision, `.context/app/README.md`            |
+| §1    | "The success measure is not downloads; it is whether people come back, and whether they tell others" | ✅         | **✗ nothing measured it** → now F10 t-2                                        |
+| §1    | Discernment principle shapes every design choice                                                     | ✗ noted    | ✅ I16                                                                         |
+| §2    | "architecture should anticipate open sign-up with email capture"                                     | ✅         | **✗ invite-only with no way out** → now F8 t-4, reconciliation 7               |
+| §2    | Everyone must agree to terms + privacy allowing aggregate use                                        | ✅         | **✗ no capture, no table** → now F8 t-4 + `app_reclaim_consent` (F4 t-1)       |
+| §2    | Follow-up sequence for registrants                                                                   | ✅         | **✗ absent** → now F8 t-4 (hook seam only, no sequence in v1)                  |
+| §2    | Setup form does double duty as qualification                                                         | ✅         | **✗ not surfaced to admin** → now F10 t-1                                      |
+| §3    | User-level category customisation, for "their own audit"                                             | ✅         | **✗ sequenced into F9 (repeat audits)** → moved to F6 t-4                      |
+| §3    | Charts: "bright, obviously distinguishable colours"                                                  | ✅         | **✗ conflicts with her own muted palette** → now flagged, F6 t-3, hers to rule |
+| §3    | Feedback quote + "happy to be quoted anonymously" checkbox; age bands                                | ✅         | partial → now explicit in F7 t-4; slots existed                                |
+| §7    | The five reassurance statements                                                                      | ✅ / ✗     | **✗ only the Setup Guide version was ported** → now `content-source.md` §12a   |
+| §7    | Brand values: `#0D4F68`, `#FFFAD7`, Raleway, no gradients                                            | ✅         | **✗ treated as unknown** → now open item 3                                     |
+| §8    | A tester spent 4+ hours in one audit; cost concern                                                   | ✅         | **✗ no cost visibility or cap** → now F10 t-1 (cost per run)                   |
+| §8    | Client status flag distinguishes 1:1 vs group                                                        | ✅         | partial — the flag exists, the distinction does not. Parked (cohort overlays)  |
+| §6    | Work life vs personal life, "allowed within limits"                                                  | ✗ minor    | ✅ `content-source.md` §7 — restored 2026-07-23                                |
+| §5    | Strategy mirror hedge: "though this could be in a follow up audit"                                   | ✅ (G15)   | **✗ hedge dropped, committing it to run 1** → open item 10                     |
+
+**Everything else in the Brief verifies as captured** at instruction grain: §2 invite gating,
+referral mechanic, knowledge-base parking, repeat cadence; §3 hours-not-percentages, reflection
+pauses, calendar handling, auto-save, voice reuse, GDPR, hybrid design, Claude-only, setup fields,
+sharing; §4 voice in full; §5's other five marks; §6 anti-replication and IP clauses; §8 tiers,
+windows, referral unlock, future paid shape; §9 V2; §10 platform and Claude constraint.
+
+## Unnumbered ✗ items from Part 1, reconciled
+
+| Body ref                                        | Status                                                                                                       |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Phase 2 brainstorm + coaching signal            | ✅ folded into `content-source.md` §8 — and the coaching signal's conflict with Brief §2 is now open item 11 |
+| Phase 3 "realistic target"                      | ✅ `content-source.md` §8, restored in full 2026-07-23                                                       |
+| Phase 6 existing-client close                   | ✅ `content-source.md` §10                                                                                   |
+| Phase 4, 55+ closing line "is missing"          | ✅ present and verbatim since 2026-07-23 (it had been a synthesis)                                           |
+| Phase 0 "reflect context back before moving on" | ✅ now F6 t-1 — a review step, which no task had                                                             |
+| "What the calendar misses" [X]/[Y]/[Z]          | ✅ now F5 t-3 — arithmetic wired to real slots, with the Z ≤ 0 case named                                    |
+| Phase 1 "show all nine buckets first"           | ✅ F6 t-2                                                                                                    |
+| "Not a form" tension on the Phase 0 form        | ✅ F6 t-1 warm framing                                                                                       |
+| Abandonment tracking                            | ✅ F10 t-1                                                                                                   |
+
+## The gap that was in neither part
+
+**I-composite had no slot to write to.** Not a source-coverage gap — the instruction _was_ captured,
+in `content-source.md` §8 and as an invariant. It failed at the next hop: `slot-spec.md` had
+`reclaim_current_*` for the estimate and `reclaim_calendar_*` for the calendar, and nothing for the
+composite of the two, so the chart could only ever have plotted one of them. Found by reading the
+slot spec against the invariants, which is a check this document does not perform and was never
+designed to. Fixed by the `reclaim_composite` group (95 → 105).
+
+**The lesson, and it has now happened three times:** these documents are each internally complete and
+the failures live in the joins between them — extract vs source, spec vs invariant, section vs
+instruction. Whatever is checked, check it across a boundary.
 
 ---
 

@@ -48,7 +48,7 @@ is the structure.
 | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Name               | **Reclaim Your Week** (the leaf app)                                                                                                                                                                                    |
 | Active epic        | **RYW v1** (the whole build below)                                                                                                                                                                                      |
-| Spec               | [[content-source]] (content, verbatim) · [[slot-spec]] (95 slots) · [[invariants]] (I1–I18, I-frame, I-composite)                                                                                                       |
+| Spec               | [[content-source]] (content, verbatim) · [[slot-spec]] (105 slots) · [[invariants]] (I1–I18, I-frame, I-composite)                                                                                                      |
 | Repo               | `reclaim-your-week` — fork of `human-centric-engineering/daybreak` (tracking `upstream`)                                                                                                                                |
 | Placement          | Leaf app on Daybreak. We own `lib/app/*`, the `leaf-*` hooks, `app-*.prisma`, `app/(protected)/programme/**`, `app/admin/programme/**`, `.context/app/**` — see [[../README\|.context/app/README.md]]                   |
 | Framework baseline | Daybreak Framework v1 + v1.1 — all facilitation machinery (modules, map, slots, engine, guidance, agents) shipped and available through registration seams                                                              |
@@ -101,7 +101,7 @@ A flat list in rough dependency order (most-ready first). Order is _emergent fro
 | #   | Feature            | Owner | Status          | Depends on       | ~Tasks | Capability                                                                                                    |
 | --- | ------------------ | ----- | --------------- | ---------------- | ------ | ------------------------------------------------------------------------------------------------------------- |
 | F1  | `ryw-provenance`   | —     | **available** ▲ | —                | 3      | Add `runId` to slot provenance + `getSlotHistory()` (the only framework-tier change)                          |
-| F2  | `ryw-module`       | —     | blocked → F1    | F1               | 4      | Register the module; declare 95 slots; load content verbatim; author the third-person agent                   |
+| F2  | `ryw-module`       | —     | blocked → F1    | F1               | 4      | Register the module; declare 105 slots; load content verbatim; author the third-person agent                  |
 | F3  | `ryw-firstlight` ★ | —     | blocked → F2    | F2               | 3      | The spike: boot → register → publish → stream, end to end, against real Postgres                              |
 | F4  | `ryw-shell`        | —     | blocked → F3    | F3               | 4      | Leaf schema; single slot write-path; run lifecycle + reflection gate; consumer chat client + seven-node shell |
 | F5  | `ryw-calendar`     | —     | blocked → F4    | F4               | 4      | Optional `.ics` branch: in-memory parse, totals-only, privacy-proven                                          |
@@ -109,7 +109,7 @@ A flat list in rough dependency order (most-ready first). Order is _emergent fro
 | F7  | `ryw-phases`       | —     | blocked → F6    | F6 (F5 optional) | 4      | Phases 2–6: energy, ideal week, gap + refer-back, action plan, summary + share                                |
 | F8  | `ryw-access`       | —     | blocked → F4    | F4               | 4      | Tiered invites, the grant ledger, referral unlock (gates F6's run creation)                                   |
 | F9  | `ryw-repeat`       | —     | blocked → F7    | F7               | 4      | Trend lines, comparative open, quarterly nudge, bucket relabelling                                            |
-| F10 | `ryw-admin`        | —     | blocked → F7    | F7, F8           | 4      | Client list + access control, shared-results inbox, content editing, export + GDPR proof                      |
+| F10 | `ryw-admin`        | —     | blocked → F7    | F7, F8           | 5      | Client list + access control, shared-results inbox, content editing, export + GDPR proof                      |
 
 **Critical path:** `ryw-provenance → ryw-module → ryw-firstlight → ryw-shell → ryw-current → ryw-phases`.
 `ryw-calendar` (F5) hangs off F4 and enriches F6/F7 without gating them. `ryw-access` (F8) parallels
@@ -201,11 +201,11 @@ Where Rashmir's IP enters the codebase. Highest risk for silent drift, because p
 success. Load content, don't author it (I11).
 
 - **t-1** — `registerModule('reclaim-audit')` from `initLeafApp()` in `lib/app/leaf-bootstrap.ts` (never the `bootstrap.ts` bridge); a `configSchema` making every coach-editable value changeable without a deploy — nine bucket titles/descriptions, benchmark ranges, hour bands, consultation email, footnote.
-- **t-2** — Declare all **95** slot definitions from [[slot-spec]], exact slugs, per-bucket slots generated from the canonical list. Sensitivity as specified; nothing `special_category` (I5).
+- **t-2** — Declare all **105** slot definitions from [[slot-spec]], exact slugs, per-bucket slots generated from the canonical list. Sensitivity as specified; nothing `special_category` (I5). The count moved 95 → 105 on 2026-07-23: reading `slot-spec.md` against `invariants.md` found **I-composite had no slot to write to** — `reclaim_current_*` holds the estimate, `reclaim_calendar_*` holds the calendar, and the composite of the two had nowhere to live, so the chart could only ever have plotted one of them. New group `reclaim_composite` (9 per-bucket + a variance note).
 - **t-3** — Load content from [[content-source]] into config defaults **verbatim** — §0 frame, nine buckets, bands, footnote, phase language. No paraphrase. Plus the **second hop** of the I11 guard: a test parsing the blockquotes out of `.context/app/content-source.md` and asserting the nine bucket descriptions and the footnote are character-identical to the config defaults. The **first hop already exists** — `npm run leaf:content-diff` (in `leaf:checks`) asserts every blockquote in `content-source.md` appears verbatim in `.context/app/sources/`, and that the sources still match their SHA-256 manifest. Both hops are needed and neither substitutes for the other: config-vs-extract proves the code matches the extract and says nothing about whether the extract matches Rashmir, which is precisely how nine altered blockquotes survived to 2026-07-23.
 - **t-4** — Author the agent (`Persona → systemInstructions → Guardrails → Brand Voice`): third-person (I1), banned lexicon + no em dashes + no conversational bullets (I2), scope + anti-replication guardrails ([[content-source]] §7), read-only capabilities (`get_journey_state`, `get_next_steps`, `get_state`), exposure allowlist permitting writes only to `reclaim_profile_*` (I6). Plus the invariant tests: voice, slot-sensitivity, agent-caps (in `tests/unit/invariants/`), **wired into `leaf:checks`** — the script is `exit 0` today and is the one hook CI already runs for us.
 
-_Done when:_ all 95 slugs match the spec; bucket descriptions + footnote character-identical to source; three invariant tests pass; boundary green.
+_Done when:_ all 105 slugs match the spec; bucket descriptions + footnote character-identical to source; three invariant tests pass; boundary green.
 
 _Watch for:_ paraphrased bucket descriptions and invented slugs — diff the strings against source yourself; tests won't catch a plausible rewording.
 
@@ -226,7 +226,8 @@ _Done when:_ `db:reset && db:seed && seed:reclaim` completes; `smoke:reclaim` st
 
 _Owner:_ — · _Status:_ blocked → F3 · _Depends on:_ F3 · _~4 tasks_
 
-- **t-1** — Leaf schema `prisma/schema/app-reclaim.prisma` (not `app.prisma` — that's Sunrise's). Tables `app_reclaim_{invite,grant,audit_run,bucket_label,share,report_share,feedback}`; partial unique index on `(userId) WHERE status='in_progress'`; **no calendar table** (I4). Hand-written `ON DELETE CASCADE` per `userId` table (Prisma emits none without a `@relation`; read the generated SQL). Drift probes in `leaf-db-drift.ts`.
+- **t-1** — Leaf schema `prisma/schema/app-reclaim.prisma` (not `app.prisma` — that's Sunrise's). Tables `app_reclaim_{invite,grant,audit_run,bucket_label,share,report_share,feedback,consent}`; partial unique index on `(userId) WHERE status='in_progress'`; **no calendar table** (I4). Hand-written `ON DELETE CASCADE` per `userId` table (Prisma emits none without a `@relation`; read the generated SQL). Drift probes in `leaf-db-drift.ts`.
+  - **`app_reclaim_consent`** carries F8 t-4: `userId`, `policyVersion`, `acceptedAt`, and a separate `marketingOptIn` boolean. Sunrise models no terms acceptance of its own (checked — the only `consent` in the schema is orchestration's cross-user conversation access, unrelated), so this has to be ours. **`onDelete: SetNull`, not `Cascade`** — unlike every other table here. A consent record is the evidence that processing was lawful; erasing it with the user destroys the proof that their data was lawfully processed while they existed. Retained config/audit, per the `CLAUDE.md` rule. That makes `userId` nullable here and nowhere else in this schema, which is the sort of asymmetry that looks like a mistake later — it is deliberate.
 - **t-2** — `saveAnswer()` in `lib/app/programme/slots/write.ts`: the **only** caller of `appendSlotValue` (I3), routing through `slotMaskingPolicy` and stamping `provenance.runId`. Test (`tests/unit/invariants/write-path.test.ts`, in `leaf:checks`) asserts exactly one occurrence in the tree.
 - **t-3** — Run lifecycle routes under `app/api/v1/app/reclaim/`: create (TODO marker for F6/F8 gate), transition (`assertPhaseComplete` → `422 REFLECTION_REQUIRED` when the phase's reflection slot is absent — I9), complete (`isActive:false` on the conversation — I15), answers (delegates to `saveAnswer`). Run id = journey `contextKey` = provenance `runId`; never read `contextKey` from an LLM arg (I6).
 - **t-4** — First consumer SSE client (`app/(protected)/programme/`), admin chat as SSE reference only. Progress bar over all **seven** map nodes with Phase 0 labelled _Setup_ (the map is `phase-0-setup … phase-6-summary`; hiding node 0 makes "you are here" wrong on resume, which reads `UserNodeState` per node). Auto-save, resume from `UserNodeState.progress`. Plus the per-phase **signpost line** ([[content-source]] §5d, G10): entering a phase says which phase, what it involves, and roughly how long — the progress bar shows position, not duration or content. Shell only — no phase content yet.
@@ -241,7 +242,7 @@ Optional, and loudly so (Brief §3). I4 is the product's trust story, not just a
 
 - **t-1** — Add `ical.js`; `lib/app/programme/calendar/parse.ts`, pure, no DB/network, RRULE expansion. Fixture-driven tests: recurring, all-day, timezoned, multi-calendar.
 - **t-2** — Upload route: raw file **never touches disk** (`formData()` → `text()` in memory); categorise via **one `runStructuredCompletion`**, never `streamChat` (which persists meeting titles); persist per-bucket totals only via `saveAnswer`; personal events excluded, ambiguous flagged with best guess + reasoning, recurring counted per instance, multi-calendar + file-size fallback ([[content-source]] §8). Test: no `streamChat` import in the path. Add a per-flow rate-limit sub-cap inside the handler — an LLM call over an uploaded file is exactly the expensive sub-flow `CLAUDE.md` carves out from the inherited 100/min section cap.
-- **t-3** — Review UI: summary **by bucket**, ambiguous items listed individually to confirm — **wait for confirmation before proceeding**. Then the "what the calendar misses" questions and the task-switching profile.
+- **t-3** — Review UI: summary **by bucket**, ambiguous items listed individually to confirm — **wait for confirmation before proceeding**. Then the "what the calendar misses" questions and the task-switching profile. **The [X]/[Y]/[Z] framing is arithmetic, not copy** — X from `reclaim_calendar_total_hours`, Y from `reclaim_setup_weekly_hours`, Z the difference; a placeholder rendered literally, or a negative Z when the calendar exceeds the self-report, both read as a broken tool at the audit's most delicate moment. Handle Z ≤ 0 explicitly. Write the reconciled result to `reclaim_composite_hours__*` and the variance note (I-composite) — this task, not F6, is where the composite is computed.
 - **t-4** — Both privacy messages surfaced **at** the upload step (optional; details never stored). Extend `smoke:reclaim`: after a real Google `.ics`, assert **no meeting title anywhere in the database**.
 
 _Done when:_ parser handles all four fixture shapes; calendar-privacy test passes; smoke proves no title in DB; both messages visible at upload.
@@ -250,9 +251,9 @@ _Done when:_ parser handles all four fixture shapes; calendar-privacy test passe
 
 _Owner:_ — · _Status:_ blocked → F4 · _Depends on:_ F4 (F8 for the gate) · _~4 tasks_
 
-- **t-1** — Phase 0 setup form (warm framing, not bare fields): fields per [[content-source]] §4, first name only, role/org dropdowns, the "what keeps you up at night" and "why now" prose, quarter default. Plus the entitlement gate deferred from F4: `POST /runs` checks `app_reclaim_grant` and refuses when exhausted or expired (I14); integration test for the refusal. Opens with the "here is what we will cover" process outline verbatim ([[content-source]] §4). `<FieldHelp>` on every non-trivial field (repo rule); the hours fields accept approximations and say so (I17).
+- **t-1** — Phase 0 setup form (warm framing, not bare fields): fields per [[content-source]] §4, first name only, role/org dropdowns, the "what keeps you up at night" and "why now" prose, quarter default. Plus the entitlement gate deferred from F4: `POST /runs` checks `app_reclaim_grant` and refuses when exhausted or expired (I14); integration test for the refusal. Opens with the "here is what we will cover" process outline verbatim ([[content-source]] §4). `<FieldHelp>` on every non-trivial field (repo rule); the hours fields accept approximations and say so (I17). Two more the coverage audit marked and never landed: **reflect the context back before moving on** — a review step confirming what was captured, which is the source's own instruction and not merely good form design; and the **atypical-week reassurance** at the audit-period field ("it's fine to do this during an atypical week", [[content-source]] §12a), which is where a leader most likely to abandon decides whether their data counts.
 - **t-2** — Phase 1: show all nine buckets first (overview), then cards (eight when fundraising not relevant). **Hours per week, never percentages** (I8). Each card: hours + "what it looks like in practice". Deep-work's three extra questions. Delivery-above-15% and oversight-in-transition nuance ([[content-source]] §8). Reusable required reflection component (server enforces via 422 — I9; this is the UI half). `<FieldHelp>` on the hours and practice fields.
-- **t-3** — The `<ReclaimChart>` family: standardised format, nine fixed colours, clear key, readable in light **and** dark mode, benchmark markers, over/under flags. Composite picture after upload (I-composite). **The priority-gap element** — map Phase 0 priorities to buckets and flag any priority with no time against it ([[content-source]] §8, "often the most important insight"). Chart never renders interpretation (I12). **Flag the two open colour questions** (dark-mode variants; strategic-blue vs brand-teal) as TODOs, don't silently resolve.
+- **t-3** — The `<ReclaimChart>` family: standardised format, nine fixed colours, clear key, readable in light **and** dark mode, benchmark markers, over/under flags. Composite picture after upload (I-composite) — plots `reclaim_composite_hours__*` when the branch was taken, `reclaim_current_hours__*` when it was not, with the variance note rendered from `reclaim_composite_variance_note`. **The priority-gap element** — map Phase 0 priorities to buckets and flag any priority with no time against it ([[content-source]] §8, "often the most important insight"). Chart never renders interpretation (I12). **Flag the three open colour questions** as TODOs, don't silently resolve: dark-mode variants; strategic-blue vs brand-teal; and **whether the source palette actually meets Brief §3's bar** — she asks for "bright, obviously distinguishable colours", and the system prompt's own palette includes a muted purple (`#7B6D8D`) and a soft teal (`#A8DADC`) that are neither. The palette is her IP (I11) and the requirement is also hers, so this is a conflict only she can resolve; do not quietly brighten her hexes.
 
 - **t-4** — **Bucket relabelling**, moved here from F9. Brief §3 lists user-level category customisation as a v1 amendment — "Not everyone is the head of an organisation. Users should be able to adjust category labels for their own audit, within limits" — and the audit it applies to is their _first_ one. Sequencing it with repeat audits meant the first cohort could not relabel at all. Display labels write to `app_reclaim_bucket_label` (schema already in F4 t-1); canonical `bucketSlug` is never touched (I7), so customised audits still aggregate correctly by construction, which is the other half of what Brief §3 asks for. "Within limits" is a length cap and the nine slots staying nine — relabelling is not adding or removing a bucket.
 
@@ -279,8 +280,8 @@ Parallels F4–F6. Must land before F6's run-creation gate is real.
 - **t-2** — The grant ledger: free tier = one complete audit; client tier = 12-month window starting on first use + a `mustStartBy` deadline (Brief §8); client status an admin flag. Enforced at the F6 run-creation route (I14), with the exhausted/expired test.
 - **t-3** — Referral unlock: a second audit earned on the referred user's **first run completion**, not signup (Brief §8).
 - **t-4** — **Signup-time capture — the commercial point and the legal basis.** Two things that only exist at account creation, and are expensive to retrofit:
-  - **Consent.** Explicit acceptance of terms and privacy policy, recorded with version and timestamp. Brief §2: "everyone should be aware and agree to the terms and conditions and privacy policy, **which should allow for data to be used in aggregate**". F10 t-2's cross-client analysis has no lawful basis without this, and consent captured retroactively is not consent. The clauses themselves are Rashmir's to supply (open item 7); the capture mechanism is not blocked on them — build against a versioned policy record.
-  - **Open-signup readiness.** Email captured as a first-class field, not incidentally via auth; the invite check a single gate that a config flag can open; the grant model already tier-driven (t-2), so an open-signup tier is a row and not a refactor. Reconciliation 7. **v1 ships invite-only** — this is about not welding the door shut.
+  - **Consent.** Explicit acceptance of terms and privacy policy, recorded with version and timestamp. Brief §2: "everyone should be aware and agree to the terms and conditions and privacy policy, **which should allow for data to be used in aggregate**". F10 t-3's cross-client analysis has no lawful basis without this, and consent captured retroactively is not consent. The clauses themselves are Rashmir's to supply (open item 7); the capture mechanism is not blocked on them — build against a versioned policy record.
+  - **Open-signup readiness.** `User.email` is already a first-class column from better-auth, so the field is not the work — the work is that **list membership is a separate fact from having an account**, and only a recorded `marketingOptIn` can distinguish "signed up for the tool" from "consented to be on Rashmir's list". Beyond that: the invite check a single gate a config flag can open, and the grant model already tier-driven (t-2), so an open-signup tier is a row rather than a refactor. Reconciliation 7. **v1 ships invite-only** — this is about not welding the door shut.
   - **The follow-up sequence seam.** Brief §2 describes a follow-up sequence for people who register. Emit the signup and first-completion events through Daybreak's hook dispatch (`.context/orchestration/hooks.md`) rather than wiring an ESP in. No sequence in v1.
 
 _Done when:_ redeeming creates the right grant per tier; free = exactly one audit; client window starts on first use; referral fires on completion; consent version recorded per user with a test; flipping the open-signup flag creates a valid standard-tier grant without code change.
@@ -298,14 +299,15 @@ _Done when:_ trend lines show both runs; repeat opens comparatively; a bucket re
 
 ### F10 · `ryw-admin` — admin + compliance
 
-_Owner:_ — · _Status:_ blocked → F7, F8 · _Depends on:_ F7, F8 · _~4 tasks_
+_Owner:_ — · _Status:_ blocked → F7, F8 · _Depends on:_ F7, F8 · _~5 tasks_
 
 Admin UI under `app/admin/programme/**`; nav via `leaf-admin-nav.ts` (not the `admin-nav.ts` bridge — I10).
 
-- **t-1** — Client list: signed up, mid-audit, **abandoned at which phase**, never started. Invite issue/revoke, tier, client flag. (Abandonment needs a phase-progress read at the run level.) One enriched list endpoint — no per-row fetches (repo rule).
-- **t-2** — Shared-results inbox + cross-client aggregate patterns, anonymised (Brief §2; individual data confidential).
-- **t-3** — Content editing (bucket titles, descriptions, benchmark ranges, footnote) through the `Module.config` schema from F2 — Rashmir rewords without a deploy.
-- **t-4** — Data export + GDPR: verify `eraseUser()` reaches every `app_reclaim_*` row and every `framework_slot_value` row; extend `smoke:reclaim` to prove no orphans after erasure (the F4 hand-written cascades are what make this work).
+- **t-1** — Client list: signed up, mid-audit, **abandoned at which phase**, never started. Invite issue/revoke, tier, client flag. (Abandonment needs a phase-progress read at the run level.) One enriched list endpoint — no per-row fetches (repo rule). Also carry the qualification signal from the setup form — Brief §2 makes the form do "double duty as qualification", and that is only useful if Rashmir can see it next to the name. Plus **cost per run**, from Sunrise's existing cost tracking: Brief §8 flags a tester who spent 4+ hours in a single audit, which is the scenario where a free tier of one audit still costs real money.
+- **t-2** — **The success measures, because Rashmir named them and nothing reports them.** Brief §1: "The success measure is not downloads; it is whether people come back, and whether they tell others about it unprompted." Two numbers on the dashboard: **return rate** (users completing a second audit, which F9's run index already makes readable) and **referral conversion** (invites sent by users, and how many became completed audits — F8 t-3's unlock already tracks the second half). Without these the product cannot tell whether it is working on the terms its owner set.
+- **t-3** — Shared-results inbox + cross-client aggregate patterns, anonymised (Brief §2; individual data confidential).
+- **t-4** — Content editing (bucket titles, descriptions, benchmark ranges, footnote) through the `Module.config` schema from F2 — Rashmir rewords without a deploy.
+- **t-5** — Data export + GDPR: verify `eraseUser()` reaches every `app_reclaim_*` row and every `framework_slot_value` row; extend `smoke:reclaim` to prove no orphans after erasure (the F4 hand-written cascades are what make this work).
 
 _Done when:_ abandonment visible per phase; aggregate view excludes identifying data; a bucket description is editable without a deploy; erasure smoke proves no orphaned rows.
 
@@ -405,6 +407,31 @@ Daybreak's own plan-first discipline.
 
 Append-only. Newest at the top.
 
+- **2026-07-23 — Full end-to-end read of every app doc; ten findings, four of them self-inflicted.**
+  The previous entries were written from targeted reads and greps. Reading all eight docs end to end
+  against the checked-in sources found what partial reads had missed. **The root cause is
+  methodological and now recorded in [[coverage-audit]]:** Part 1 audited the system prompt
+  instruction by instruction; Part 2 audited the Brief in a ten-row table, one row per section. Six
+  Brief items marked "✅ Captured" at section grain were not captured at all. [[coverage-audit]] now
+  carries a **Part 2 revisited** section redoing the Brief at instruction grain, and its header no
+  longer claims completeness it lacks.
+  **The most serious finding was in neither part: I-composite had no slot to write to.** The
+  instruction was captured and the invariant written, but `slot-spec.md` had `reclaim_current_*` and
+  `reclaim_calendar_*` and nothing for the composite of the two — so the Phase 1 chart could only
+  ever have plotted one of them, which is precisely what the invariant forbids. New `reclaim_composite`
+  group; **slot count 95 → 105**. Also landed: her **landing line** and the **five reassurance
+  statements of Brief §7** (only the Setup Guide version had been ported, losing "it's fine to do
+  this during an atypical week" — the reassurance most likely to stop someone abandoning);
+  **success measures** she named explicitly and nothing reported (return rate, referral conversion —
+  F10 t-2); **cost per run** (she flags a 4-hour tester session, F10 t-1); the **"bright, obviously
+  distinguishable colours" conflict** with her own muted palette, flagged for her rather than
+  resolved; the Phase 0 **reflect-context-back** review step and the **[X]/[Y]/[Z] arithmetic**, both
+  unnumbered ✗ items no task had picked up; and the **working title's presence in 105 slugs and eight
+  tables** recorded as a deliberate decision rather than an accident.
+  Four were mine, from the previous entry: `app_reclaim_consent` had no table under a requirement I
+  wrote; F8 t-4 claimed email needed to become first-class when `User.email` already is; and
+  `building-a-feature.md` and `.context/app/README.md` still described the one-hop I11 guard.
+
 - **2026-07-23 — Source documents checked in; drift found and corrected; four intent gaps closed.**
   The five originals now live in [`.context/app/sources/`](../sources/README.md), byte-identical and
   read-only behind a SHA-256 manifest, and `npm run leaf:content-diff` (wired into `leaf:checks`,
@@ -467,7 +494,7 @@ Append-only. Newest at the top.
 - [[content-source]] — the working extract of `sources/` (the nine buckets, bands, phase language,
   voice rules, footnote). Load it; never paraphrase it (I11). `npm run leaf:content-diff` proves it
   against the originals.
-- [[slot-spec]] — the 95 slot definitions, exact slugs, dataType, sensitivity.
+- [[slot-spec]] — the 105 slot definitions, exact slugs, dataType, sensitivity.
 - [[invariants]] — I1–I18 plus I-frame and I-composite, the rules that don't survive between
   sessions on their own. Read before any task.
 - [[coverage-audit]] — the instruction-by-instruction audit of the source docs (carries / becomes UI /

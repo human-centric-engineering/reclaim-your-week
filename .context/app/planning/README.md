@@ -24,7 +24,7 @@ board, one owner per feature, plan-first, per-task gates, append-only logs.
     README.md            ← the three-tier ownership model (what the leaf may edit)
     sources/             ← the five originals, byte-identical and READ-ONLY (the authority)
     content-source.md    ← working extract of sources/, verbatim (load, never paraphrase — I11)
-    slot-spec.md         ← the 95 slot definitions
+    slot-spec.md         ← the 105 slot definitions
     invariants.md        ← I1–I18 + I-frame + I-composite, the rules that don't travel alone
     coverage-audit.md    ← the source-instruction audit (carries / becomes UI / retired / gap)
     planning/            ← THIS FOLDER
@@ -47,7 +47,7 @@ All five pieces are in place (landed 2026-07-23):
    carries the pointer to it, so every session reads it before writing code.
 2. **`.context/app/content-source.md`** — Rashmir's IP verbatim, with the coverage-audit fixes folded
    in (§0 frame, §4 process outline, §8 parsing/perception/composite, §11 register, §12 reassurance).
-3. **`.context/app/slot-spec.md`** — the 95 slot definitions.
+3. **`.context/app/slot-spec.md`** — the 105 slot definitions.
 4. **`.context/app/coverage-audit.md`** — the audit trail behind those fixes, and
    **`.context/app/daybreak-asks.md`** — the ledger of framework changes we carry and defects we
    find, so a Daybreak sync knows what to delegate.

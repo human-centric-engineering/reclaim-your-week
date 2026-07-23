@@ -125,6 +125,28 @@ table: nothing per-event is persisted anywhere.
 
 ---
 
+## Group: `reclaim_composite` — Phase 1 reconciliation, per run
+
+**This group exists because I-composite had nowhere to land.** The invariant says the Phase 1 visual
+shows "calendar data plus discursive additions" after an upload, and that the self-reported picture
+must not be discarded. `reclaim_current_hours__*` holds the estimate and `reclaim_calendar_hours__*`
+holds the calendar; **neither is the composite**, and without a third home the chart could only plot
+one of them — which is exactly the failure I-composite forbids.
+
+Written only when `reclaim_calendar_uploaded` is true. When it is false, the composite _is_ the
+self-reported picture and this group stays empty; the chart falls back to `reclaim_current_hours__*`.
+
+Do **not** implement this by appending a second version to `reclaim_current_hours__*`. Slot history
+would technically hold both, but reading "version 2 means composite" is not a contract — an ordinary
+correction creates a version too, and the perception-vs-reality chart needs both figures at once.
+
+| Slug                                | dataType | Sensitivity | Meaning                                                                                                                                                    |
+| ----------------------------------- | -------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `reclaim_composite_hours__<bucket>` | `number` | `standard`  | The reconciled figure: calendar hours plus the off-calendar work surfaced by the "what the calendar misses" questions. Same nine tokens.                   |
+| `reclaim_composite_variance_note`   | `json`   | `standard`  | Per-bucket record of where the original estimate differed significantly from calendar reality. This is the "small note" I-composite requires on the chart. |
+
+---
+
 ## Group: `reclaim_energy` — Phase 2, per run
 
 | Slug                              | dataType | Sensitivity | Meaning                                               |
@@ -213,15 +235,23 @@ aggregate picture, not as profiling. Every one carries a "prefer not to say" opt
 | `reclaim_setup`      | 9                                |
 | `reclaim_current`    | 21 (18 per-bucket + 3 deep-work) |
 | `reclaim_calendar`   | 21 (9 per-bucket + 12 fixed)     |
+| `reclaim_composite`  | 10 (9 per-bucket + 1 fixed)      |
 | `reclaim_energy`     | 3                                |
 | `reclaim_ideal`      | 12 (9 per-bucket + 3 fixed)      |
 | `reclaim_gap`        | 6                                |
 | `reclaim_action`     | 6                                |
 | `reclaim_reflection` | 5                                |
 | `reclaim_share`      | 6                                |
-| **Total**            | **95**                           |
+| **Total**            | **105**                          |
 
 The earlier estimate of "~45" undercounted because it did not expand the per-bucket slots. The count
 rose from 91 to **95** when the coverage audit added four slots: `reclaim_calendar_switch_frequency`,
 `reclaim_calendar_reactive_time`, `reclaim_calendar_ambiguous_items`, and `reclaim_gap_strategy_mirror`.
 Most slots are generated from the bucket list rather than hand-written.
+
+It rose again from 95 to **105** on 2026-07-23, when a full read of this spec against `invariants.md`
+found that **I-composite had no slot to write to**. The invariant was cited in three documents and
+enforced by none of them: `reclaim_current_*` holds the estimate, `reclaim_calendar_*` holds the
+calendar, and the composite of the two had nowhere to live. That is the second time a gap has hidden
+in the space _between_ documents that each looked complete on their own — the first was the verbatim
+chain (see `sources/README.md`). Cross-reads catch what section-by-section reviews do not.
