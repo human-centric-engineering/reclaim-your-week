@@ -369,7 +369,7 @@ Rashmir's additions, to be built as structure rather than left to prompt text:
 
   > though this could be in a follow up audit.
 
-  So its placement is **hers to decide, not ours** — open item 10 in [[planning/plan]]. Build it
+  So its placement is **hers to decide, not ours** — open item 10 in `planning/plan.md`. Build it
   behind a config flag rather than hard-wiring it into run 1.
 
 ---
@@ -611,7 +611,7 @@ Those cannot both hold literally. Phase 2 is mid-process. The two readings are t
 retired the Phase 2 signal, or that "signal a topic goes deeper" is not a consultation offer and
 survives §2 untouched.
 
-**This is Rashmir's call — open item 11 in [[planning/plan]], not decided here.** Recommended
+**This is Rashmir's call — open item 11 in `planning/plan.md`, not decided here.** Recommended
 default until she rules: keep the signal, phrased as depth-of-topic rather than availability-of-
 Rashmir, with no email and no invitation. The precedence rule in [`sources/README.md`](./sources/)
 says the Brief wins, and a silent resolution in favour of the older document is exactly the drift
@@ -652,7 +652,7 @@ The strategy mirror, used once where it lands (Brief §5):
 > "If a stranger read your calendar, what would they say your priorities are?"
 
 Phase 4 is where it lands most naturally, but Rashmir hedged its placement — see §6, and open item
-10 in [[planning/plan]]. Config-flagged, not hard-wired to run 1.
+10 in `planning/plan.md`. Config-flagged, not hard-wired to run 1.
 
 ### Phase 5 — the journey framing
 
