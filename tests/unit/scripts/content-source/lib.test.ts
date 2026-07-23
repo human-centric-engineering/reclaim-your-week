@@ -21,6 +21,8 @@ import {
   extractBlockquotes,
   isEditorial,
   normalise,
+  parseChecksumManifest,
+  verifyChecksums,
   type Verdict,
 } from '@/scripts/content-source/lib';
 
@@ -44,6 +46,90 @@ const sources = (): Map<string, string> => new Map([['prompt.md', SOURCE_TEXT]])
  */
 const verdictOf = (text: string): Verdict =>
   classify({ line: 1, raw: text }, new Map([['prompt.md', normalise(SOURCE_TEXT)]])).verdict;
+
+describe('parseChecksumManifest', () => {
+  it('parses shasum output into filename -> digest', () => {
+    const manifest = parseChecksumManifest('abc123  Brief.md\ndef456  Prompt_Text.md\n');
+    expect(manifest.get('Brief.md')).toBe('abc123');
+    expect(manifest.get('Prompt_Text.md')).toBe('def456');
+  });
+
+  it('keeps filenames containing spaces intact', () => {
+    // The originals arrived in a folder named "Time Audit Markdown"; spaces are realistic.
+    expect(parseChecksumManifest('abc123  Time Audit Notes.md').get('Time Audit Notes.md')).toBe(
+      'abc123'
+    );
+  });
+
+  it('ignores blank lines rather than emitting an empty-named entry', () => {
+    expect(parseChecksumManifest('abc123  a.md\n\n   \ndef456  b.md\n').size).toBe(2);
+  });
+});
+
+describe('verifyChecksums', () => {
+  const manifest = new Map([
+    ['a.md', 'aaa'],
+    ['b.md', 'bbb'],
+  ]);
+
+  it('passes when every digest matches', () => {
+    expect(
+      verifyChecksums(
+        new Map([
+          ['a.md', 'aaa'],
+          ['b.md', 'bbb'],
+        ]),
+        manifest
+      )
+    ).toEqual([]);
+  });
+
+  it('catches an edited source — the case the manifest exists for', () => {
+    expect(
+      verifyChecksums(
+        new Map([
+          ['a.md', 'CHANGED'],
+          ['b.md', 'bbb'],
+        ]),
+        manifest
+      )
+    ).toEqual([{ file: 'a.md', fault: 'modified' }]);
+  });
+
+  it('catches a source added without being recorded', () => {
+    const digests = new Map([
+      ['a.md', 'aaa'],
+      ['b.md', 'bbb'],
+      ['c.md', 'ccc'],
+    ]);
+    expect(verifyChecksums(digests, manifest)).toEqual([{ file: 'c.md', fault: 'unlisted' }]);
+  });
+
+  it('catches a source deleted from the folder', () => {
+    // Checking only files-on-disk would miss this entirely.
+    expect(verifyChecksums(new Map([['a.md', 'aaa']]), manifest)).toEqual([
+      { file: 'b.md', fault: 'missing' },
+    ]);
+  });
+
+  it('reports every fault in one pass rather than stopping at the first', () => {
+    const digests = new Map([
+      ['a.md', 'CHANGED'],
+      ['c.md', 'ccc'],
+    ]);
+    expect(verifyChecksums(digests, manifest)).toEqual([
+      { file: 'a.md', fault: 'modified' },
+      { file: 'c.md', fault: 'unlisted' },
+      { file: 'b.md', fault: 'missing' },
+    ]);
+  });
+
+  it('fails closed when the manifest is empty — no manifest is not a pass', () => {
+    expect(verifyChecksums(new Map([['a.md', 'aaa']]), new Map())).toEqual([
+      { file: 'a.md', fault: 'unlisted' },
+    ]);
+  });
+});
 
 describe('normalise', () => {
   it('collapses line wrapping so a rewrapped quote still matches its source', () => {

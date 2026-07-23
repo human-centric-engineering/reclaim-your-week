@@ -8,6 +8,61 @@
  * Kept free of filesystem I/O so it can be unit-tested; `check.ts` does the reading.
  */
 
+/** Why a source document failed its checksum comparison. */
+export type ChecksumFault =
+  /** Present in both, but the bytes differ — someone edited an original. */
+  | 'modified'
+  /** On disk but absent from the manifest — added without being recorded. */
+  | 'unlisted'
+  /** In the manifest but gone from the folder. */
+  | 'missing';
+
+export interface ChecksumMismatch {
+  file: string;
+  fault: ChecksumFault;
+}
+
+/**
+ * Parse a `shasum -a 256` manifest into `filename -> digest`.
+ *
+ * Format is two spaces between digest and name, but filenames may contain spaces,
+ * so everything after the first whitespace run is the name.
+ */
+export function parseChecksumManifest(text: string): Map<string, string> {
+  const entries = text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .map((line) => {
+      const [digest, ...name] = line.split(/\s+/);
+      return [name.join(' '), digest ?? ''] as const;
+    })
+    .filter(([name]) => name.length > 0);
+  return new Map(entries);
+}
+
+/**
+ * Compare source documents against their recorded digests, in both directions.
+ *
+ * Checking only the files on disk would miss a deletion, and checking only the
+ * manifest would miss an unrecorded addition. Either gap lets the reference the
+ * verbatim check measures against move without anyone noticing.
+ */
+export function verifyChecksums(
+  digests: Map<string, string>,
+  manifest: Map<string, string>
+): ChecksumMismatch[] {
+  const mismatches: ChecksumMismatch[] = [];
+  for (const [file, digest] of digests) {
+    if (!manifest.has(file)) mismatches.push({ file, fault: 'unlisted' });
+    else if (manifest.get(file) !== digest) mismatches.push({ file, fault: 'modified' });
+  }
+  for (const file of manifest.keys()) {
+    if (!digests.has(file)) mismatches.push({ file, fault: 'missing' });
+  }
+  return mismatches;
+}
+
 /** A blockquote block lifted out of a markdown file. */
 export interface QuoteBlock {
   /** 1-indexed line number of the block's first line. */

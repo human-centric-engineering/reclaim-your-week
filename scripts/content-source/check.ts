@@ -27,7 +27,14 @@ import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 
 import { logger } from '@/lib/logging';
-import { checkContentSource, type Classified, type Verdict } from '@/scripts/content-source/lib';
+import {
+  checkContentSource,
+  parseChecksumManifest,
+  verifyChecksums,
+  type ChecksumFault,
+  type Classified,
+  type Verdict,
+} from '@/scripts/content-source/lib';
 
 const ROOT = process.cwd();
 const SOURCES_DIR = path.join(ROOT, '.context/app/sources');
@@ -35,6 +42,12 @@ const CONTENT_SOURCE = path.join(ROOT, '.context/app/content-source.md');
 const MANIFEST = path.join(SOURCES_DIR, 'CHECKSUMS.txt');
 // The folder's own README documents the originals; it is not one of them.
 const NOT_A_SOURCE = new Set(['README.md']);
+
+const FAULT_MESSAGE: Record<ChecksumFault, string> = {
+  modified: 'has been modified since it was checked in',
+  unlisted: 'is not listed in CHECKSUMS.txt',
+  missing: 'is in CHECKSUMS.txt but missing from the folder',
+};
 
 /**
  * Assert the sources are still the bytes Rashmir sent.
@@ -46,34 +59,21 @@ const NOT_A_SOURCE = new Set(['README.md']);
  * would keep passing.
  */
 function assertSourcesUnmodified(sources: Map<string, string>): boolean {
-  const expected = new Map(
-    readFileSync(MANIFEST, 'utf8')
-      .split('\n')
-      .filter((line) => line.trim().length > 0)
-      .map((line) => {
-        const [digest, ...name] = line.trim().split(/\s+/);
-        return [name.join(' '), digest] as const;
-      })
+  const digests = new Map(
+    [...sources].map(
+      ([file, body]) => [file, createHash('sha256').update(body, 'utf8').digest('hex')] as const
+    )
   );
+  const manifest = parseChecksumManifest(readFileSync(MANIFEST, 'utf8'));
+  const mismatches = verifyChecksums(digests, manifest);
 
-  let ok = true;
-  for (const [file, body] of sources) {
-    const actual = createHash('sha256').update(body, 'utf8').digest('hex');
-    if (expected.get(file) === actual) continue;
-    ok = false;
-    logger.error(
-      expected.has(file)
-        ? `  FAIL  ${file} has been modified since it was checked in`
-        : `  FAIL  ${file} is not listed in CHECKSUMS.txt`
-    );
+  for (const { file, fault } of mismatches) {
+    logger.error(`  FAIL  ${file} ${FAULT_MESSAGE[fault]}`);
   }
-  for (const file of expected.keys()) {
-    if (sources.has(file)) continue;
-    ok = false;
-    logger.error(`  FAIL  ${file} is in CHECKSUMS.txt but missing from the folder`);
+  if (mismatches.length === 0) {
+    logger.info(`  OK    ${sources.size} source documents match CHECKSUMS.txt`);
   }
-  if (ok) logger.info(`  OK    ${sources.size} source documents match CHECKSUMS.txt`);
-  return ok;
+  return mismatches.length === 0;
 }
 
 function loadSources(): Map<string, string> {

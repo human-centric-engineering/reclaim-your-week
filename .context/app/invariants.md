@@ -5,6 +5,14 @@ Every Claude Code session must read it before writing code. These are the rules 
 do not travel on their own: each one is a decision that looks arbitrary in isolation and is
 load-bearing in aggregate.
 
+> **The `Test:` lines below are specifications, not statements of fact.** Only one of them exists
+> today: `npm run leaf:content-diff` (I11), which is wired into `leaf:checks` and runs in CI. Every
+> `tests/unit/invariants/*.test.ts` file named below is **still to be written** — F2 t-4 builds the
+> voice, slot-sensitivity and agent-caps tests, F4 t-2 the write-path test, F5 the calendar-privacy
+> test — and each must be added to `leaf:checks`, which is the only hook CI runs for the leaf. Read
+> a `Test:` line as "this is the guard this invariant requires", not "this invariant is guarded."
+> An unwritten test that reads as written is worse than no test named at all.
+
 ---
 
 ## I1 — Voice: the tool is not Rashmir
