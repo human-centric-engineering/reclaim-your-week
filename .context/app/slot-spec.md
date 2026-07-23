@@ -9,6 +9,28 @@ Declared on the `ModuleDefinition` in F2 t-2 as `slotDefinitions`, synced at boo
 
 ---
 
+## The shape F2 t-2 must produce
+
+Verified against `lib/framework/data-slots/definition.ts` on 2026-07-23. `SlotDefinitionInput`
+requires **`slug` + `group` + `description`**; everything else defaults. Two consequences this spec
+did not previously state:
+
+- **`group` is a required field, not a heading.** The `## Group:` headings below are the values:
+  `reclaim_profile`, `reclaim_setup`, `reclaim_current`, `reclaim_calendar`, `reclaim_composite`,
+  `reclaim_energy`, `reclaim_ideal`, `reclaim_gap`, `reclaim_action`, `reclaim_reflection`,
+  `reclaim_share`. Derive it from the heading; do not invent a parallel taxonomy.
+- **`description` is required and is prompt material** — the framework comment calls it "what the
+  slot means — also prompt material for the capture agent". The **Meaning** column below is that
+  field, so a slot with no Meaning is not declarable. The per-bucket tables give a pattern; the
+  description is generated per bucket from the canonical bucket title.
+
+Vocabulary confirmed present: `dataType` ∈ {`text`, `number`, `boolean`, `date`, `json`} (this spec
+uses four of the five, never `date`); `sensitivity` ∈ {`standard`, `sensitive`, `special_category`}.
+`scope` is deliberately **not** an input — the collector stamps `module:reclaim-audit` so provenance
+cannot be spoofed, which is why nothing below declares it.
+
+---
+
 ## Rules that apply to every slot
 
 - **Sensitivity is `standard` or `sensitive`. Never `special_category`.** `slotMaskingPolicy`
@@ -61,10 +83,16 @@ The only group the agent may write. Carries across runs, so no `runId` is requir
 Two slots per bucket. Nine buckets, so eighteen slots — but `fundraising_capital` is written only
 when `reclaim_setup_fundraising_relevant` is true.
 
-| Slug pattern                       | dataType | Sensitivity |
-| ---------------------------------- | -------- | ----------- |
-| `reclaim_current_hours__<bucket>`  | `number` | `standard`  |
-| `reclaim_current_detail__<bucket>` | `text`   | `sensitive` |
+| Slug pattern                       | dataType | Sensitivity | Meaning (`description`, generated per bucket)              |
+| ---------------------------------- | -------- | ----------- | ---------------------------------------------------------- |
+| `reclaim_current_hours__<bucket>`  | `number` | `standard`  | Hours per week currently spent on **&lt;bucket title&gt;** |
+| `reclaim_current_detail__<bucket>` | `text`   | `sensitive` | What that time actually looks like in practice             |
+
+The two questions are the source's own, per bucket: "roughly how many hours per week do they spend
+here?" and "what does that time actually look like in practice?" Generate `description` from the
+canonical bucket **title** in `content-source.md` §1, not from its full definition — the definition
+is Rashmir's diagnostic prose (I11) and belongs in `Module.config`, not duplicated across 18 slot
+descriptions where it would drift.
 
 Bucket tokens, in display order:
 
@@ -199,7 +227,7 @@ correction creates a version too, and the perception-vs-reality chart needs both
 **These are the enforcement point for the unskippable reflection.** The phase transition route
 returns `422 REFLECTION_REQUIRED` when the slot for the phase being left is absent.
 
-| Slug                    | dataType | Sensitivity | Pause after                                                |
+| Slug                    | dataType | Sensitivity | Meaning (`description`) — the pause this follows           |
 | ----------------------- | -------- | ----------- | ---------------------------------------------------------- |
 | `reclaim_reflection_p1` | `text`   | `sensitive` | Phase 1 visual. "What stands out to you here?"             |
 | `reclaim_reflection_p2` | `text`   | `sensitive` | Phase 2 energy                                             |
