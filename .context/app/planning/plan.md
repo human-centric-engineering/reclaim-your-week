@@ -98,18 +98,18 @@ leaf work depends on it. See I10.
 A flat list in rough dependency order (most-ready first). Order is _emergent from `depends on`_. The
 **Owner** and **Status** columns are the at-a-glance board.
 
-| #   | Feature            | Owner | Status          | Depends on       | ~Tasks | Capability                                                                                                   |
-| --- | ------------------ | ----- | --------------- | ---------------- | ------ | ------------------------------------------------------------------------------------------------------------ |
-| F1  | `ryw-provenance`   | —     | **available** ▲ | —                | 3      | Add `runId` to slot provenance + `getSlotHistory()` (the only framework-tier change)                         |
-| F2  | `ryw-module`       | —     | blocked → F1    | F1               | 4      | Register the module; declare 95 slots; load content verbatim; author the third-person agent                  |
-| F3  | `ryw-firstlight` ★ | —     | blocked → F2    | F2               | 3      | The spike: boot → register → publish → stream, end to end, against real Postgres                             |
-| F4  | `ryw-shell`        | —     | blocked → F3    | F3               | 4      | Leaf schema; single slot write-path; run lifecycle + reflection gate; consumer chat client + six-phase shell |
-| F5  | `ryw-calendar`     | —     | blocked → F4    | F4               | 4      | Optional `.ics` branch: in-memory parse, totals-only, privacy-proven                                         |
-| F6  | `ryw-current`      | —     | blocked → F4    | F4               | 3      | Phase 0 setup + entitlement gate; Phase 1 bucket cards + reflection; the chart family                        |
-| F7  | `ryw-phases`       | —     | blocked → F6    | F6 (F5 optional) | 4      | Phases 2–6: energy, ideal week, gap + refer-back, action plan, summary + share                               |
-| F8  | `ryw-access`       | —     | blocked → F4    | F4               | 3      | Tiered invites, the grant ledger, referral unlock (gates F6's run creation)                                  |
-| F9  | `ryw-repeat`       | —     | blocked → F7    | F7               | 4      | Trend lines, comparative open, quarterly nudge, bucket relabelling                                           |
-| F10 | `ryw-admin`        | —     | blocked → F7    | F7, F8           | 4      | Client list + access control, shared-results inbox, content editing, export + GDPR proof                     |
+| #   | Feature            | Owner | Status          | Depends on       | ~Tasks | Capability                                                                                                    |
+| --- | ------------------ | ----- | --------------- | ---------------- | ------ | ------------------------------------------------------------------------------------------------------------- |
+| F1  | `ryw-provenance`   | —     | **available** ▲ | —                | 3      | Add `runId` to slot provenance + `getSlotHistory()` (the only framework-tier change)                          |
+| F2  | `ryw-module`       | —     | blocked → F1    | F1               | 4      | Register the module; declare 95 slots; load content verbatim; author the third-person agent                   |
+| F3  | `ryw-firstlight` ★ | —     | blocked → F2    | F2               | 3      | The spike: boot → register → publish → stream, end to end, against real Postgres                              |
+| F4  | `ryw-shell`        | —     | blocked → F3    | F3               | 4      | Leaf schema; single slot write-path; run lifecycle + reflection gate; consumer chat client + seven-node shell |
+| F5  | `ryw-calendar`     | —     | blocked → F4    | F4               | 4      | Optional `.ics` branch: in-memory parse, totals-only, privacy-proven                                          |
+| F6  | `ryw-current`      | —     | blocked → F4    | F4               | 3      | Phase 0 setup + entitlement gate; Phase 1 bucket cards + reflection; the chart family                         |
+| F7  | `ryw-phases`       | —     | blocked → F6    | F6 (F5 optional) | 4      | Phases 2–6: energy, ideal week, gap + refer-back, action plan, summary + share                                |
+| F8  | `ryw-access`       | —     | blocked → F4    | F4               | 3      | Tiered invites, the grant ledger, referral unlock (gates F6's run creation)                                   |
+| F9  | `ryw-repeat`       | —     | blocked → F7    | F7               | 4      | Trend lines, comparative open, quarterly nudge, bucket relabelling                                            |
+| F10 | `ryw-admin`        | —     | blocked → F7    | F7, F8           | 4      | Client list + access control, shared-results inbox, content editing, export + GDPR proof                      |
 
 **Critical path:** `ryw-provenance → ryw-module → ryw-firstlight → ryw-shell → ryw-current → ryw-phases`.
 `ryw-calendar` (F5) hangs off F4 and enriches F6/F7 without gating them. `ryw-access` (F8) parallels
@@ -125,6 +125,11 @@ they need.
 **Claimable right now (▲):** **F1 `ryw-provenance`** only. Everything else is blocked on the critical
 path until F1 → F2 → F3 clear. Once F4 ships, **F5, F6, and F8 all become claimable in parallel** (F6
 needs F8's grant table for its gate, so coordinate if both are in flight).
+
+**Solo build.** John owns every feature; the **Owner** column exists to show what is _actively in
+flight_, not to allocate work. The claim step is still worth doing — it is what makes the board tell
+you where you left off — but the "present the plan to the owner" gate in
+[[building-a-feature]] step 1.3 is a self-review, and step 2.5's "the owner merges" is you.
 
 **To claim a feature:** put your name in its **Owner** cell + set **Status** to `in flight`, then ask
 Claude Code to write the feature's detailed plan (`.context/app/planning/<feature>.md`, following the
@@ -177,9 +182,9 @@ another.
 
 - **t-1** — Add optional `runId?: string` to `SlotValueProvenance` (`lib/framework/data-slots/values.ts`). Additive to an existing Json column, no migration.
 - **t-2** — Add `getSlotHistory(userId, slotSlug)` returning all versions including superseded (the existing `getSlotHeads()` returns only current heads), so F9 trend lines can read run 1 and run 2 side by side.
-- **t-3** — Confirm `npm run framework:boundary` passes and the diff is exactly this one file.
+- **t-3** — Confirm `npm run framework:boundary` passes and the diff is exactly this one file. Add the row to [[daybreak-asks]] so the next `git merge upstream/main` knows to delegate rather than carry it forever.
 
-_Done when:_ `git diff --stat` shows one framework file; boundary + type-check green; `getSlotHistory` returns superseded versions in a unit test.
+_Done when:_ `git diff --stat` shows one framework file; boundary + type-check green; `getSlotHistory` returns superseded versions in a unit test; the [[daybreak-asks]] row exists.
 
 ### F2 · `ryw-module` — module, content, slots, voice
 
@@ -190,8 +195,8 @@ success. Load content, don't author it (I11).
 
 - **t-1** — `registerModule('reclaim-audit')` from `initLeafApp()` in `lib/app/leaf-bootstrap.ts` (never the `bootstrap.ts` bridge); a `configSchema` making every coach-editable value changeable without a deploy — nine bucket titles/descriptions, benchmark ranges, hour bands, consultation email, footnote.
 - **t-2** — Declare all **95** slot definitions from [[slot-spec]], exact slugs, per-bucket slots generated from the canonical list. Sensitivity as specified; nothing `special_category` (I5).
-- **t-3** — Load content from [[content-source]] into config defaults **verbatim** — §0 frame, nine buckets, bands, footnote, phase language. No paraphrase.
-- **t-4** — Author the agent (`Persona → systemInstructions → Guardrails → Brand Voice`): third-person (I1), banned lexicon + no em dashes + no conversational bullets (I2), scope + anti-replication guardrails ([[content-source]] §7), read-only capabilities (`get_journey_state`, `get_next_steps`, `get_state`), exposure allowlist permitting writes only to `reclaim_profile_*` (I6). Plus the invariant tests: voice, slot-sensitivity, agent-caps.
+- **t-3** — Load content from [[content-source]] into config defaults **verbatim** — §0 frame, nine buckets, bands, footnote, phase language. No paraphrase. Plus the guard that makes I11 mechanical: a test that parses the blockquotes out of `.context/app/content-source.md` and asserts the nine bucket descriptions and the footnote are character-identical to the config defaults. Nothing else catches a plausible rewording.
+- **t-4** — Author the agent (`Persona → systemInstructions → Guardrails → Brand Voice`): third-person (I1), banned lexicon + no em dashes + no conversational bullets (I2), scope + anti-replication guardrails ([[content-source]] §7), read-only capabilities (`get_journey_state`, `get_next_steps`, `get_state`), exposure allowlist permitting writes only to `reclaim_profile_*` (I6). Plus the invariant tests: voice, slot-sensitivity, agent-caps (in `tests/unit/invariants/`), **wired into `leaf:checks`** — the script is `exit 0` today and is the one hook CI already runs for us.
 
 _Done when:_ all 95 slugs match the spec; bucket descriptions + footnote character-identical to source; three invariant tests pass; boundary green.
 
@@ -206,18 +211,18 @@ Postgres. Budget two to three unrelated framework bugs.
 
 - **t-1** — Seed + publish the map (`prisma/seeds/app-reclaim/`): seven nodes `phase-0-setup … phase-6-summary`, `completionMode: 'repeatable'`, plain prerequisite chain, **no edge conditions** (slot conditions read the head version, which breaks on run 2). Module row `active`, coach agent `visibility: 'public'`, bound primary. `smoke:reclaim` proving one streamed turn.
 - **t-2** — In the same script, assert the traps that fail silently: agent visibility is `public` (a non-public agent 404s with no diagnostic); a fresh `conversationId` is issued; no `reclaim_*` slot is `special_category`.
-- **t-3** — Re-plan checkpoint. Report defects found. **More than three framework defects → stop and re-scope F4 before building.**
+- **t-3** — Re-plan checkpoint. Record every framework defect in [[daybreak-asks]] with a repro, and the lesson in [[planning-retro]] §A. Re-verify the five `lib/framework/**` citations in [[invariants]] (I5, I6, I14, I15) still point at what they claim — they were exact on 2026-07-23 and will drift on syncs. **More than three framework defects → stop and re-scope F4 before building.**
 
-_Done when:_ `db:reset && db:seed && seed:reclaim` completes; `smoke:reclaim` streams and passes all three assertions; a written defect list exists.
+_Done when:_ `db:reset && db:seed && seed:reclaim` completes; `smoke:reclaim` streams and passes all three assertions; the [[daybreak-asks]] defect rows exist; the invariant citations re-verified.
 
 ### F4 · `ryw-shell` — audit shell, chat, capture
 
 _Owner:_ — · _Status:_ blocked → F3 · _Depends on:_ F3 · _~4 tasks_
 
 - **t-1** — Leaf schema `prisma/schema/app-reclaim.prisma` (not `app.prisma` — that's Sunrise's). Tables `app_reclaim_{invite,grant,audit_run,bucket_label,share,report_share,feedback}`; partial unique index on `(userId) WHERE status='in_progress'`; **no calendar table** (I4). Hand-written `ON DELETE CASCADE` per `userId` table (Prisma emits none without a `@relation`; read the generated SQL). Drift probes in `leaf-db-drift.ts`.
-- **t-2** — `saveAnswer()` in `lib/app/programme/slots/write.ts`: the **only** caller of `appendSlotValue` (I3), routing through `slotMaskingPolicy` and stamping `provenance.runId`. Test asserts exactly one occurrence in the tree.
+- **t-2** — `saveAnswer()` in `lib/app/programme/slots/write.ts`: the **only** caller of `appendSlotValue` (I3), routing through `slotMaskingPolicy` and stamping `provenance.runId`. Test (`tests/unit/invariants/write-path.test.ts`, in `leaf:checks`) asserts exactly one occurrence in the tree.
 - **t-3** — Run lifecycle routes under `app/api/v1/app/reclaim/`: create (TODO marker for F6/F8 gate), transition (`assertPhaseComplete` → `422 REFLECTION_REQUIRED` when the phase's reflection slot is absent — I9), complete (`isActive:false` on the conversation — I15), answers (delegates to `saveAnswer`). Run id = journey `contextKey` = provenance `runId`; never read `contextKey` from an LLM arg (I6).
-- **t-4** — First consumer SSE client (`app/(protected)/programme/`), admin chat as SSE reference only. Six-phase progress bar, auto-save, resume from `UserNodeState.progress`. Shell only — no phase content yet.
+- **t-4** — First consumer SSE client (`app/(protected)/programme/`), admin chat as SSE reference only. Progress bar over all **seven** map nodes with Phase 0 labelled _Setup_ (the map is `phase-0-setup … phase-6-summary`; hiding node 0 makes "you are here" wrong on resume, which reads `UserNodeState` per node). Auto-save, resume from `UserNodeState.progress`. Plus the per-phase **signpost line** ([[content-source]] §5d, G10): entering a phase says which phase, what it involves, and roughly how long — the progress bar shows position, not duration or content. Shell only — no phase content yet.
 
 _Done when:_ migration applies with cascades confirmed; write-path test passes; transition without reflection returns 422; completing sets `isActive:false`; a run can be started, left, and resumed.
 
@@ -228,7 +233,7 @@ _Owner:_ — · _Status:_ blocked → F4 · _Depends on:_ F4 · _~4 tasks_
 Optional, and loudly so (Brief §3). I4 is the product's trust story, not just a requirement.
 
 - **t-1** — Add `ical.js`; `lib/app/programme/calendar/parse.ts`, pure, no DB/network, RRULE expansion. Fixture-driven tests: recurring, all-day, timezoned, multi-calendar.
-- **t-2** — Upload route: raw file **never touches disk** (`formData()` → `text()` in memory); categorise via **one `runStructuredCompletion`**, never `streamChat` (which persists meeting titles); persist per-bucket totals only via `saveAnswer`; personal events excluded, ambiguous flagged with best guess + reasoning, recurring counted per instance, multi-calendar + file-size fallback ([[content-source]] §8). Test: no `streamChat` import in the path.
+- **t-2** — Upload route: raw file **never touches disk** (`formData()` → `text()` in memory); categorise via **one `runStructuredCompletion`**, never `streamChat` (which persists meeting titles); persist per-bucket totals only via `saveAnswer`; personal events excluded, ambiguous flagged with best guess + reasoning, recurring counted per instance, multi-calendar + file-size fallback ([[content-source]] §8). Test: no `streamChat` import in the path. Add a per-flow rate-limit sub-cap inside the handler — an LLM call over an uploaded file is exactly the expensive sub-flow `CLAUDE.md` carves out from the inherited 100/min section cap.
 - **t-3** — Review UI: summary **by bucket**, ambiguous items listed individually to confirm — **wait for confirmation before proceeding**. Then the "what the calendar misses" questions and the task-switching profile.
 - **t-4** — Both privacy messages surfaced **at** the upload step (optional; details never stored). Extend `smoke:reclaim`: after a real Google `.ics`, assert **no meeting title anywhere in the database**.
 
@@ -238,8 +243,8 @@ _Done when:_ parser handles all four fixture shapes; calendar-privacy test passe
 
 _Owner:_ — · _Status:_ blocked → F4 · _Depends on:_ F4 (F8 for the gate) · _~3 tasks_
 
-- **t-1** — Phase 0 setup form (warm framing, not bare fields): fields per [[content-source]] §4, first name only, role/org dropdowns, the "what keeps you up at night" and "why now" prose, quarter default. Plus the entitlement gate deferred from F4: `POST /runs` checks `app_reclaim_grant` and refuses when exhausted or expired (I14); integration test for the refusal. Opens with the "here is what we will cover" process outline verbatim ([[content-source]] §4).
-- **t-2** — Phase 1: show all nine buckets first (overview), then cards (eight when fundraising not relevant). **Hours per week, never percentages** (I8). Each card: hours + "what it looks like in practice". Deep-work's three extra questions. Delivery-above-15% and oversight-in-transition nuance ([[content-source]] §8). Reusable required reflection component (server enforces via 422 — I9; this is the UI half).
+- **t-1** — Phase 0 setup form (warm framing, not bare fields): fields per [[content-source]] §4, first name only, role/org dropdowns, the "what keeps you up at night" and "why now" prose, quarter default. Plus the entitlement gate deferred from F4: `POST /runs` checks `app_reclaim_grant` and refuses when exhausted or expired (I14); integration test for the refusal. Opens with the "here is what we will cover" process outline verbatim ([[content-source]] §4). `<FieldHelp>` on every non-trivial field (repo rule); the hours fields accept approximations and say so (I17).
+- **t-2** — Phase 1: show all nine buckets first (overview), then cards (eight when fundraising not relevant). **Hours per week, never percentages** (I8). Each card: hours + "what it looks like in practice". Deep-work's three extra questions. Delivery-above-15% and oversight-in-transition nuance ([[content-source]] §8). Reusable required reflection component (server enforces via 422 — I9; this is the UI half). `<FieldHelp>` on the hours and practice fields.
 - **t-3** — The `<ReclaimChart>` family: standardised format, nine fixed colours, clear key, readable in light **and** dark mode, benchmark markers, over/under flags. Composite picture after upload (I-composite). **The priority-gap element** — map Phase 0 priorities to buckets and flag any priority with no time against it ([[content-source]] §8, "often the most important insight"). Chart never renders interpretation (I12). **Flag the two open colour questions** (dark-mode variants; strategic-blue vs brand-teal) as TODOs, don't silently resolve.
 
 _Done when:_ setup writes every `reclaim_setup_*` / `reclaim_profile_*` slot; exhausted grant refused with a test; cards take hours; charts correct in both modes; priority-gap rendered; both colour questions flagged.
@@ -248,10 +253,10 @@ _Done when:_ setup writes every `reclaim_setup_*` / `reclaim_profile_*` slot; ex
 
 _Owner:_ — · _Status:_ blocked → F6 · _Depends on:_ F6 (F5 optional) · _~4 tasks_
 
-- **t-1** — Phase 2 energy grid + Phase 3 ideal-week sliders with the gap updating live; the "suspiciously similar" challenge; current-vs-ideal chart. Perception-vs-reality is a **hard gate before Phase 2** with the off-calendar note ([[content-source]] §8).
+- **t-1** — Phase 2 energy grid + Phase 3 ideal-week sliders with the gap updating live; the "suspiciously similar" challenge; current-vs-ideal chart. Perception-vs-reality is a **hard gate before Phase 2** with the off-calendar note ([[content-source]] §8). Phase 2 also carries the team-distribution brainstorm and the light coaching-conversation signal ([[content-source]] §8, Phase 2).
 - **t-2** — Phase 4 gap analysis. **The refer-back** (I13): a context contributor in `lib/app/context-contributors.ts` injecting the verbatim `reclaim_setup_keeping_me_up` / `reclaim_setup_why_now` for this run. Naming the absence; the once-per-audit permission-based challenge (guarded by `reclaim_gap_challenge_offered`); the under-delegation invitation verbatim; the hours question at 55+.
 - **t-3** — Phase 5 action plan: three specific entry points, what/when/stop/how-known, and "want to, or think you should?" (`reclaim_action_wanted_not_dutiful`). Journey framing verbatim, not a makeover.
-- **t-4** — Phase 6 summary + share: standalone artifact ([[content-source]] §10), footnote verbatim, tokenised link. Sharing **invited, never required**; demographics appear only after sharing, each with "prefer not to say". Consultation offer once, at the end, invitation not pitch. Closing affirmation, varied.
+- **t-4** — Phase 6 summary + share: standalone artifact ([[content-source]] §10), footnote verbatim, tokenised link. Sharing **invited, never required**; demographics appear only after sharing, each with "prefer not to say". Consultation offer once, at the end, invitation not pitch; the distinct close for existing clients ("invite them to share ahead of their next session" — [[content-source]] §10), which F8's client tier makes knowable. Closing affirmation, varied.
 
 _Done when:_ ideal sliders update live; Phase 4 quotes the Phase 0 answer verbatim from slot data; challenge fires at most once; footnote character-identical; share genuinely optional.
 
@@ -284,7 +289,7 @@ _Owner:_ — · _Status:_ blocked → F7, F8 · _Depends on:_ F7, F8 · _~4 task
 
 Admin UI under `app/admin/programme/**`; nav via `leaf-admin-nav.ts` (not the `admin-nav.ts` bridge — I10).
 
-- **t-1** — Client list: signed up, mid-audit, **abandoned at which phase**, never started. Invite issue/revoke, tier, client flag. (Abandonment needs a phase-progress read at the run level.)
+- **t-1** — Client list: signed up, mid-audit, **abandoned at which phase**, never started. Invite issue/revoke, tier, client flag. (Abandonment needs a phase-progress read at the run level.) One enriched list endpoint — no per-row fetches (repo rule).
 - **t-2** — Shared-results inbox + cross-client aggregate patterns, anonymised (Brief §2; individual data confidential).
 - **t-3** — Content editing (bucket titles, descriptions, benchmark ranges, footnote) through the `Module.config` schema from F2 — Rashmir rewords without a deploy.
 - **t-4** — Data export + GDPR: verify `eraseUser()` reaches every `app_reclaim_*` row and every `framework_slot_value` row; extend `smoke:reclaim` to prove no orphans after erasure (the F4 hand-written cascades are what make this work).
@@ -373,6 +378,23 @@ Daybreak's own plan-first discipline.
 
 Append-only. Newest at the top.
 
+- **2026-07-23 — Reconciliation pass before implementation.** Landing the docs in the repo surfaced
+  work the plan had not absorbed. Decided: **I-composite** is a real invariant and now exists (it was
+  cited twice and never written). **Task references** repointed to tasks that exist (F6.5 → F7 t-2,
+  F2.5 → F2 t-4, F8 → F9 t-1). **Invariant tests live in `tests/unit/invariants/`** and are wired into
+  `leaf:checks`, matching the repo's `tests/unit/**` convention and the existing
+  `eslint-app-boundary.test.ts` precedent — a doc-only invariant is not an invariant. **I11 gets a
+  mechanical guard** in F2 t-3 (parse `content-source.md`, assert character-identity) because both the
+  invariants and the rhythm doc say tests will not otherwise catch paraphrase. **`programme` is the
+  surface, `reclaim` is the module** (see [[../README|.context/app/README.md]]) — the Parked life-wheel
+  makes that split load-bearing, not drift. **The progress bar shows all seven map nodes** with Phase 0
+  as Setup, because resume reads `UserNodeState` per node. **[[daybreak-asks]] opened** — F1 edits a
+  Daybreak-owned file, and without a ledger that either conflicts or becomes permanent divergence on
+  the next sync. Four unnumbered coverage-audit items (Phase 2 brainstorm + coaching signal, Phase 3
+  "realistic target", Phase 6 existing-client close) folded into [[content-source]]. The repo's own
+  rules (FieldHelp, upload rate-limit sub-cap, one enriched list endpoint) written into the features
+  that hit them.
+
 - **2026-07-23 — Plan opened; ten features under one epic (`RYW v1`).** The build is broken into large
   features with a few tasks each, mirroring Daybreak's flat-feature model one tier down. Six
   reconciliations against the source docs recorded above (entitlement-at-run-creation, third-person
@@ -400,6 +422,8 @@ Append-only. Newest at the top.
   sessions on their own. Read before any task.
 - [[coverage-audit]] — the instruction-by-instruction audit of the source docs (carries / becomes UI /
   retired / gap), showing what each feature must honour.
+- [[daybreak-asks]] — framework-tier changes we carry and defects we find, so a Daybreak sync knows
+  what to delegate. F1 opens it.
 - [[../../framework/planning/plan|Daybreak plan]] — the framework board this mirrors; every feature we
   consume is shipped there.
 - [[building-a-feature]] — the execution rhythm for this tier (read before starting a feature).

@@ -23,7 +23,7 @@ content ported from it will carry the wrong persona unless deliberately re-point
 prompted this change, one of whom was using the tool outside its design scope precisely because it
 sounded like her.
 
-**Test:** `tests/app/voice.test.ts` asserts no first-person-as-Rashmir construction in agent
+**Test:** `tests/unit/invariants/voice.test.ts` asserts no first-person-as-Rashmir construction in agent
 system prompt content.
 
 ---
@@ -45,7 +45,7 @@ Also never:
 
 Short sentences. Plain language. No corporate or consultant framing.
 
-**Test:** `tests/app/voice.test.ts` greps agent config for the banned list and for U+2014.
+**Test:** `tests/unit/invariants/voice.test.ts` greps agent config for the banned list and for U+2014.
 
 ---
 
@@ -57,7 +57,7 @@ No route, component, or capability calls `appendSlotValue` directly. `saveAnswer
 place that routes through `slotMaskingPolicy` and stamps `provenance.runId`. A direct call bypasses
 both.
 
-**Test:** `tests/app/write-path.test.ts` greps `lib/app/**` and `app/api/v1/app/**` for
+**Test:** `tests/unit/invariants/write-path.test.ts` greps `lib/app/**` and `app/api/v1/app/**` for
 `appendSlotValue` and asserts exactly one occurrence, in `write.ts`.
 
 ---
@@ -76,7 +76,7 @@ descriptions, anywhere, ever.
 testers were anxious about the calendar step. Breaking it breaks the product's trust story, not
 just a requirement.
 
-**Test:** `tests/app/calendar-privacy.test.ts` asserts no `streamChat` import in the calendar path.
+**Test:** `tests/unit/invariants/calendar-privacy.test.ts` asserts no `streamChat` import in the calendar path.
 `smoke:reclaim` uploads a real `.ics` and asserts no meeting title exists anywhere in the database.
 
 ---
@@ -91,7 +91,7 @@ Use `sensitive` for personal prose. It is currently a no-op in the masking polic
 want, but writes still route through `slotMaskingPolicy` so a later reclassification cannot bypass
 the guard.
 
-**Test:** `tests/app/slot-sensitivity.test.ts` asserts no registered `reclaim_*` definition is
+**Test:** `tests/unit/invariants/slot-sensitivity.test.ts` asserts no registered `reclaim_*` definition is
 `special_category`.
 
 ---
@@ -108,7 +108,7 @@ enforced by the exposure allowlist in `AiAgentCapability.customConfig`.
 (`lib/framework/guidance/capabilities/shared.ts:18-21`). The model can pass any string. Trusting it
 for run selection would let a hallucinated key write one run's answers into another.
 
-**Test:** `tests/app/agent-caps.test.ts` asserts the exposure config refuses `reclaim_current_*`.
+**Test:** `tests/unit/invariants/agent-caps.test.ts` asserts the exposure config refuses `reclaim_current_*`.
 
 ---
 

@@ -13,6 +13,12 @@ parent: plan.md
 > identical, one tier down. Where they differ is the **tier boundary** (§The disciplines) — we build in
 > `lib/app/**`, not `lib/framework/**`.
 
+> **Working solo.** John is the only builder, so steps 1.3 ("present the plan to the owner") and 2.5
+> ("the owner merges") are self-review. Keep them anyway — the point of writing the plan down and
+> reading it back before building is that it catches sizing and reconciliation errors, which does not
+> require a second person. The branch-and-PR flow also stays: it is what exercises CI, and exercising
+> Daybreak is half the point of this project.
+
 ## The loop, at a glance
 
 **Claim + plan first → build each task through the gate loop → close out the feature.** Never skip the
@@ -42,7 +48,9 @@ board so the next person sees the truth.
    - **The test strategy, up front.** vitest runs on `happy-dom` with **no live DB**: unit tests mock
      `@/lib/db/client`; prove an end-to-end chain with a small stateful in-memory fake; use `smoke:*`
      (especially `smoke:reclaim`) for real-DB fidelity. Never write "integration test against the dev
-     DB".
+     DB". Tests mirror the source path under `tests/unit/**` / `tests/integration/**`; the
+     cross-cutting invariant tests live in `tests/unit/invariants/` and **must be added to
+     `leaf:checks`**, which is the only hook CI runs for the leaf.
 3. **Present the plan to the owner before building** — especially task sizing and any genuine
    design/content decision (a place where the source is ambiguous, or a persona line needs
    re-pointing). Surface the choices, don't pre-commit.
@@ -98,10 +106,13 @@ Docs-only changes still go on a branch + PR, but skip `/security-review` and `/c
   reserved `leaf-*` hooks; **never edit `lib/framework/**` or the three bridges** (`lib/app/bootstrap.ts`,
   `admin-nav.ts`, `db-drift.ts`). `npm run framework:boundary` enforces it. The **one exception** is F1
   (`ryw-provenance`), which lands two additive framework changes as its own upstream-style PR before
-  anything depends on them. Full ownership table: [`.context/app/README.md`](../README.md).
+  anything depends on them, and ledgers them in [`daybreak-asks.md`](../daybreak-asks.md) so the next
+  sync delegates instead of carrying them forever. Full ownership table: [`.context/app/README.md`](../README.md).
 - **Content is loaded, not authored** (I11). Rashmir's IP lives verbatim in
-  [`content-source.md`](../content-source.md) and loads into `Module.config`. Never paraphrase it — diff
-  the strings yourself; the tests won't catch a plausible rewording.
+  [`content-source.md`](../content-source.md) and loads into `Module.config`. Never paraphrase it. F2
+  t-3 builds the guard that makes this mechanical — a test that parses the blockquotes out of
+  `content-source.md` and asserts character-identity — because no ordinary test catches a plausible
+  rewording.
 - **The invariants don't travel on their own.** I1 (third-person voice) and I3 (one write path) are the
   two most likely to regress across sessions. Each feature prompt opens by reading
   [`invariants.md`](../invariants.md); each touched invariant has a test.
@@ -114,6 +125,7 @@ Docs-only changes still go on a branch + PR, but skip `/security-review` and `/c
 - [`content-source.md`](../content-source.md) / [`slot-spec.md`](../slot-spec.md) /
   [`invariants.md`](../invariants.md) — the system of record for content, data, and rules.
 - [`coverage-audit.md`](../coverage-audit.md) — the source-instruction audit each feature honours.
+- [`daybreak-asks.md`](../daybreak-asks.md) — framework changes we carry, defects we find.
 - [`f-module-core.md`](../../framework/planning/f-module-core.md) — the worked example to copy for a detailed feature plan.
 - [`.context/app/README.md`](../README.md) — the three-tier ownership model.
 - [`CLAUDE.md`](../../../CLAUDE.md) — repo rules every task inherits.

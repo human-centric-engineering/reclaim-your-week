@@ -533,6 +533,15 @@ Then: "Take your time. When you have the file, upload it here."
 1. When in the day or week are they at their best, i.e. most focused, creative, and energised?
 2. Does their current schedule protect that window, or does it consume it?
 
+Then, where useful:
+
+> Where useful, brainstorm with them how to make that work given their team
+> distribution/working hours.
+
+This is what `reclaim_profile_distributed_impact` is for. Phase 2 is also one of the few in-flow
+places the source sanctions signalling that a dedicated coaching conversation could go further here —
+offered lightly, and never as a pitch (§10 governs the consultation offer).
+
 ### Phase 3 — ideal week questions
 
 - What would a sustainable total number of weekly hours look like for them?
@@ -543,6 +552,8 @@ Then: "Take your time. When you have the file, upload it here."
 
 > Gently challenge any ideal week that looks suspiciously similar to their current reality —
 > especially if delivery and operations remains high, or recovery remains near zero.
+
+> Frame this as a realistic target, not a fantasy.
 
 ### Phase 4 — the under-delegation invitation
 
@@ -611,6 +622,12 @@ The strategy mirror, used once where it lands (Brief §5):
 
 > The 30-minute consultation offer should only appear once — not on every audit. The default close
 > should feel like a coach who believes in them, not a funnel.
+
+And the distinct path for people already in her orbit:
+
+> For clients already working with Rashmir, invite them to share ahead of their next session.
+
+F8's client tier is what makes this branch knowable.
 
 Contact email: `rashmir@rashmir.net`. Included naturally when inviting clients to share results,
 never as a prominent call to action. Brief §2 adds: consultation offers appear **at the end and in

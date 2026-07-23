@@ -1,6 +1,8 @@
 # Reclaim Your Week — source coverage audit
 
-> **Status (2026-07-23): all 19 gaps resolved.** The fixes listed at the end of this document have
+> **Status (2026-07-23): all 19 numbered gaps resolved, plus the four unnumbered ✗ items in the
+> body (Phase 2 brainstorm + coaching signal, Phase 3 "realistic target", Phase 6 existing-client
+> close).** The fixes listed at the end of this document have
 > been folded into `content-source.md` (§0, §4a, §8 expansions, §11, §12, the checkpoint decision),
 > `slot-spec.md` (four new slots, 91 → 95), and `invariants.md` (I16, I-frame, I17, I18). This file
 > is retained as the audit trail — it shows _what_ each source instruction became and _why_, which
@@ -242,15 +244,16 @@ the copy-paste instruction.
 
 ## §Phase 2
 
-Two questions captured. ✗ Missing: "Where useful, brainstorm with them how to make that work given
-their team distribution/working hours" — connects to `reclaim_profile_distributed_impact`.
-✗ Missing: the note that a dedicated coaching conversation can go further here (one of the few
-in-flow places Rashmir sanctions signalling coaching).
+Two questions captured. ✅ The brainstorm line ("Where useful, brainstorm with them how to make that
+work given their team distribution/working hours" — connects to
+`reclaim_profile_distributed_impact`) and the note that a dedicated coaching conversation can go
+further here (one of the few in-flow places Rashmir sanctions signalling coaching) were both folded
+into content source §8 on 2026-07-23.
 
 ## §Phase 3
 
 Four questions, the "suspiciously similar" challenge, side-by-side chart: **CARRIES** — captured.
-✗ "Frame this as a realistic target, not a fantasy" is missing.
+✅ "Frame this as a realistic target, not a fantasy" folded into content source §8 on 2026-07-23.
 
 ## §Phase 4
 
@@ -270,8 +273,9 @@ close: **CARRIES** — captured.
 ## §Phase 6
 
 Eight summary contents, footnote, consultation-once rule, email handling, closing affirmation:
-**CARRIES** — captured. ✗ "For clients already working with Rashmir, invite them to share ahead of
-their next session" — a distinct path for existing clients, which F8's client tier could drive.
+**CARRIES** — captured. ✅ "For clients already working with Rashmir, invite them to share ahead of
+their next session" — a distinct path for existing clients, driven by F8's client tier — folded into
+content source §10 on 2026-07-23.
 
 ## §Important Notes
 

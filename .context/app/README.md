@@ -47,6 +47,7 @@ Editing a bridge conflicts on every Daybreak upgrade. Always edit the `leaf-*` f
 | [`content-source.md`](./content-source.md) | Rashmir's IP, verbatim. Load it into `Module.config`; never paraphrase it (I11) |
 | [`slot-spec.md`](./slot-spec.md)           | The 95 slot definitions — exact slugs, dataType, sensitivity                    |
 | [`coverage-audit.md`](./coverage-audit.md) | The source-instruction audit: carries / becomes UI / retired / gap              |
+| [`daybreak-asks.md`](./daybreak-asks.md)   | Framework changes we carry + defects we find, so a sync knows what to delegate  |
 | [`planning/`](./planning/README.md)        | The feature board, the execution rhythm, and the retro                          |
 
 The first four are the **system of record** for content, data shape, and rules. `planning/plan.md` is
@@ -66,6 +67,12 @@ the build breakdown that consumes them. Start a feature at
 | Models       | `prisma/schema/app-reclaim.prisma` |
 | Migrations   | `<timestamp>_app_<feature>`        |
 
+**`programme` is the surface, `reclaim` is the module.** Routes, URLs, UI folders and shared leaf
+plumbing are `programme` — they are module-agnostic, and the Parked life-wheel would live behind the
+same surface. Identity and persistence are `reclaim`: the module slug `reclaim-audit`, the 95
+`reclaim_*` slots, the `app_reclaim_*` tables, `prisma/seeds/app-reclaim/`, `smoke:reclaim`. Do not
+introduce per-module subfolders under `lib/app/programme/` until there is a second module.
+
 `prisma/schema/app.prisma` is **not** ours despite the name — Sunrise still keeps
 `ContactSubmission`, `FeatureFlag` and `AuthBootstrap` there. Add new
 `app-<domain>.prisma` files alongside it instead.
@@ -79,6 +86,11 @@ where we currently sit: `git merge-base HEAD upstream/main`.
 | ---------- | --------------- | --------------- | ----------------------------------------------------- |
 | 2026-07-21 | `3846f4c0`      | 0.7.0           | Forked from Daybreak main                             |
 | 2026-07-21 | `c9e9fa26`      | 0.7.0           | daybreak#154 — cold-lint fix, needed for our first CI |
+
+On every sync, also check [`daybreak-asks.md`](./daybreak-asks.md) — if Daybreak has landed
+something we carry, delete our copy and delegate — and re-verify the `lib/framework/**` file:line
+citations in [`invariants.md`](./invariants.md) (I5, I6, I14, I15), which were exact on 2026-07-23
+and drift silently.
 
 To sync: `git fetch upstream && git merge upstream/main`, then
 `npm run db:migrate:status` → `db:migrate:dev`. Resolve conflicts by keeping our

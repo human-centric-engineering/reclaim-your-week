@@ -47,7 +47,9 @@ All five pieces are in place (landed 2026-07-23):
 2. **`.context/app/content-source.md`** — Rashmir's IP verbatim, with the coverage-audit fixes folded
    in (§0 frame, §4 process outline, §8 parsing/perception/composite, §11 register, §12 reassurance).
 3. **`.context/app/slot-spec.md`** — the 95 slot definitions.
-4. **`.context/app/coverage-audit.md`** — the audit trail behind those fixes.
+4. **`.context/app/coverage-audit.md`** — the audit trail behind those fixes, and
+   **`.context/app/daybreak-asks.md`** — the ledger of framework changes we carry and defects we
+   find, so a Daybreak sync knows what to delegate.
 5. **This folder** — `plan.md`, `building-a-feature.md`, `planning-retro.md`, this `README.md`.
 
 These four spec files are now the **system of record**. The `RYW_*.md` drafts they were built from,

@@ -44,9 +44,10 @@ way the framework retro does.
 These are not lessons yet — they are the plan's own predictions, recorded so that confirming or
 refuting them is a deliberate act rather than a silent drift.
 
-- **F1 is genuinely two files and no migration.** `runId` is additive to an existing Json column;
-  `getSlotHistory` is a read helper. If F1 grows a migration or a third file, something was
-  misunderstood about the slot store.
+- **F1 is genuinely one framework file plus its test, and no migration.** `runId` is additive to an
+  existing Json column; `getSlotHistory` is a read helper. Both live in
+  `lib/framework/data-slots/values.ts` — which is why F1 t-3's done-when is a one-file diff. If F1
+  grows a migration or a second framework file, something was misunderstood about the slot store.
 - **F3 will find framework bugs.** It is the first end-to-end run of machinery built for this shape but
   never exercised by a real app. Budget two to three. More than three → re-scope F4 before building
   (the plan says so; hold the line).
@@ -58,3 +59,7 @@ refuting them is a deliberate act rather than a silent drift.
 - **`/code-review` pays for itself on data-model and UI-over-backend tasks.** The framework build found
   this repeatedly (its retro §B). F4's schema + cascades and F6's charts are where to expect real
   findings.
+- **This build is also Daybreak's acceptance test.** Being the first real consumer is a stated goal,
+  so friction is a finding, not an annoyance: anywhere the framework makes the leaf work harder than
+  it should, that is a §A lesson and probably a [[daybreak-asks]] row. F1 is already one — the leaf
+  could not write run-scoped answers at all without changing a framework file.
