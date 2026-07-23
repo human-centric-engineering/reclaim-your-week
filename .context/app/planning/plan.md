@@ -6,7 +6,7 @@ host_framework: Daybreak (this repo is a fork of it)
 daybreak_baseline: Framework v1 + v1.1 COMPLETE (all 23 features shipped)
 opened: 2026-07-23
 spec: ../content-source.md + ../slot-spec.md + ../invariants.md
-sources: Reclaim_Your_Week_Brief_for_John.md (authoritative) · Time_Audit_Tool_Prompt_Text.md (content) · Time_Audit_App_Notes.md (superseded proposal)
+sources: ../sources/ — Reclaim_Your_Week_Brief_for_John.md (authoritative) · Time_Audit_Tool_Prompt_Text.md (content) · Time_Audit_Tool_Setup_Guide.md (register) · Time_Audit_Tool_User_Prompts.md · Time_Audit_App_Notes.md (superseded proposal)
 epic: RYW v1
 ---
 
@@ -105,9 +105,9 @@ A flat list in rough dependency order (most-ready first). Order is _emergent fro
 | F3  | `ryw-firstlight` ★ | —     | blocked → F2    | F2               | 3      | The spike: boot → register → publish → stream, end to end, against real Postgres                              |
 | F4  | `ryw-shell`        | —     | blocked → F3    | F3               | 4      | Leaf schema; single slot write-path; run lifecycle + reflection gate; consumer chat client + seven-node shell |
 | F5  | `ryw-calendar`     | —     | blocked → F4    | F4               | 4      | Optional `.ics` branch: in-memory parse, totals-only, privacy-proven                                          |
-| F6  | `ryw-current`      | —     | blocked → F4    | F4               | 3      | Phase 0 setup + entitlement gate; Phase 1 bucket cards + reflection; the chart family                         |
+| F6  | `ryw-current`      | —     | blocked → F4    | F4               | 4      | Phase 0 setup + entitlement gate; Phase 1 bucket cards + reflection; the chart family                         |
 | F7  | `ryw-phases`       | —     | blocked → F6    | F6 (F5 optional) | 4      | Phases 2–6: energy, ideal week, gap + refer-back, action plan, summary + share                                |
-| F8  | `ryw-access`       | —     | blocked → F4    | F4               | 3      | Tiered invites, the grant ledger, referral unlock (gates F6's run creation)                                   |
+| F8  | `ryw-access`       | —     | blocked → F4    | F4               | 4      | Tiered invites, the grant ledger, referral unlock (gates F6's run creation)                                   |
 | F9  | `ryw-repeat`       | —     | blocked → F7    | F7               | 4      | Trend lines, comparative open, quarterly nudge, bucket relabelling                                            |
 | F10 | `ryw-admin`        | —     | blocked → F7    | F7, F8           | 4      | Client list + access control, shared-results inbox, content editing, export + GDPR proof                      |
 
@@ -166,6 +166,13 @@ thing. Verified against the codebase and the Brief.
 6. **Hours, never percentages** (I8). Forcing a total of 100 hides the overwork, which is the thing
    users most need to see. Brief §3 endorses this. Percentages may be _displayed_ as derived values;
    they are never the input. F6.
+
+7. **Invite-gated is the v1 door, not the v1 architecture.** Brief §1 names list growth as the
+   _first_ of the tool's three jobs — "it grows my email list… the success measure is not downloads;
+   it is whether people come back, and whether they tell others about it unprompted" — and Brief §2
+   asks that the architecture "anticipate open sign-up with email capture, because list-building is
+   the commercial point". Reading only §2's opening clause ("For v1, invite-gated") builds an invite
+   system with no route out of it. F8 t-4 keeps the door hinged.
 
 ---
 
@@ -241,13 +248,15 @@ _Done when:_ parser handles all four fixture shapes; calendar-privacy test passe
 
 ### F6 · `ryw-current` — current reality + charts
 
-_Owner:_ — · _Status:_ blocked → F4 · _Depends on:_ F4 (F8 for the gate) · _~3 tasks_
+_Owner:_ — · _Status:_ blocked → F4 · _Depends on:_ F4 (F8 for the gate) · _~4 tasks_
 
 - **t-1** — Phase 0 setup form (warm framing, not bare fields): fields per [[content-source]] §4, first name only, role/org dropdowns, the "what keeps you up at night" and "why now" prose, quarter default. Plus the entitlement gate deferred from F4: `POST /runs` checks `app_reclaim_grant` and refuses when exhausted or expired (I14); integration test for the refusal. Opens with the "here is what we will cover" process outline verbatim ([[content-source]] §4). `<FieldHelp>` on every non-trivial field (repo rule); the hours fields accept approximations and say so (I17).
 - **t-2** — Phase 1: show all nine buckets first (overview), then cards (eight when fundraising not relevant). **Hours per week, never percentages** (I8). Each card: hours + "what it looks like in practice". Deep-work's three extra questions. Delivery-above-15% and oversight-in-transition nuance ([[content-source]] §8). Reusable required reflection component (server enforces via 422 — I9; this is the UI half). `<FieldHelp>` on the hours and practice fields.
 - **t-3** — The `<ReclaimChart>` family: standardised format, nine fixed colours, clear key, readable in light **and** dark mode, benchmark markers, over/under flags. Composite picture after upload (I-composite). **The priority-gap element** — map Phase 0 priorities to buckets and flag any priority with no time against it ([[content-source]] §8, "often the most important insight"). Chart never renders interpretation (I12). **Flag the two open colour questions** (dark-mode variants; strategic-blue vs brand-teal) as TODOs, don't silently resolve.
 
-_Done when:_ setup writes every `reclaim_setup_*` / `reclaim_profile_*` slot; exhausted grant refused with a test; cards take hours; charts correct in both modes; priority-gap rendered; both colour questions flagged.
+- **t-4** — **Bucket relabelling**, moved here from F9. Brief §3 lists user-level category customisation as a v1 amendment — "Not everyone is the head of an organisation. Users should be able to adjust category labels for their own audit, within limits" — and the audit it applies to is their _first_ one. Sequencing it with repeat audits meant the first cohort could not relabel at all. Display labels write to `app_reclaim_bucket_label` (schema already in F4 t-1); canonical `bucketSlug` is never touched (I7), so customised audits still aggregate correctly by construction, which is the other half of what Brief §3 asks for. "Within limits" is a length cap and the nine slots staying nine — relabelling is not adding or removing a bucket.
+
+_Done when:_ setup writes every `reclaim_setup_*` / `reclaim_profile_*` slot; exhausted grant refused with a test; cards take hours; charts correct in both modes; priority-gap rendered; both colour questions flagged; a relabelled bucket renders its label and still aggregates on the canonical slug.
 
 ### F7 · `ryw-phases` — the remaining phases
 
@@ -256,21 +265,25 @@ _Owner:_ — · _Status:_ blocked → F6 · _Depends on:_ F6 (F5 optional) · _~
 - **t-1** — Phase 2 energy grid + Phase 3 ideal-week sliders with the gap updating live; the "suspiciously similar" challenge; current-vs-ideal chart. Perception-vs-reality is a **hard gate before Phase 2** with the off-calendar note ([[content-source]] §8). Phase 2 also carries the team-distribution brainstorm and the light coaching-conversation signal ([[content-source]] §8, Phase 2).
 - **t-2** — Phase 4 gap analysis. **The refer-back** (I13): a context contributor in `lib/app/context-contributors.ts` injecting the verbatim `reclaim_setup_keeping_me_up` / `reclaim_setup_why_now` for this run. Naming the absence; the once-per-audit permission-based challenge (guarded by `reclaim_gap_challenge_offered`); the under-delegation invitation verbatim; the hours question at 55+.
 - **t-3** — Phase 5 action plan: three specific entry points, what/when/stop/how-known, and "want to, or think you should?" (`reclaim_action_wanted_not_dutiful`). Journey framing verbatim, not a makeover.
-- **t-4** — Phase 6 summary + share: standalone artifact ([[content-source]] §10), footnote verbatim, tokenised link. Sharing **invited, never required**; demographics appear only after sharing, each with "prefer not to say". Consultation offer once, at the end, invitation not pitch; the distinct close for existing clients ("invite them to share ahead of their next session" — [[content-source]] §10), which F8's client tier makes knowable. Closing affirmation, varied.
+- **t-4** — Phase 6 summary + share: standalone artifact ([[content-source]] §10), **downloadable** as well as shareable (the Notes' "Summary Report. Downloadable, shareable"), footnote verbatim, tokenised link. Sharing **invited, never required**. Everything optional appears **only after** they choose to share, each with "prefer not to say": the two or three demographic questions (open item 2), an **age range in broad bands**, and the one-line feedback ask — "In a sentence: what did you take from this?" with a separate **"Happy for this to be quoted anonymously"** checkbox (Brief §3). The quote consent is its own field, not implied by sharing: it is what builds Rashmir's bank of worked examples, and it governs republication rather than analysis. Consultation offer once, at the end, invitation not pitch; the distinct close for existing clients ("invite them to share their results ahead of their next session" — [[content-source]] §10), which F8's client tier makes knowable. Closing affirmation, varied.
 
 _Done when:_ ideal sliders update live; Phase 4 quotes the Phase 0 answer verbatim from slot data; challenge fires at most once; footnote character-identical; share genuinely optional.
 
 ### F8 · `ryw-access` — invites, grants, referrals
 
-_Owner:_ — · _Status:_ blocked → F4 · _Depends on:_ F4 · _~3 tasks_
+_Owner:_ — · _Status:_ blocked → F4 · _Depends on:_ F4 · _~4 tasks_
 
 Parallels F4–F6. Must land before F6's run-creation gate is real.
 
 - **t-1** — **Extend** `lib/utils/invitation-token.ts` + `emails/invitation.tsx` + `app/admin/users/invite/page.tsx` (don't rebuild). Add `tier` (client | standard | referral) to `app_reclaim_invite`; wire redemption to grant creation.
 - **t-2** — The grant ledger: free tier = one complete audit; client tier = 12-month window starting on first use + a `mustStartBy` deadline (Brief §8); client status an admin flag. Enforced at the F6 run-creation route (I14), with the exhausted/expired test.
 - **t-3** — Referral unlock: a second audit earned on the referred user's **first run completion**, not signup (Brief §8).
+- **t-4** — **Signup-time capture — the commercial point and the legal basis.** Two things that only exist at account creation, and are expensive to retrofit:
+  - **Consent.** Explicit acceptance of terms and privacy policy, recorded with version and timestamp. Brief §2: "everyone should be aware and agree to the terms and conditions and privacy policy, **which should allow for data to be used in aggregate**". F10 t-2's cross-client analysis has no lawful basis without this, and consent captured retroactively is not consent. The clauses themselves are Rashmir's to supply (open item 7); the capture mechanism is not blocked on them — build against a versioned policy record.
+  - **Open-signup readiness.** Email captured as a first-class field, not incidentally via auth; the invite check a single gate that a config flag can open; the grant model already tier-driven (t-2), so an open-signup tier is a row and not a refactor. Reconciliation 7. **v1 ships invite-only** — this is about not welding the door shut.
+  - **The follow-up sequence seam.** Brief §2 describes a follow-up sequence for people who register. Emit the signup and first-completion events through Daybreak's hook dispatch (`.context/orchestration/hooks.md`) rather than wiring an ESP in. No sequence in v1.
 
-_Done when:_ redeeming creates the right grant per tier; free = exactly one audit; client window starts on first use; referral fires on completion.
+_Done when:_ redeeming creates the right grant per tier; free = exactly one audit; client window starts on first use; referral fires on completion; consent version recorded per user with a test; flipping the open-signup flag creates a valid standard-tier grant without code change.
 
 ### F9 · `ryw-repeat` — repeat audits
 
@@ -279,9 +292,9 @@ _Owner:_ — · _Status:_ blocked → F7 · _Depends on:_ F7 · _~4 tasks_
 - **t-1** — Trend lines per bucket over the last year, reading `getSlotHistory()` (F1.2), grouped by `provenance.runId`.
 - **t-2** — Every repeat audit opens by comparing to the last one automatically (Brief §2). Plus the recent-audit shortcut: an audit within the last month confirms rather than re-asks stable context ([[content-source]] §4).
 - **t-3** — Quarterly nudge, gentle, matching the future paid cadence.
-- **t-4** — Bucket relabelling: display labels to `app_reclaim_bucket_label`; canonical `bucketSlug` never touched (I7), so aggregates group correctly by construction (Brief §3).
+- **t-4** — Carry relabelled bucket names (F6 t-4) through trend lines and the comparative open, so a bucket a user renamed in run 1 reads consistently in run 2.
 
-_Done when:_ trend lines show both runs; repeat opens comparatively; relabelled bucket still aggregates on canonical slug.
+_Done when:_ trend lines show both runs; repeat opens comparatively; a bucket relabelled in run 1 keeps its label across the comparison.
 
 ### F10 · `ryw-admin` — admin + compliance
 
@@ -339,7 +352,12 @@ Blocking the features they touch:
 
 1. **Dark-mode chart variants + the strategic-blue / brand-teal collision** — blocks F6.3 sign-off.
 2. **The two or three optional demographic questions** — blocks F7.4.
-3. Brand confirmation, logos, final palette.
+3. Brand confirmation, logos, final palette. **Not a blank slate** — Brief §7 gives a working
+   direction to build against until she confirms: deep teal `#0D4F68` with a cream secondary
+   `#FFFAD7`, **Raleway** for headings and body, "a calm, uncluttered feel with generous white
+   space. No stock-photo energy, no gradients." She has still to confirm _which_ of her brand
+   identities this sits under, which is what makes it an open item. The teal is also what F6.3's
+   colour collision is against — `#1B4965` strategic-planning blue sits close to it.
 4. Page copy for landing, Home, About, FAQs, in the reassurance register of Brief §7 (the Setup
    Guide's "no one is judging you" wording is the register — [[content-source]] §12).
 5. Tester quotes and worked examples.
@@ -386,6 +404,26 @@ Daybreak's own plan-first discipline.
 ## Decisions log
 
 Append-only. Newest at the top.
+
+- **2026-07-23 — Source documents checked in; drift found and corrected; four intent gaps closed.**
+  The five originals now live in [`.context/app/sources/`](../sources/README.md), byte-identical and
+  read-only behind a SHA-256 manifest, and `npm run leaf:content-diff` (wired into `leaf:checks`,
+  which was `exit 0`) asserts every blockquote in [[content-source]] appears verbatim in one of them.
+  **Nine of seventy blockquotes had drifted**, three materially — the perception-vs-reality example
+  had moved from delivery-and-operations to strategic planning, the three calendar walkthroughs were
+  labelled verbatim but partly invented, and the 55-hours line was a synthesis. All corrected; the
+  duplicated completeness question merged. **The F2 t-3 guard was one hop short**: comparing
+  `content-source.md` to `Module.config` proves the code matches the extract and nothing about
+  whether the extract matches Rashmir. It now runs `sources/` → `content-source.md` → config.
+  Separately, re-reading the Brief end to end against the board found four things the plan had not
+  absorbed: **email capture and open-signup readiness** (Brief §1 names list growth as the tool's
+  first job; reconciliation 7, F8 t-4), **consent capture at signup** (F10's aggregate analysis had
+  no lawful basis; F8 t-4), **bucket relabelling moved F9 → F6** (Brief §3 lists it as a v1
+  amendment and it applies to a user's _first_ audit), and **the brand direction she already gave**
+  (`#0D4F68` teal, `#FFFAD7` cream, Raleway, no gradients — open item 3 had treated the palette as
+  unknown). Two conflicts the spec had quietly settled are now hers to rule on: the strategy
+  mirror's placement (open item 10) and whether the Phase 2 coaching signal survives Brief §2's
+  "never mid-process" (open item 11).
 
 - **2026-07-23 — Reconciliation pass before implementation.** Landing the docs in the repo surfaced
   work the plan had not absorbed. Decided: **I-composite** is a real invariant and now exists (it was

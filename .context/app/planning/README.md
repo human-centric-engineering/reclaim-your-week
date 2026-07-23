@@ -22,7 +22,8 @@ board, one owner per feature, plan-first, per-task gates, append-only logs.
       f-*.md             ← one detailed doc per framework feature
   app/
     README.md            ← the three-tier ownership model (what the leaf may edit)
-    content-source.md    ← Rashmir's IP, verbatim (load, never paraphrase — I11)
+    sources/             ← the five originals, byte-identical and READ-ONLY (the authority)
+    content-source.md    ← working extract of sources/, verbatim (load, never paraphrase — I11)
     slot-spec.md         ← the 95 slot definitions
     invariants.md        ← I1–I18 + I-frame + I-composite, the rules that don't travel alone
     coverage-audit.md    ← the source-instruction audit (carries / becomes UI / retired / gap)
@@ -52,10 +53,17 @@ All five pieces are in place (landed 2026-07-23):
    find, so a Daybreak sync knows what to delegate.
 5. **This folder** — `plan.md`, `building-a-feature.md`, `planning-retro.md`, this `README.md`.
 
-These four spec files are now the **system of record**. The `RYW_*.md` drafts they were built from,
-and the source documents behind those (the Brief, the prompt text, the Setup Guide), live outside
-this repo — so when `content-source.md` says "verbatim", it is `content-source.md` you diff a string
-against, not a file you will find in the tree.
+These four spec files are the **working system of record** — but they are not the authority. The five
+documents they derive from are now checked in at
+[`.context/app/sources/`](../sources/README.md), byte-identical and read-only, with a SHA-256
+manifest. When `content-source.md` says "verbatim", `npm run leaf:content-diff` proves it against
+those originals.
+
+That was not true until 2026-07-23. The sources lived outside the repo, so `content-source.md` was
+itself the diff target — and the first machine run against the real originals found nine altered
+blockquotes, three of them material, including calendar export steps that appear in no source
+document. A guard anchored on a transcription cannot catch a bad transcription. The `RYW_*.md`
+drafts these were built from remain outside the repo; they are superseded and not worth carrying.
 
 Feature detail docs (`ryw-module.md`, `ryw-current.md`, …) are **not** written up front. Each is
 created when its feature is claimed, by asking Claude Code to plan it (see `building-a-feature.md`
