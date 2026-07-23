@@ -349,6 +349,15 @@ Blocking the features they touch:
    together".
 9. **Decision:** checkpoint summaries — keep as an on-screen per-phase recap, or retire entirely?
    ([[content-source]] §"checkpoint decision".)
+10. **Decision:** where does the strategy mirror sit? Brief §5 offers "If a stranger read your
+    calendar, what would they say your priorities are?" and then hedges — "though this could be in a
+    follow up audit". Run 1, repeat audits only, or both? Blocks F7.2 sign-off; built behind a config
+    flag until she rules.
+11. **Decision:** does the Phase 2 coaching signal survive Brief §2? The system prompt tells Phase 2
+    to "signal that a dedicated coaching conversation with Rashmir can go much further here"; Brief
+    §2 says consultation offers appear "at the end and in follow-up, never mid-process", and Phase 2
+    is mid-process. Either the Brief retired the signal, or a depth-of-topic remark is not a
+    consultation offer. Blocks F7.1. ([[content-source]] §8, Phase 2.)
 
 ---
 

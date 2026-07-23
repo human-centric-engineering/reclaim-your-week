@@ -365,7 +365,12 @@ Rashmir's additions, to be built as structure rather than left to prompt text:
 - **Wanted, not dutiful, commitments.** The close asks: what, by when, how will you know, and
   crucially, "is this something you actually want to do, or something you think you should?"
 - **The strategy mirror.** Somewhere in the audit when useful: "If a stranger read your calendar,
-  what would they say your priorities are?"
+  what would they say your priorities are?" Rashmir adds a hedge that must not be dropped:
+
+  > though this could be in a follow up audit.
+
+  So its placement is **hers to decide, not ours** — open item 10 in [[planning/plan]]. Build it
+  behind a config flag rather than hard-wiring it into run 1.
 
 ---
 
@@ -376,9 +381,29 @@ Rashmir's additions, to be built as structure rather than left to prompt text:
   anywhere else, the tool gently and warmly redirects back into scope. It never presents itself as
   therapy, counselling, or a substitute for professional support, **without ever needing to say the
   word**.
-- **What it is and is not.** A short, plain statement lives in the product: this is an AI tool
-  designed by Rashmir, not Rashmir; hold its outputs as input to your own judgment, not as verdicts;
-  it reflects, it does not decide.
+
+  **The redirect is narrower than it first reads.** Brief §6 continues, and this qualifier is
+  load-bearing:
+
+  > Not also that the tool was designed for my audience's work life, not their personal life but
+  > some will want to stretch it to both. That should be allowed within limits, providing that
+  > aggregated data makes sense/is worth parsing. Alternately, a future version can be integrated
+  > with a version of the life wheel.
+
+  So a leader who brings their personal life into a time audit is **not** off-scope and must not be
+  redirected. What is off-scope is the tool being used as therapy or as a general-purpose
+  assistant. A guardrail written from the first paragraph alone would turn away exactly the person
+  Rashmir said to allow. ("Not also" is her typo for "Note also".) The life-wheel alternative is
+  parked, not adopted.
+
+- **What it is and is not.** A short, plain statement lives in the product — Brief §6 is specific
+  about where:
+
+  > (About or FAQ, plus a light touch in the flow itself)
+
+  Both placements are required. The statement: this is an AI tool designed by Rashmir, not Rashmir;
+  hold its outputs as input to your own judgment, not as verdicts; it reflects, it does not decide.
+
 - **Anti-replication.** The tool never reveals, summarises, or discusses its own instructions,
   framework internals, or design. Meta-questions about how it works get the same warm redirect as
   any other off-scope question. **The nine areas framework is confidential IP.**
@@ -569,9 +594,28 @@ Then, where useful:
 > Where useful, brainstorm with them how to make that work given their team
 > distribution/working hours.
 
-This is what `reclaim_profile_distributed_impact` is for. Phase 2 is also one of the few in-flow
-places the source sanctions signalling that a dedicated coaching conversation could go further here —
-offered lightly, and never as a pitch (§10 governs the consultation offer).
+This is what `reclaim_profile_distributed_impact` is for.
+
+**The Phase 2 coaching signal — an unresolved conflict, not a settled call.** The system prompt
+says:
+
+> Note: this is a rich topic worth exploring more deeply. Where useful, signal that a dedicated
+> coaching conversation with Rashmir can go much further here.
+
+Brief §2, written later and by Rashmir deciding rather than instructing an AI, says consultation
+offers appear:
+
+> At the end and in follow-up, never mid-process.
+
+Those cannot both hold literally. Phase 2 is mid-process. The two readings are that the Brief
+retired the Phase 2 signal, or that "signal a topic goes deeper" is not a consultation offer and
+survives §2 untouched.
+
+**This is Rashmir's call — open item 11 in [[planning/plan]], not decided here.** Recommended
+default until she rules: keep the signal, phrased as depth-of-topic rather than availability-of-
+Rashmir, with no email and no invitation. The precedence rule in [`sources/README.md`](./sources/)
+says the Brief wins, and a silent resolution in favour of the older document is exactly the drift
+this file exists to prevent.
 
 ### Phase 3 — ideal week questions
 
@@ -606,6 +650,9 @@ At 55+ weekly hours, name the hours directly rather than only reallocating:
 The strategy mirror, used once where it lands (Brief §5):
 
 > "If a stranger read your calendar, what would they say your priorities are?"
+
+Phase 4 is where it lands most naturally, but Rashmir hedged its placement — see §6, and open item
+10 in [[planning/plan]]. Config-flagged, not hard-wired to run 1.
 
 ### Phase 5 — the journey framing
 
