@@ -39,18 +39,32 @@ cannot reach. Each one runs Daybreak's registration and **then calls our hook**:
 
 Editing a bridge conflicts on every Daybreak upgrade. Always edit the `leaf-*` file.
 
+## What is in this folder
+
+| Doc                                        | Is                                                                              |
+| ------------------------------------------ | ------------------------------------------------------------------------------- |
+| [`invariants.md`](./invariants.md)         | **Read before writing any code.** I1–I18 + I-frame + I-composite                |
+| [`content-source.md`](./content-source.md) | Rashmir's IP, verbatim. Load it into `Module.config`; never paraphrase it (I11) |
+| [`slot-spec.md`](./slot-spec.md)           | The 95 slot definitions — exact slugs, dataType, sensitivity                    |
+| [`coverage-audit.md`](./coverage-audit.md) | The source-instruction audit: carries / becomes UI / retired / gap              |
+| [`planning/`](./planning/README.md)        | The feature board, the execution rhythm, and the retro                          |
+
+The first four are the **system of record** for content, data shape, and rules. `planning/plan.md` is
+the build breakdown that consumes them. Start a feature at
+[`planning/building-a-feature.md`](./planning/building-a-feature.md).
+
 ## Where the app code lives
 
-| Concern      | Location                             |
-| ------------ | ------------------------------------ |
-| Domain logic | `lib/app/programme/**`               |
-| Boot wiring  | `lib/app/leaf-bootstrap.ts`          |
-| Admin nav    | `lib/app/leaf-admin-nav.ts`          |
-| HTTP API     | `app/api/v1/app/**`                  |
-| Admin UI     | `app/admin/programme/**`             |
-| End-user UI  | `app/(protected)/programme/**`       |
-| Models       | `prisma/schema/app-programme.prisma` |
-| Migrations   | `<timestamp>_app_<feature>`          |
+| Concern      | Location                           |
+| ------------ | ---------------------------------- |
+| Domain logic | `lib/app/programme/**`             |
+| Boot wiring  | `lib/app/leaf-bootstrap.ts`        |
+| Admin nav    | `lib/app/leaf-admin-nav.ts`        |
+| HTTP API     | `app/api/v1/app/**`                |
+| Admin UI     | `app/admin/programme/**`           |
+| End-user UI  | `app/(protected)/programme/**`     |
+| Models       | `prisma/schema/app-reclaim.prisma` |
+| Migrations   | `<timestamp>_app_<feature>`        |
 
 `prisma/schema/app.prisma` is **not** ours despite the name — Sunrise still keeps
 `ContactSubmission`, `FeatureFlag` and `AuthBootstrap` there. Add new

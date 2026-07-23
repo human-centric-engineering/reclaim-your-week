@@ -107,6 +107,13 @@
 > your version and adding follow-ups; then run `npm run db:migrate:status` →
 > `db:migrate:dev` to apply newly-merged migrations. See
 > [`CUSTOMIZATION.md` §9](./CUSTOMIZATION.md).
+>
+> ### Project invariants
+>
+> **Project invariants:** read
+> [`.context/app/invariants.md`](./.context/app/invariants.md) before writing any
+> code. It contains I1–I18 — load-bearing rules that do not survive between
+> sessions on their own.
 
 Instructions for Claude Code when working in this repository.
 
