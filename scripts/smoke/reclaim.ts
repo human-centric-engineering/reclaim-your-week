@@ -15,9 +15,11 @@
  *
  * Run:  npm run smoke:reclaim
  *
- * t-1 asserts: the surface resolves (module active + agent public + bound primary), one turn streams
- * non-empty content, and a conversation is created. The three silent-failure assertions (agent
- * visibility, fresh conversation on a second run, no special_category slot) are F3 t-2.
+ * Asserts (t-1 + t-2): the surface resolves (module active + agent public + bound primary) and one
+ * turn streams non-empty content; plus the three silent-failure traps that each fail with no
+ * diagnostic if unguarded — the coach agent is `public` (a non-public agent 404s the surface), no
+ * `reclaim_*` slot is `special_category` (I5), and a completed run yields a fresh conversation on the
+ * next run while an active one resumes (I15).
  */
 
 import { prisma } from '@/lib/db/client';
@@ -36,6 +38,7 @@ import type {
 import {
   resolveModuleSurface,
   MODULE_SURFACE_CONTEXT_TYPE,
+  type ModuleSurface,
 } from '@/lib/framework/guidance/surface';
 import { RECLAIM_MODULE_SLUG } from '@/lib/app/programme/module';
 
@@ -87,6 +90,23 @@ function fail(message: string): never {
   throw new Error(message);
 }
 
+/** Stream one turn against a resolved surface, exactly as the framework module-chat route does. */
+async function streamTurn(
+  userId: string,
+  surface: ModuleSurface,
+  message: string
+): Promise<{ content: string; conversationId: string | null; types: string[] }> {
+  return runTurn({
+    message,
+    agentSlug: surface.agentSlug,
+    userId,
+    conversationId: surface.conversationId,
+    contextType: MODULE_SURFACE_CONTEXT_TYPE,
+    contextId: RECLAIM_MODULE_SLUG,
+    scope: surface.scope,
+  });
+}
+
 async function main(): Promise<void> {
   // ── 0. Boot the framework, as a running app would ─────────────────────
   // This is a separate process from the seed, so the in-memory registrations (the `module`
@@ -104,23 +124,52 @@ async function main(): Promise<void> {
 
   // ── 2. Resolve the module surface — the whole vertical slice in one call ──
   // A non-null surface proves: module active, coach agent public, bound primary. Any of those
-  // missing yields null (→ the route's 404), so this is the core t-1 assertion.
+  // missing yields null (→ the route's 404).
   const surface = await resolveModuleSurface(user.id, RECLAIM_MODULE_SLUG);
   if (surface === null) {
     fail(
       `resolveModuleSurface returned null for "${RECLAIM_MODULE_SLUG}" — module not active, or coach agent not public/bound primary. Did the app-reclaim seeds run?`
     );
   }
-  console.log(
-    `[2] surface resolved: agent "${surface.agentSlug}", resume=${surface.conversationId ?? 'new'}`
-  );
+  console.log(`[2] surface resolved: agent "${surface.agentSlug}"`);
 
-  // ── 3. Repoint the coach agent at the fake provider for this turn ─────
+  // ── Trap A (t-2): the coach agent must be `public` ────────────────────
+  // A non-public agent makes the surface 404 with no diagnostic. resolveModuleSurface already gated
+  // on it (the null check above), but assert the row directly so a regression names this trap rather
+  // than surfacing as a mysterious 404. `original` doubles as the provider/model restore source.
   const original = await prisma.aiAgent.findUnique({
     where: { id: surface.agentId },
-    select: { provider: true, model: true },
+    select: { visibility: true, provider: true, model: true },
   });
-  if (!original) fail(`agent ${surface.agentId} vanished between resolve and stream`);
+  if (!original) fail(`agent ${surface.agentId} vanished after resolve`);
+  if (original.visibility !== 'public') {
+    fail(
+      `coach agent visibility is "${original.visibility}", expected "public" — the surface would 404`
+    );
+  }
+  console.log('[A] agent visibility is public');
+
+  // ── Trap B (t-2, I5): no reclaim_* slot is `special_category` ─────────
+  // slotMaskingPolicy redacts special_category prose, which would destroy reclaim_setup_keeping_me_up
+  // (the sentence F7 must quote back verbatim). Assert against the SYNCED definitions in Postgres,
+  // complementing F2's in-memory slot-sensitivity.test.ts. The non-empty check keeps a slug typo from
+  // making the assertion vacuously pass.
+  const reclaimSlots = await prisma.slotDefinition.findMany({
+    where: { slug: { startsWith: 'reclaim_' } },
+    select: { slug: true, sensitivity: true },
+  });
+  if (reclaimSlots.length === 0) {
+    fail('no reclaim_* slot definitions in Postgres — did syncFramework run?');
+  }
+  const special = reclaimSlots.filter((s) => s.sensitivity === 'special_category');
+  if (special.length > 0) {
+    fail(
+      `I5: ${special.length} reclaim_* slot(s) are special_category: ${special.map((s) => s.slug).join(', ')}`
+    );
+  }
+  console.log(`[B] ${reclaimSlots.length} reclaim_* slots synced, none special_category`);
+
+  // ── 3. Repoint the coach agent at the fake provider (restored in finally) ──
   await prisma.aiAgent.update({
     where: { id: surface.agentId },
     data: { provider: SMOKE_PROVIDER_NAME, model: SMOKE_MODEL },
@@ -134,46 +183,74 @@ async function main(): Promise<void> {
     ])
   );
 
-  let conversationId: string | null = null;
+  const createdConversations = new Set<string>();
   try {
-    // ── 4. Stream one turn, exactly as the framework module-chat route does ──
-    const result = await runTurn({
-      message: 'I am ready to start the audit.',
-      agentSlug: surface.agentSlug,
-      userId: user.id,
-      conversationId: surface.conversationId,
-      contextType: MODULE_SURFACE_CONTEXT_TYPE,
-      contextId: RECLAIM_MODULE_SLUG,
-      scope: surface.scope,
+    // ── 4. Run 1 — a fresh surface conversation streams one turn ──────────
+    const run1 = await streamTurn(user.id, surface, 'I am ready to start the audit.');
+    if (!run1.conversationId) fail('run 1 created no conversation (missing start event)');
+    if (run1.content.trim().length === 0) fail('run 1 streamed an empty turn');
+    createdConversations.add(run1.conversationId);
+    console.log(
+      `[3] run 1 streamed (${run1.types.join(' → ')}); conversation ${run1.conversationId}`
+    );
+    console.log(`[4] content: "${run1.content}"`);
+
+    const messages = await prisma.aiMessage.count({
+      where: { conversationId: run1.conversationId },
     });
-    conversationId = result.conversationId;
-    console.log(`[3] event sequence: ${result.types.join(' → ')}`);
-    console.log(`[4] streamed content: "${result.content}"`);
+    if (messages < 2) fail(`expected user + assistant messages persisted, found ${messages}`);
 
-    // ── 5. Assertions ────────────────────────────────────────────────────
-    if (!conversationId) fail('no conversation created (missing start event)');
-    if (result.content.trim().length === 0) fail('streamed an empty turn');
+    // ── Trap C (t-2, I15): active conversation resumes; a completed one does not ──
+    // resolveModuleSurface keys the resume on isActive:true. While run 1 is active, re-resolving must
+    // return its conversationId. After completion (isActive:false — what F4's complete route will do)
+    // re-resolving must issue a fresh one, so audit 2 never resumes audit 1's transcript.
+    const resumeSurface = await resolveModuleSurface(user.id, RECLAIM_MODULE_SLUG);
+    if (resumeSurface?.conversationId !== run1.conversationId) {
+      fail(
+        `I15 resume: expected the active conversation ${run1.conversationId} to resume, got ${resumeSurface?.conversationId ?? 'a fresh surface'}`
+      );
+    }
+    console.log(`[C1] active conversation resumes (${resumeSurface.conversationId})`);
 
-    const messages = await prisma.aiMessage.count({ where: { conversationId } });
-    if (messages < 2) fail(`expected the user + assistant messages persisted, found ${messages}`);
-    console.log(`[5] ${messages} messages persisted for conversation ${conversationId}`);
+    await prisma.aiConversation.update({
+      where: { id: run1.conversationId },
+      data: { isActive: false },
+    });
+
+    const freshSurface = await resolveModuleSurface(user.id, RECLAIM_MODULE_SLUG);
+    if (freshSurface === null) fail('surface vanished after completing run 1');
+    if (freshSurface.conversationId !== undefined) {
+      fail(
+        `I15: expected a fresh surface after completion, but it resumed ${freshSurface.conversationId}`
+      );
+    }
+    const run2 = await streamTurn(user.id, freshSurface, 'Starting a second audit.');
+    if (!run2.conversationId) fail('run 2 created no conversation');
+    createdConversations.add(run2.conversationId);
+    if (run2.conversationId === run1.conversationId) {
+      fail(`I15: the second run reused conversation ${run1.conversationId} after completion`);
+    }
+    console.log(
+      `[C2] completed run yields a fresh conversation (${run2.conversationId} ≠ ${run1.conversationId})`
+    );
   } finally {
-    // ── 6. Restore + clean up (scoped to this run) ───────────────────────
+    // ── 5. Restore + clean up (scoped to this run) ───────────────────────
     await prisma.aiAgent.update({
       where: { id: surface.agentId },
       data: { provider: original.provider, model: original.model },
     });
     // Let the fire-and-forget cost log settle before deleting its FK target.
     await new Promise((r) => setTimeout(r, 250));
-    if (conversationId) {
-      await prisma.aiMessage.deleteMany({ where: { conversationId } });
+    const ids = [...createdConversations];
+    if (ids.length > 0) {
+      await prisma.aiMessage.deleteMany({ where: { conversationId: { in: ids } } });
       await prisma.aiCostLog.deleteMany({ where: { agentId: surface.agentId } });
-      await prisma.aiConversation.deleteMany({ where: { id: conversationId } });
+      await prisma.aiConversation.deleteMany({ where: { id: { in: ids } } });
     }
     await prisma.$disconnect();
   }
 
-  console.log('\n✓ smoke:reclaim passed — surface resolves and streams end to end');
+  console.log('\n✓ smoke:reclaim passed — surface + streaming + the three silent-failure traps');
 }
 
 main().catch(async (err) => {
