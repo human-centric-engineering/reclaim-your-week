@@ -2,7 +2,7 @@
 name: ryw-firstlight
 feature: F3 · ryw-firstlight ★
 epic: RYW v1
-status: in flight (t-1/t-2/t-3 done, PR #25 open — board close-out pending merge)
+status: shipped (t-1/t-2/t-3 done, #25)
 owner: John
 depends_on: F2 · ryw-module (shipped #19 #20 #21)
 spec: ../invariants.md (I5, I6, I14, I15) · ../slot-spec.md · lib/framework/facilitation/map/** · lib/framework/guidance/surface.ts (the seams)
