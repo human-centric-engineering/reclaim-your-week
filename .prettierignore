@@ -46,3 +46,10 @@ coverage
 # Per-developer local Claude Code settings (gitignored, written by the CLI).
 # Format is owned by the tool, so Prettier should not gate `npm run validate` on it.
 .claude/settings.local.json
+
+# Rashmir's source documents — checked in byte-identical and read-only.
+# Reformatting them would break the SHA-256 manifest that `leaf:content-diff`
+# asserts, and silently move the authority every verbatim claim is checked
+# against. Only the folder's own README is Prettier's to touch.
+.context/app/sources/*.md
+!.context/app/sources/README.md

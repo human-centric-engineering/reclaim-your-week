@@ -12,7 +12,7 @@
     "lint:staged": "lint-staged",
     "framework:boundary": "tsx scripts/boundary/check.ts",
     "app:ci-checks": "npm run framework:boundary && npm run leaf:checks",
-    "leaf:checks": "exit 0",
+    "leaf:checks": "npm run leaf:content-diff",
     "type-check": "tsc --noEmit",
     "format": "prettier --write --cache --cache-strategy content --cache-location .next/cache/.prettiercache .",
     "format:check": "prettier --check --cache --cache-strategy content --cache-location .next/cache/.prettiercache .",
@@ -43,7 +43,8 @@
     "smoke:erasure": "tsx --env-file=.env.local scripts/smoke/erasure.ts",
     "smoke:engine": "tsx --env-file=.env.local scripts/smoke/engine.ts",
     "postinstall": "prisma generate",
-    "prepare": "husky"
+    "prepare": "husky",
+    "leaf:content-diff": "tsx scripts/content-source/check.ts"
   },
   "repository": {
     "type": "git",
