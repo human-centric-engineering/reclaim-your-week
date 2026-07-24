@@ -2,7 +2,7 @@
 name: ryw-provenance
 feature: F1 · ryw-provenance
 epic: RYW v1
-status: in flight (t-1 — · t-2 —)
+status: shipped (t-1 #17 · t-2 close-out)
 owner: John
 depends_on: —
 spec: ../invariants.md (I10) · lib/framework/data-slots/values.ts (the seam)
@@ -64,10 +64,10 @@ Verified during planning, 2026-07-24:
 
 ## Promoted tasks
 
-| id  | Intent                                                                                                               | Files likely to touch                                                                                                           | Deps | Status | PR  |
-| --- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ---- | ------ | --- |
-| t-1 | `runId?` on `SlotValueProvenance` + `getSlotHistory()` + export + unit tests                                         | `lib/framework/data-slots/values.ts`, `lib/framework/data-slots/index.ts`, `tests/unit/lib/framework/data-slots/values.test.ts` | —    | todo   | —   |
-| t-2 | Close-out: file the Daybreak issue, update [[daybreak-asks]], reconcile the board, re-verify I5/I6/I14/I15 citations | `.context/app/daybreak-asks.md`, `.context/app/planning/plan.md`, `.context/app/invariants.md` (only if drift found)            | t-1  | todo   | —   |
+| id  | Intent                                                                                                               | Files likely to touch                                                                                                           | Deps | Status | PR              |
+| --- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ---- | ------ | --------------- |
+| t-1 | `runId?` on `SlotValueProvenance` + `getSlotHistory()` + export + unit tests                                         | `lib/framework/data-slots/values.ts`, `lib/framework/data-slots/index.ts`, `tests/unit/lib/framework/data-slots/values.test.ts` | —    | done   | #17             |
+| t-2 | Close-out: file the Daybreak issue, update [[daybreak-asks]], reconcile the board, re-verify I5/I6/I14/I15 citations | `.context/app/daybreak-asks.md`, `.context/app/planning/plan.md`, `.context/app/invariants.md` (only if drift found)            | t-1  | done   | #17 + close-out |
 
 > **Sizing note.** The board lists three tasks; reconciled against the repo the two
 > code tasks are ~40 LOC in one file, so they fold into t-1 (one PR, one framework
@@ -111,6 +111,11 @@ Docs-only → skips `/security-review` and `/code-review`.
 
 _Done when:_ the [[daybreak-asks]] row is filed with a live issue link; the board
 shows F1 `shipped` and F2 `available` ▲; the invariant citations re-verified.
+
+_Outcome (2026-07-24):_ issue filed as daybreak#156 and the ledger row updated (in #17).
+The I5/I6/I14/I15 `lib/framework/**` citations were re-verified against live code and are
+**all still exact** — no drift, so `invariants.md` needed no edit. Board reconciled to F1
+`shipped` / F2 `available` ▲ in the close-out PR after #17 merged.
 
 ## Notes / deferrals
 
