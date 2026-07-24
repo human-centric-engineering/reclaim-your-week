@@ -354,12 +354,14 @@ Blocking the features they touch:
 
 1. **Dark-mode chart variants + the strategic-blue / brand-teal collision** — blocks F6.3 sign-off.
 2. **The two or three optional demographic questions** — blocks F7.4.
-3. Brand confirmation, logos, final palette. **Not a blank slate** — Brief §7 gives a working
-   direction to build against until she confirms: deep teal `#0D4F68` with a cream secondary
-   `#FFFAD7`, **Raleway** for headings and body, "a calm, uncluttered feel with generous white
-   space. No stock-photo energy, no gradients." She has still to confirm _which_ of her brand
-   identities this sits under, which is what makes it an open item. The teal is also what F6.3's
-   colour collision is against — `#1B4965` strategic-planning blue sits close to it.
+3. Brand logos and which identity this sits under. **Palette now confirmed** (2026-07-24 — see
+   decisions log). Primary deep teal `#0D4F68` with shade ramp `#112C36` · `#6BB4CF` · `#B8ECFF` ·
+   `#E0F7FF`; secondary cream `#CCC69B` with shade ramp `#999156` · `#665E25` · `#332E08`. This
+   supersedes Brief §7's `#FFFAD7` cream (the confirmed secondary is a muted khaki-cream, not the
+   pale yellow). **Raleway** for headings and body, "a calm, uncluttered feel with generous white
+   space. No stock-photo energy, no gradients." Still open: logos, and _which_ of her brand
+   identities this sits under. The teal is also what F6.3's colour collision is against —
+   `#1B4965` strategic-planning blue sits close to it.
 4. Page copy for landing, Home, About, FAQs, in the reassurance register of Brief §7 (the Setup
    Guide's "no one is judging you" wording is the register — [[content-source]] §12).
 5. Tester quotes and worked examples.
@@ -406,6 +408,19 @@ Daybreak's own plan-first discipline.
 ## Decisions log
 
 Append-only. Newest at the top.
+
+- **2026-07-24 — Brand palette confirmed with full shade ramps (open item 3, palette part).**
+  Rashmir turned the working brand direction into a concrete two-colour system with ramps.
+  **Primary teal `#0D4F68`** — shades `#112C36` (darkest), `#6BB4CF`, `#B8ECFF`, `#E0F7FF`
+  (lightest). **Secondary cream `#CCC69B`** — shades `#999156`, `#665E25`, `#332E08` (darkest).
+  This **supersedes Brief §7's `#FFFAD7` cream**: the confirmed secondary is a muted khaki-cream,
+  not the pale yellow the plan had recorded. The lighter teal shades (`#B8ECFF`, `#E0F7FF`) give
+  the dark-mode chart work (open item 1, F6.3) material to build against — but the **nine-bucket
+  chart palette is her separate IP (I11) and is untouched by this**: F6 t-3's three colour
+  questions still stand. Open item 3 now narrows to logos + which brand identity this sits under.
+  Lands in the `NEXT_PUBLIC_*` brand env plus `app/brand-theme.css` and
+  `components/brand/brand-mark.tsx` when the brand work builds — not by editing `lib/brand.ts`
+  (leaf-fork rule).
 
 - **2026-07-23 — Full end-to-end read of every app doc; ten findings, four of them self-inflicted.**
   The previous entries were written from targeted reads and greps. Reading all eight docs end to end
