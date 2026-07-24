@@ -41,22 +41,23 @@ describe('reclaimAuditModule definition', () => {
     expect(RECLAIM_COACH_ROLE).toBe('coach');
   });
 
-  it('declares no slots yet (t-2 adds the 105)', () => {
-    expect(reclaimAuditModule.slotDefinitions).toBeUndefined();
+  it('declares the 105 slot definitions (t-2)', () => {
+    expect(reclaimAuditModule.slotDefinitions).toHaveLength(105);
   });
 });
 
 describe('reclaimConfigSchema', () => {
-  it('parses an empty object — every field defaults (t-1 shape, neutral defaults)', () => {
+  it('parses an empty object — every field defaults to the verbatim content (t-3)', () => {
+    // t-3 filled the defaults with Rashmir's content; the exact strings are guarded
+    // character-identical against content-source.md in content.test.ts (I11 hop 2). Here we
+    // only assert the shape is populated, not empty.
     const config = reclaimConfigSchema.parse({});
-    expect(config).toEqual({
-      governingFrame: '',
-      buckets: [],
-      deepWorkNote: '',
-      hourBands: [],
-      footnote: '',
-      consultationEmail: '',
-    });
+    expect(config.governingFrame).toContain('This is not a productivity exercise');
+    expect(config.buckets).toHaveLength(9);
+    expect(config.deepWorkNote).toContain('Deep work cuts across all buckets');
+    expect(config.hourBands).toHaveLength(3);
+    expect(config.footnote).toContain('Nsansa Ltd');
+    expect(config.consultationEmail).toBe('rashmir@rashmir.net');
   });
 
   it('parses a representative filled config (a bucket + a band)', () => {

@@ -8,12 +8,11 @@
  * bound into. It is registered from `initLeafApp()` (`lib/app/leaf-bootstrap.ts`),
  * before the boot-time `syncFramework()`.
  *
- * Scope grows across F2's tasks, so no half-built surface lands early:
- *   - t-1 (here): identity + `configSchema` *shape* + the `coach` agent seat.
- *   - t-2: `slotDefinitions` — the 105 slots from `slot-spec.md`.
- *   - t-3: the `configSchema` `.default(...)` values, Rashmir's content *verbatim*
- *     from `content-source.md` (guarded character-identical, I11 hop 2). Until then
- *     the defaults below are neutral placeholders (empty/structural), never prose.
+ * Scope grew across F2's tasks, so no half-built surface landed early:
+ *   - t-1: identity + `configSchema` *shape* + the `coach` agent seat.
+ *   - t-2: `slotDefinitions` — the 105 slots from `slot-spec.md` (`./slots.ts`).
+ *   - t-3 (here): the `configSchema` `.default(...)` values, Rashmir's content *verbatim*
+ *     from `content-source.md` via `./content.ts` (guarded character-identical, I11 hop 2).
  *
  * `programme` is the surface, `reclaim` is the module: this file is module identity,
  * so it is `reclaim`-named; there is no per-module subfolder until a second module
@@ -22,6 +21,15 @@
 
 import { z } from 'zod';
 import type { ModuleDefinition } from '@/lib/framework/modules';
+import { reclaimSlotDefinitions } from '@/lib/app/programme/slots';
+import {
+  RECLAIM_GOVERNING_FRAME,
+  RECLAIM_DEEP_WORK_NOTE,
+  RECLAIM_FOOTNOTE,
+  RECLAIM_BUCKETS,
+  RECLAIM_HOUR_BANDS,
+  RECLAIM_CONSULTATION_EMAIL,
+} from '@/lib/app/programme/content';
 
 /** The module's stable slug — the storage key everywhere (`Module.slug`). Never changes (I7 sibling). */
 export const RECLAIM_MODULE_SLUG = 'reclaim-audit';
@@ -67,31 +75,33 @@ const hourBandSchema = z.object({
  * The coach-editable content, as a Zod schema (decision A4). The generic admin config
  * form renders from it (F10 t-4) and the API validates operator input against it, so
  * Rashmir rewords a bucket description or the footnote without a deploy (I11). Every
- * field defaults so `reclaimConfigSchema.parse({})` yields a valid (if, at t-1, empty)
- * config; t-3 replaces the placeholders with the verbatim content.
+ * field defaults so `reclaimConfigSchema.parse({})` yields a valid config; t-3 filled the
+ * defaults with Rashmir's verbatim content from `./content.ts` (§0 frame, nine buckets,
+ * deep-work note, hour bands, footnote), guarded character-identical to `content-source.md`.
  */
 export const reclaimConfigSchema = z.object({
-  /** The governing frame — "this is not a productivity exercise" (§0, I-frame). Verbatim in t-3. */
-  governingFrame: z.string().default(''),
-  /** The nine buckets, in display order. Populated in t-3 from §1. */
-  buckets: z.array(bucketConfigSchema).default([]),
-  /** The cross-cutting deep-work note (§2). Verbatim in t-3. */
-  deepWorkNote: z.string().default(''),
-  /** The three total-hours bands (§3). Populated in t-3. */
-  hourBands: z.array(hourBandSchema).default([]),
-  /** The summary footnote (§9) — must not be reworded (I11). Verbatim in t-3. */
-  footnote: z.string().default(''),
-  /** Where the once-at-the-end consultation invitation points. Operator-set. */
-  consultationEmail: z.string().default(''),
+  /** The governing frame — "this is not a productivity exercise" (§0, I-frame). Verbatim. */
+  governingFrame: z.string().default(RECLAIM_GOVERNING_FRAME),
+  /** The nine buckets, in display order (§1). Descriptions verbatim (I11 hop-2 guarded). */
+  buckets: z.array(bucketConfigSchema).default(RECLAIM_BUCKETS),
+  /** The cross-cutting deep-work note (§2). Verbatim. */
+  deepWorkNote: z.string().default(RECLAIM_DEEP_WORK_NOTE),
+  /** The three total-hours bands (§3). */
+  hourBands: z.array(hourBandSchema).default(RECLAIM_HOUR_BANDS),
+  /** The summary footnote (§9) — must not be reworded (I11 hop-2 guarded). Verbatim. */
+  footnote: z.string().default(RECLAIM_FOOTNOTE),
+  /** Where the once-at-the-end consultation invitation points. Operator-set; seeded from §10. */
+  consultationEmail: z.string().default(RECLAIM_CONSULTATION_EMAIL),
 });
 
 /** The parsed shape of `reclaimConfigSchema` — the coach-editable config the app reads. */
 export type ReclaimConfig = z.infer<typeof reclaimConfigSchema>;
 
 /**
- * The `reclaim-audit` module definition. `slotDefinitions` (t-2) and the verbatim
- * config defaults (t-3) are added in their own tasks; the `coach` seat is declared
- * now so F3 can bind the agent into it.
+ * The `reclaim-audit` module definition. The verbatim config defaults (t-3) are added
+ * in their own task; `slotDefinitions` (the 105 from `./slots.ts`) and the `coach` seat
+ * are declared now — the slots so F3's boot sync reconciles them, the seat so F3 can bind
+ * the agent into it.
  */
 export const reclaimAuditModule: ModuleDefinition = {
   slug: RECLAIM_MODULE_SLUG,
@@ -99,5 +109,6 @@ export const reclaimAuditModule: ModuleDefinition = {
   description:
     "Rashmir Balasubramaniam's guided time audit — a structured, multi-phase reflection on how a leader's week is actually spent, and what a next level of leadership might ask them to let go of.",
   configSchema: reclaimConfigSchema,
+  slotDefinitions: reclaimSlotDefinitions,
   agentRoles: [RECLAIM_COACH_ROLE],
 };
