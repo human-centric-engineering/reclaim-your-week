@@ -101,11 +101,16 @@ describe('lib/app/ bootstrap defaults are no-ops', () => {
     expect(initAppKnowledgeAccessContributors()).toBeUndefined();
   });
 
-  it('the ESLint config seam is an empty array by default', () => {
-    // A stray flat-config block here would silently apply lint rules to every
-    // fork (the root eslint.config.mjs spreads this array last). Forks fill it;
-    // vanilla Sunrise ships it empty. The root spread itself is exercised by
-    // every `npm run lint` run.
-    expect(appEslintConfig).toEqual([]);
+  it('the ESLint config seam carries only the leaf-seed framework-import exemption', () => {
+    // Vanilla Sunrise ships this seam empty; this leaf fills it (F3) with exactly ONE block: the
+    // framework-import exemption for `prisma/seeds/app-reclaim/**` (leaf seeds must import
+    // `@/lib/framework` to publish the map and bind the agent, and run via `tsx`, never `next
+    // build`). A stray flat-config block here would silently apply lint rules to every file (the
+    // root eslint.config.mjs spreads this array last), so assert the block precisely — its file
+    // glob, and that it restates the core `@/`-alias ban rather than dropping it.
+    expect(appEslintConfig).toHaveLength(1);
+    const [block] = appEslintConfig;
+    expect(block.files).toEqual(['prisma/seeds/app-reclaim/**/*.{ts,tsx}']);
+    expect(block.rules['no-restricted-imports']).toBeDefined();
   });
 });

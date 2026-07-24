@@ -44,17 +44,17 @@ is the structure.
 
 ## Project
 
-| Field              | Value                                                                                                                                                                                                                                                                                                                                      |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Name               | **Reclaim Your Week** (the leaf app)                                                                                                                                                                                                                                                                                                       |
-| Active epic        | **RYW v1** (the whole build below)                                                                                                                                                                                                                                                                                                         |
-| Spec               | [[content-source]] (content, verbatim) · [[slot-spec]] (105 slots) · [[invariants]] (I1–I18, I-frame, I-composite)                                                                                                                                                                                                                         |
-| Repo               | `reclaim-your-week` — fork of `human-centric-engineering/daybreak` (tracking `upstream`)                                                                                                                                                                                                                                                   |
-| Placement          | Leaf app on Daybreak. We own `lib/app/*`, the `leaf-*` hooks, `app-*.prisma`, `app/(protected)/programme/**`, `app/admin/programme/**`, `.context/app/**` — see [[../README\|.context/app/README.md]]                                                                                                                                      |
-| Framework baseline | Daybreak Framework v1 + v1.1 — all facilitation machinery (modules, map, slots, engine, guidance, agents) shipped and available through registration seams                                                                                                                                                                                 |
-| Client             | Rashmir Balasubramaniam / Nsansa Ltd.                                                                                                                                                                                                                                                                                                      |
-| Lead               | John                                                                                                                                                                                                                                                                                                                                       |
-| Status             | **`RYW v1` in flight — F1 `ryw-provenance` (#17) and F2 `ryw-module` (#19 #20 #21) shipped.** F1 was the only feature that touches `lib/framework/**`; F2 landed Rashmir's IP (module, 105 slots, verbatim content, third-person coach agent). F3 (`ryw-firstlight` ★) — the end-to-end spike — is now **in flight** on the critical path. |
+| Field              | Value                                                                                                                                                                                                                                                                                                                                                                  |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Name               | **Reclaim Your Week** (the leaf app)                                                                                                                                                                                                                                                                                                                                   |
+| Active epic        | **RYW v1** (the whole build below)                                                                                                                                                                                                                                                                                                                                     |
+| Spec               | [[content-source]] (content, verbatim) · [[slot-spec]] (105 slots) · [[invariants]] (I1–I18, I-frame, I-composite)                                                                                                                                                                                                                                                     |
+| Repo               | `reclaim-your-week` — fork of `human-centric-engineering/daybreak` (tracking `upstream`)                                                                                                                                                                                                                                                                               |
+| Placement          | Leaf app on Daybreak. We own `lib/app/*`, the `leaf-*` hooks, `app-*.prisma`, `app/(protected)/programme/**`, `app/admin/programme/**`, `.context/app/**` — see [[../README\|.context/app/README.md]]                                                                                                                                                                  |
+| Framework baseline | Daybreak Framework v1 + v1.1 — all facilitation machinery (modules, map, slots, engine, guidance, agents) shipped and available through registration seams                                                                                                                                                                                                             |
+| Client             | Rashmir Balasubramaniam / Nsansa Ltd.                                                                                                                                                                                                                                                                                                                                  |
+| Lead               | John                                                                                                                                                                                                                                                                                                                                                                   |
+| Status             | **`RYW v1` in flight — F1 (#17), F2 (#19 #20 #21), and F3 `ryw-firstlight` ★ (#25) shipped.** F3 was the end-to-end spike — boot → register → sync → publish → resolve → stream against real Postgres — and it ran with zero framework bugs (two seam-ergonomics asks filed as daybreak#157/#158). F4 (`ryw-shell`) is now the claimable feature on the critical path. |
 
 ---
 
@@ -98,18 +98,18 @@ leaf work depends on it. See I10.
 A flat list in rough dependency order (most-ready first). Order is _emergent from `depends on`_. The
 **Owner** and **Status** columns are the at-a-glance board.
 
-| #   | Feature            | Owner | Status        | Depends on       | ~Tasks | Capability                                                                                                    |
-| --- | ------------------ | ----- | ------------- | ---------------- | ------ | ------------------------------------------------------------------------------------------------------------- |
-| F1  | `ryw-provenance`   | John  | **shipped**   | —                | 3      | Add `runId` to slot provenance + `getSlotHistory()` (the only framework-tier change)                          |
-| F2  | `ryw-module`       | John  | **shipped**   | F1               | 4      | Register the module; declare 105 slots; load content verbatim; author the third-person agent                  |
-| F3  | `ryw-firstlight` ★ | John  | **in flight** | F2               | 3      | The spike: boot → register → publish → stream, end to end, against real Postgres                              |
-| F4  | `ryw-shell`        | —     | blocked → F3  | F3               | 4      | Leaf schema; single slot write-path; run lifecycle + reflection gate; consumer chat client + seven-node shell |
-| F5  | `ryw-calendar`     | —     | blocked → F4  | F4               | 4      | Optional `.ics` branch: in-memory parse, totals-only, privacy-proven                                          |
-| F6  | `ryw-current`      | —     | blocked → F4  | F4               | 4      | Phase 0 setup + entitlement gate; Phase 1 bucket cards + reflection; the chart family                         |
-| F7  | `ryw-phases`       | —     | blocked → F6  | F6 (F5 optional) | 4      | Phases 2–6: energy, ideal week, gap + refer-back, action plan, summary + share                                |
-| F8  | `ryw-access`       | —     | blocked → F4  | F4               | 4      | Tiered invites, the grant ledger, referral unlock (gates F6's run creation)                                   |
-| F9  | `ryw-repeat`       | —     | blocked → F7  | F7               | 4      | Trend lines, comparative open, quarterly nudge, bucket relabelling                                            |
-| F10 | `ryw-admin`        | —     | blocked → F7  | F7, F8           | 5      | Client list + access control, shared-results inbox, content editing, export + GDPR proof                      |
+| #   | Feature            | Owner | Status          | Depends on       | ~Tasks | Capability                                                                                                    |
+| --- | ------------------ | ----- | --------------- | ---------------- | ------ | ------------------------------------------------------------------------------------------------------------- |
+| F1  | `ryw-provenance`   | John  | **shipped**     | —                | 3      | Add `runId` to slot provenance + `getSlotHistory()` (the only framework-tier change)                          |
+| F2  | `ryw-module`       | John  | **shipped**     | F1               | 4      | Register the module; declare 105 slots; load content verbatim; author the third-person agent                  |
+| F3  | `ryw-firstlight` ★ | John  | **shipped**     | F2               | 3      | The spike: boot → register → publish → stream, end to end, against real Postgres                              |
+| F4  | `ryw-shell`        | —     | **available** ▲ | F3               | 4      | Leaf schema; single slot write-path; run lifecycle + reflection gate; consumer chat client + seven-node shell |
+| F5  | `ryw-calendar`     | —     | blocked → F4    | F4               | 4      | Optional `.ics` branch: in-memory parse, totals-only, privacy-proven                                          |
+| F6  | `ryw-current`      | —     | blocked → F4    | F4               | 4      | Phase 0 setup + entitlement gate; Phase 1 bucket cards + reflection; the chart family                         |
+| F7  | `ryw-phases`       | —     | blocked → F6    | F6 (F5 optional) | 4      | Phases 2–6: energy, ideal week, gap + refer-back, action plan, summary + share                                |
+| F8  | `ryw-access`       | —     | blocked → F4    | F4               | 4      | Tiered invites, the grant ledger, referral unlock (gates F6's run creation)                                   |
+| F9  | `ryw-repeat`       | —     | blocked → F7    | F7               | 4      | Trend lines, comparative open, quarterly nudge, bucket relabelling                                            |
+| F10 | `ryw-admin`        | —     | blocked → F7    | F7, F8           | 5      | Client list + access control, shared-results inbox, content editing, export + GDPR proof                      |
 
 **Critical path:** `ryw-provenance → ryw-module → ryw-firstlight → ryw-shell → ryw-current → ryw-phases`.
 `ryw-calendar` (F5) hangs off F4 and enriches F6/F7 without gating them. `ryw-access` (F8) parallels
@@ -122,10 +122,9 @@ they need.
 **Legend.** `shipped` — merged to `main`. `in flight` — an owner is actively building it. `available` ▲
 — every dependency is shipped and no one owns it: free to claim now. `blocked → X` — waiting on X.
 
-**In flight:** **F3 `ryw-firstlight` ★** — F2 shipped (#19 #20 #21), so F3 (the spike) is claimed and
-building. Everything else is blocked on the critical path until F3 → F4 clear. Once F4 ships, **F5, F6,
-and F8 all become claimable in parallel** (F6 needs F8's grant table for its gate, so coordinate if
-both are in flight).
+**Claimable right now (▲):** **F4 `ryw-shell`** — F3 shipped (#25), so F4 is unblocked. Everything else
+is blocked on the critical path until F4 clears. Once F4 ships, **F5, F6, and F8 all become claimable in
+parallel** (F6 needs F8's grant table for its gate, so coordinate if both are in flight).
 
 **Solo build.** John owns every feature; the **Owner** column exists to show what is _actively in
 flight_, not to allocate work. The claim step is still worth doing — it is what makes the board tell
@@ -212,7 +211,7 @@ _Watch for:_ paraphrased bucket descriptions and invented slugs — diff the str
 
 ### F3 · `ryw-firstlight` ★ — the spike
 
-_Owner:_ John · _Status:_ **in flight** · _Depends on:_ F2 (shipped #19 #20 #21) · _~3 tasks_ · detail: [[ryw-firstlight]]
+_Owner:_ John · _Status:_ **shipped** (t-1/t-2 #25 · t-3 #25) · _Depends on:_ F2 (shipped #19 #20 #21) · _~3 tasks_ · detail: [[ryw-firstlight]]
 
 **A genuine gate.** First time boot → register → sync → publish → surface → stream runs against real
 Postgres. Budget two to three unrelated framework bugs.
@@ -225,13 +224,13 @@ _Done when:_ `db:reset && db:seed && seed:reclaim` completes; `smoke:reclaim` st
 
 ### F4 · `ryw-shell` — audit shell, chat, capture
 
-_Owner:_ — · _Status:_ blocked → F3 · _Depends on:_ F3 · _~4 tasks_
+_Owner:_ — · _Status:_ **available** ▲ · _Depends on:_ F3 (shipped #25) · _~4 tasks_
 
 - **t-1** — Leaf schema `prisma/schema/app-reclaim.prisma` (not `app.prisma` — that's Sunrise's). Tables `app_reclaim_{invite,grant,audit_run,bucket_label,share,report_share,feedback,consent}`; partial unique index on `(userId) WHERE status='in_progress'`; **no calendar table** (I4). Hand-written `ON DELETE CASCADE` per `userId` table (Prisma emits none without a `@relation`; read the generated SQL). Drift probes in `leaf-db-drift.ts`.
   - **`app_reclaim_consent`** carries F8 t-4: `userId`, `policyVersion`, `acceptedAt`, and a separate `marketingOptIn` boolean. Sunrise models no terms acceptance of its own (checked — the only `consent` in the schema is orchestration's cross-user conversation access, unrelated), so this has to be ours. **`onDelete: SetNull`, not `Cascade`** — unlike every other table here. A consent record is the evidence that processing was lawful; erasing it with the user destroys the proof that their data was lawfully processed while they existed. Retained config/audit, per the `CLAUDE.md` rule. That makes `userId` nullable here and nowhere else in this schema, which is the sort of asymmetry that looks like a mistake later — it is deliberate.
 - **t-2** — `saveAnswer()` in `lib/app/programme/slots/write.ts`: the **only** caller of `appendSlotValue` (I3), routing through `slotMaskingPolicy` and stamping `provenance.runId`. Test (`tests/unit/invariants/write-path.test.ts`, in `leaf:checks`) asserts exactly one occurrence in the tree.
 - **t-3** — Run lifecycle routes under `app/api/v1/app/reclaim/`: create (TODO marker for F6/F8 gate), transition (`assertPhaseComplete` → `422 REFLECTION_REQUIRED` when the phase's reflection slot is absent — I9), complete (`isActive:false` on the conversation — I15), answers (delegates to `saveAnswer`). Run id = journey `contextKey` = provenance `runId`; never read `contextKey` from an LLM arg (I6).
-- **t-4** — First consumer SSE client (`app/(protected)/programme/`), admin chat as SSE reference only. Progress bar over all **seven** map nodes with Phase 0 labelled _Setup_ (the map is `phase-0-setup … phase-6-summary`; hiding node 0 makes "you are here" wrong on resume, which reads `UserNodeState` per node). Auto-save, resume from `UserNodeState.progress`. Plus the per-phase **signpost line** ([[content-source]] §5d, G10): entering a phase says which phase, what it involves, and roughly how long — the progress bar shows position, not duration or content. Shell only — no phase content yet.
+- **t-4** — First consumer SSE client (`app/(protected)/programme/`), admin chat as SSE reference only. Progress bar over all **seven** map nodes with Phase 0 labelled _Setup_ (the map is `phase-0-setup … phase-6-summary`; hiding node 0 makes "you are here" wrong on resume, which reads `UserNodeState` per node). Auto-save, resume from `UserNodeState.progress`. Plus the per-phase **signpost line** ([[content-source]] §5d, G10): entering a phase says which phase, what it involves, and roughly how long — the progress bar shows position, not duration or content. **F3 t-1 resolved the seven nodes to `stage` type** (a `module` node binds one registered `Module` and there is exactly one, reached directly by the leaf's run per I14; the phases are a progression within it — see `lib/app/programme/map.ts`), and `UserNodeState` keys on the node `key`, so the bar reads the seven `phase-*` keys directly. Shell only — no phase content yet.
 
 _Done when:_ migration applies with cascades confirmed; write-path test passes; transition without reflection returns 422; completing sets `isActive:false`; a run can be started, left, and resumed.
 
@@ -498,6 +497,19 @@ Append-only. Newest at the top.
 ## Work completed to date
 
 Append-only. Newest at the top.
+
+- **2026-07-24 — F3 `ryw-firstlight` ★ shipped (#25).** The spike: `boot → register → sync → publish
+→ resolve surface → stream` ran end to end against real Postgres for the first time. t-1 seeded and
+  published the seven-`stage`-node journey map (`lib/app/programme/map.ts`), activated the module, and
+  bound the coach agent `public`/primary, with `smoke:reclaim` proving one streamed turn; t-2 added the
+  three silent-failure traps (agent visibility, no `special_category` slot per I5, fresh-vs-resume
+  conversation per I15); t-3 was the re-plan checkpoint. **Zero framework bugs** — the budgeted two-to-
+  three did not appear and the `>3 → re-scope F4` circuit-breaker did not trip. Two seam-ergonomics gaps
+  surfaced instead (a leaf seed must replicate the boot chain; the ESLint ban does not exempt leaf
+  seeds), both filed as [[daybreak-asks]] daybreak#157/#158, neither framework code carried. The
+  node-type question resolved to `stage` (one module, reached directly by the leaf's run per I14; the
+  phases are a progression within it). The I5/I6/I14/I15 `lib/framework/**` citations were re-verified
+  and are all still exact. Unblocks F4 `ryw-shell`.
 
 - **2026-07-24 — F2 `ryw-module` shipped (#19, #20, #21).** Rashmir's IP is now in the codebase:
   `registerModule('reclaim-audit')` from `initLeafApp()` with a coach-editable `configSchema` (t-1,
