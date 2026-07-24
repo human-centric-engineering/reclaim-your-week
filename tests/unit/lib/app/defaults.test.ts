@@ -109,7 +109,7 @@ describe('lib/app/ bootstrap defaults are no-ops', () => {
     // root eslint.config.mjs spreads this array last), so assert the block precisely — its file
     // glob, and that it restates the core `@/`-alias ban rather than dropping it.
     expect(appEslintConfig).toHaveLength(1);
-    const [block] = appEslintConfig as [{ files: string[]; rules: Record<string, unknown> }];
+    const [block] = appEslintConfig;
     expect(block.files).toEqual(['prisma/seeds/app-reclaim/**/*.{ts,tsx}']);
     expect(block.rules['no-restricted-imports']).toBeDefined();
   });

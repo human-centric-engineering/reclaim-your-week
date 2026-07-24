@@ -79,9 +79,12 @@ async function runTurn(
   return { content, conversationId, types };
 }
 
+/** Throw rather than `process.exit()` so an assertion failure inside the `try` still runs the
+ *  `finally` (restore the agent's provider/model, clean up the run) before the top-level handler
+ *  exits. `process.exit()` terminates synchronously and skips pending `finally` blocks — which
+ *  would leave the seeded coach agent repointed at the in-memory fake provider. */
 function fail(message: string): never {
-  console.error(`✗ ${message}`);
-  process.exit(1);
+  throw new Error(message);
 }
 
 async function main(): Promise<void> {
