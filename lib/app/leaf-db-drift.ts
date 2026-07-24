@@ -1,16 +1,76 @@
 /**
- * Leaf-app database drift-probe registration — RESERVED, empty by default.
+ * Leaf-app database drift-probe registration — Reclaim Your Week (F4 t-1).
  *
- * A leaf app (a fork of Daybreak) fills `registerLeafDriftProbes()` with its own
- * `registerAppDriftProbe()` calls for the Prisma-unmodelled objects it adds (most commonly the
- * hand-written FK behind a satellite `User` table — see CUSTOMIZATION.md §5). Daybreak keeps it
- * empty: this is the leaf's drift seam, reserved so a leaf's probes merge cleanly on upgrade — the
- * drift analogue of `lib/app/leaf-bootstrap.ts` / `lib/app/leaf-admin-nav.ts`.
+ * Registers the Prisma-*unmodelled* Postgres objects the leaf schema adds
+ * (`prisma/schema/app-reclaim.prisma`), so `npm run db:drift-check` (CI + `/pre-pr`) probes them and
+ * catches a future `migrate dev` that silently drops one — the exact footgun the F4 t-1 migration hit
+ * (Prisma computes desired state from a schema with no `@relation` for these FKs and no way to express
+ * a partial unique index, so it reads them as drift). Called by `lib/app/db-drift.ts`'s
+ * `registerAppDriftProbes()` after the framework probes, per the reserved-seam contract.
  *
- * Called by `lib/app/db-drift.ts`'s `registerAppDriftProbes()` after the framework probes are
- * registered.
+ * Two kinds of object:
+ *   - the **eight hand-written `user` FKs** — each probed with its `ON DELETE` action, so the GDPR
+ *     policy (which lives only in the migration SQL, invisible to the schema-level `onDelete` lint
+ *     guard for a plain-scalar FK) is what CI actually reviews. CASCADE = personal data;
+ *     SET NULL = retained config/audit (`consent`, `invite`);
+ *   - the **partial unique index** enforcing one `in_progress` run per user.
  */
 
+import { registerAppDriftProbe, constraintExists, indexExists } from '@/lib/db/drift-probes';
+
+/** One `app_reclaim_*` → `user` FK: its constraint name, table, and expected ON DELETE action. */
+const RECLAIM_USER_FKS: ReadonlyArray<{ table: string; constraint: string; onDelete: string }> = [
+  {
+    table: 'app_reclaim_audit_run',
+    constraint: 'app_reclaim_audit_run_userId_fkey',
+    onDelete: 'CASCADE',
+  },
+  { table: 'app_reclaim_grant', constraint: 'app_reclaim_grant_userId_fkey', onDelete: 'CASCADE' },
+  {
+    table: 'app_reclaim_bucket_label',
+    constraint: 'app_reclaim_bucket_label_userId_fkey',
+    onDelete: 'CASCADE',
+  },
+  { table: 'app_reclaim_share', constraint: 'app_reclaim_share_userId_fkey', onDelete: 'CASCADE' },
+  {
+    table: 'app_reclaim_report_share',
+    constraint: 'app_reclaim_report_share_userId_fkey',
+    onDelete: 'CASCADE',
+  },
+  {
+    table: 'app_reclaim_feedback',
+    constraint: 'app_reclaim_feedback_userId_fkey',
+    onDelete: 'CASCADE',
+  },
+  // Retained on erasure → SET NULL (the row outlives the user, de-attributed).
+  {
+    table: 'app_reclaim_consent',
+    constraint: 'app_reclaim_consent_userId_fkey',
+    onDelete: 'SET NULL',
+  },
+  {
+    table: 'app_reclaim_invite',
+    constraint: 'app_reclaim_invite_redeemedByUserId_fkey',
+    onDelete: 'SET NULL',
+  },
+];
+
 export function registerLeafDriftProbes(): void {
-  // No leaf drift probes by default.
+  for (const fk of RECLAIM_USER_FKS) {
+    registerAppDriftProbe({
+      name: `reclaim: ${fk.constraint} (ON DELETE ${fk.onDelete})`,
+      kind: 'FK constraint',
+      table: fk.table,
+      // `predicateContains` asserts the constraint def carries the ON DELETE action, so a migration
+      // that recreated the FK with the wrong policy (a silent GDPR bug) fails the check.
+      probe: constraintExists(fk.constraint, `ON DELETE ${fk.onDelete}`),
+    });
+  }
+
+  registerAppDriftProbe({
+    name: 'reclaim: app_reclaim_audit_run_active_user_key (partial unique — one in_progress run)',
+    kind: 'partial unique index',
+    table: 'app_reclaim_audit_run',
+    probe: indexExists('app_reclaim_audit_run_active_user_key'),
+  });
 }

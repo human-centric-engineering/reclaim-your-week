@@ -1,0 +1,180 @@
+// Reclaim Your Week — leaf schema (F4 t-1).
+//
+// The leaf's own tables, all `@@map`'d to the `app_reclaim_*` prefix. This is a NEW file:
+// `app.prisma` is Sunrise's (ContactSubmission, FeatureFlag, AuthBootstrap) — never edit it (I10).
+//
+// **Every user reference is a plain `String` FK with NO Prisma `@relation`.** A relation needs a
+// reverse field on the core `User` model, which is the fork-and-edit trap (CUSTOMIZATION.md §5). So
+// the FK constraint AND its `ON DELETE` are hand-written in the migration SQL and guarded by a drift
+// probe in `lib/app/leaf-db-drift.ts` — because Prisma computes desired state from this schema (which
+// has no relation for the FK) and a later `migrate dev` would otherwise emit a `DROP` for it. The
+// schema-level `onDelete` lint guard does NOT catch a plain-scalar FK, so the probe is the review.
+//
+// **`ON DELETE` policy per table:** personal data → `CASCADE` (erased with the user); retained
+// config/audit → `SET NULL` (de-attributed, the row survives). `app_reclaim_consent` is the one
+// `SET NULL` on its own `userId` — a consent record is the evidence that processing was lawful, so it
+// must outlive the user (that is why its `userId` is nullable here and nowhere else). `invite` keeps
+// its record on `SET NULL` too (it is issued to an email, only *redeemed* by a user).
+//
+// **No calendar/event table (I4).** Calendar totals live as `reclaim_calendar_*` slot VALUES (F5),
+// never as rows here. Nothing in this file stores a meeting.
+//
+// Scope decision (A, 2026-07-24): all eight tables land now in one migration so the cascades are
+// reviewed together (see `.context/app/planning/ryw-shell.md`). F4 gives behaviour only to
+// `audit_run` (+ `consent`); the other six carry correct cascades for F6/F7/F8 to fill, and every
+// cascade is verified now by the erasure smoke. Columns beyond the core identity are the owning
+// feature's to refine — a later `ALTER` is the accepted cost of front-loading.
+
+/// One time-audit run for a user. The run id is also the journey `contextKey` and the slot
+/// `provenance.runId` (F4 t-3). Personal data → CASCADE.
+model ReclaimAuditRun {
+  id     String @id @default(cuid())
+  userId String // FK to User.id — no @relation; ON DELETE CASCADE hand-written in the migration
+
+  /// `in_progress | complete | abandoned`. The partial unique index
+  /// `(userId) WHERE status = 'in_progress'` (hand-written, drift-probed) enforces one active run.
+  status String @default("in_progress")
+
+  /// The audit period label the user set at Phase 0 (e.g. "2026 Q3"). Free text; not an FK.
+  quarter String?
+
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+  updatedAt   DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("app_reclaim_audit_run")
+}
+
+/// Terms + privacy acceptance and the marketing-list flag (F8 t-4's legal basis). RETAINED on
+/// erasure → `userId` nullable + `SET NULL`: the consent is the proof processing was lawful while the
+/// user existed, so erasing it with them would destroy that proof.
+model ReclaimConsent {
+  id     String  @id @default(cuid())
+  userId String? // nullable — SET NULL on erasure (retained config/audit), unique among this schema
+
+  /// The version of terms + privacy policy accepted (e.g. "2026-07-01"). The clauses are Rashmir's
+  /// to supply (open item 7); this records which version was accepted.
+  policyVersion String
+
+  /// List membership is a separate fact from having an account — only this distinguishes "signed up"
+  /// from "consented to Rashmir's list" (F8 t-4, reconciliation 7).
+  marketingOptIn Boolean @default(false)
+
+  acceptedAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("app_reclaim_consent")
+}
+
+/// Entitlement to run audits (F8 t-2). Free tier = one complete audit; client tier = a 12-month
+/// window starting on first use + a `mustStartBy` deadline. Personal entitlement → CASCADE.
+model ReclaimGrant {
+  id     String @id @default(cuid())
+  userId String // ON DELETE CASCADE
+
+  /// `free | client` (F8 t-2). Client status is an admin flag.
+  tier String @default("free")
+
+  /// How many complete audits this grant permits, and how many have been consumed. Free = 1.
+  auditsGranted Int @default(1)
+  auditsUsed    Int @default(0)
+
+  /// Client-tier window: starts on first use, with a deadline to start by (Brief §8). Null for free.
+  windowStartsAt DateTime?
+  mustStartBy    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@map("app_reclaim_grant")
+}
+
+/// A tiered invite (F8 t-1). Issued to an email, redeemed by a user. The record is RETAINED and only
+/// *references* a user once redeemed → `redeemedByUserId` nullable + `SET NULL`.
+model ReclaimInvite {
+  id    String @id @default(cuid())
+  email String
+  token String @unique
+
+  /// `client | standard | referral` (F8 t-1).
+  tier String @default("standard")
+
+  redeemedByUserId String? // FK to User.id — ON DELETE SET NULL (the invite outlives the user)
+  redeemedAt       DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([redeemedByUserId])
+  @@map("app_reclaim_invite")
+}
+
+/// A user's display label for a canonical bucket (F6 t-4). The canonical `bucketSlug` is NEVER
+/// changed (I7) — only the display label is stored here — so relabelled audits still aggregate by the
+/// slug. Per-user (carried across runs, F9 t-4). Personal → CASCADE.
+model ReclaimBucketLabel {
+  id     String @id @default(cuid())
+  userId String // ON DELETE CASCADE
+
+  /// One of the nine canonical `bucketSlug` values (content-source §1). Storage key, never renamed.
+  bucketSlug String
+
+  /// The user's chosen label. "Within limits" (Brief §3) = a length cap enforced at the write.
+  label String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, bucketSlug])
+  @@index([userId])
+  @@map("app_reclaim_bucket_label")
+}
+
+/// A tokenised link to a user's own summary artifact (F7 t-4). Sharing is invited, never required.
+/// Personal → CASCADE (erasing the user revokes their share links).
+model ReclaimShare {
+  id          String @id @default(cuid())
+  userId      String // ON DELETE CASCADE
+  auditRunId  String
+  token       String @unique
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("app_reclaim_share")
+}
+
+/// A result shared *with the coach* — the shared-results inbox (F7 t-4's existing-client close, read
+/// by F10 t-3). Distinct from `ReclaimShare` (the user's own public link). Personal → CASCADE.
+model ReclaimReportShare {
+  id         String @id @default(cuid())
+  userId     String // ON DELETE CASCADE
+  auditRunId String
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("app_reclaim_report_share")
+}
+
+/// One-line feedback + demographics captured only after a user chooses to share (F7 t-4). The
+/// quote-consent flag governs republication and is its own fact, separate from sharing. Personal →
+/// CASCADE by default; F7 t-4 decides whether an anonymised, quote-consented line is split to a
+/// retained store (a genuine GDPR nuance deferred to that feature).
+model ReclaimFeedback {
+  id         String  @id @default(cuid())
+  userId     String // ON DELETE CASCADE
+  auditRunId String?
+
+  /// "In a sentence: what did you take from this?"
+  text String
+
+  /// "Happy for this to be quoted anonymously" — a separate consent from sharing (Brief §3).
+  quoteConsent Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("app_reclaim_feedback")
+}
