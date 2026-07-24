@@ -32,7 +32,7 @@ export type {
 } from '@/lib/framework/data-slots/vocabulary';
 export { syncRegisteredSlotDefinitions } from '@/lib/framework/data-slots/sync';
 export { listSlotDefinitions } from '@/lib/framework/data-slots/queries';
-export { appendSlotValue, getSlotHeads } from '@/lib/framework/data-slots/values';
+export { appendSlotValue, getSlotHeads, getSlotHistory } from '@/lib/framework/data-slots/values';
 export type {
   SlotValueProvenance,
   AppendSlotValueInput,
