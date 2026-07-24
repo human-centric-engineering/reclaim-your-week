@@ -56,3 +56,66 @@
  * See .context/ui/surface-theming.md for all six design constraints.
  * --------------------------------------------------------------------------
  */
+
+/* Reclaim Your Week brand palette — confirmed 2026-07-24 (see
+ * .context/app/planning/plan.md decisions log). Applied to the CONSUMER surface
+ * (participant-facing pages); /admin stays on the platform defaults so upstream
+ * palette tweaks keep flowing through there.
+ *
+ *   Primary teal    #0D4F68  ramp: #112C36 #6BB4CF #B8ECFF #E0F7FF
+ *   Secondary cream #CCC69B  ramp: #999156 #665E25 #332E08
+ *
+ * AESTHETIC: refined, not saturated. Brief §7 asks for "a calm, uncluttered feel
+ * with generous white space" — so the page BREATHES on white (dark: a near-black
+ * teal), teal is the single confident accent (ink, primary, focus, links), and
+ * cream is held back for gentle section bands (`muted`) and secondary surfaces.
+ * The saturated ramp hexes stay OFF large structural surfaces — the page and
+ * every border — which is what read as "too colourful"; those get low-chroma
+ * tints instead so the brand shows as deliberate touches, not a wash.
+ *
+ * Neutrals marked `tint` are low-chroma derivations of the ramp (the ramp has no
+ * near-white or hairline-border tone). The pure brand hexes carry the accents.
+ *
+ * NOT set here: the nine fixed <ReclaimChart> bucket colours. Those are
+ * Rashmir's separate IP (invariant I11) and live with the chart component, not
+ * in the surface theme — do not fold them in. */
+
+[data-surface='consumer'] {
+  --color-background: #ffffff; /* white — generous space (Brief §7) */
+  --color-foreground: #112c36; /* darkest teal — warm near-black ink */
+  --color-card: #ffffff;
+  --color-card-foreground: #112c36;
+  --color-popover: #ffffff;
+  --color-popover-foreground: #112c36;
+  --color-primary: #0d4f68; /* deep teal — the one confident accent */
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #ccc69b; /* cream — small secondary surfaces only */
+  --color-secondary-foreground: #332e08; /* darkest cream */
+  --color-muted: #f6f3e9; /* soft cream — where cream lives, as calm section bands (tint) */
+  --color-muted-foreground: #566b73; /* muted teal-grey (tint) */
+  --color-accent: #eef5f6; /* barely-there teal for hovers (tint) */
+  --color-accent-foreground: #0d4f68;
+  --color-border: #e7e2d4; /* hairline warm neutral (tint) — not saturated cream */
+  --color-input: #ddd6c2; /* a touch stronger so fields read (tint) */
+  --color-ring: #0d4f68;
+}
+
+[data-surface='consumer'].dark {
+  --color-background: #112c36; /* darkest teal — warm near-black canvas */
+  --color-foreground: #e6f2f6; /* soft near-white (tint) */
+  --color-card: #163741; /* barely lifted off the canvas (tint) */
+  --color-card-foreground: #e6f2f6;
+  --color-popover: #163741;
+  --color-popover-foreground: #e6f2f6;
+  --color-primary: #6bb4cf; /* mid teal — lifts on the dark ground */
+  --color-primary-foreground: #0c2530; /* deep teal (tint) */
+  --color-secondary: #4a4420; /* restrained dark cream — an emphasis surface (tint) */
+  --color-secondary-foreground: #e7e1c9; /* pale cream (tint) */
+  --color-muted: #0d2731; /* recessed teal band — cohesive with canvas, no warm/cool mud (tint) */
+  --color-muted-foreground: #9aacb2; /* neutral teal-grey — everyday secondary text, NOT cream (tint) */
+  --color-accent: #1c414e; /* subtle teal for hovers (tint) */
+  --color-accent-foreground: #e7e1c9; /* cream — reserved for accent/highlight emphasis (tint) */
+  --color-border: #244652; /* subtle teal hairline (tint) */
+  --color-input: #244652;
+  --color-ring: #6bb4cf;
+}
