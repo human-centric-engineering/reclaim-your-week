@@ -27,6 +27,19 @@ way the framework retro does.
 
 ## §A — overall-plan authoring
 
+- **The first-consumer spike found zero framework _bugs_ and two _seam-ergonomics_ gaps — friction,
+  not defects (F3 `ryw-firstlight` t-1/t-2).** The end-to-end run (boot → register → sync → publish →
+  resolve → stream) worked correctly against real Postgres on the first pass; the budgeted two-to-three
+  framework bugs never materialised. What it surfaced were two places the framework has no seam for a
+  leaf's needs: (1) a standalone `db:seed`/smoke never boots the app, so the leaf's seed must call
+  `initFramework → initLeafApp → syncFramework` itself to materialise the Module/slot/capability rows;
+  (2) Daybreak's core→framework ESLint ban exempts `scripts/smoke/**` but not leaf seeds, which share
+  the identical profile. Both are [[daybreak-asks]] rows, not framework code we carried. **The
+  refinement for the next first-consumer plan: price in seam-ergonomics friction (missing leaf entry
+  points), which is likelier than behavioural bugs in machinery that is itself well-tested — and which
+  the three-defect circuit-breaker, keyed on "bugs", would not have counted.** The friction-is-a-finding
+  prediction (Seed expectations, below) held; it was just the ergonomic kind, not the crash kind.
+
 - **Failures live in the joins between documents, not inside them.** Three times now, every document
   has been internally coherent and the defect has been in the space between two of them. (1) The
   verbatim guard compared `content-source.md` to `Module.config` and had no anchor above the extract —
@@ -42,9 +55,8 @@ way the framework retro does.
   feature, read its spec sections whole — and say plainly which documents you have read whole, so a
   reader can calibrate.
 
-- _(F3 `ryw-firstlight` will likely add the next: if the framework surfaces more than the budgeted
-  two to three defects, that is a §A lesson about how much end-to-end risk a first-consumer plan
-  should price in.)_
+- _(F3's prediction resolved into the lesson at the top of this section: it surfaced zero bugs and two
+  seam-ergonomics gaps, under the budget, so no F4 re-scope was triggered.)_
 
 ## §B — feature-plan authoring
 

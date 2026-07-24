@@ -2,7 +2,7 @@
 name: ryw-firstlight
 feature: F3 · ryw-firstlight ★
 epic: RYW v1
-status: in flight
+status: in flight (t-1/t-2/t-3 done, PR #25 open — board close-out pending merge)
 owner: John
 depends_on: F2 · ryw-module (shipped #19 #20 #21)
 spec: ../invariants.md (I5, I6, I14, I15) · ../slot-spec.md · lib/framework/facilitation/map/** · lib/framework/guidance/surface.ts (the seams)
@@ -139,9 +139,9 @@ Postgres script. Split accordingly:
 
 | id  | Intent                                                                                                                                                                                                                     | Files likely to touch                                                                                                                                                                 | Deps | Status | PR  |
 | --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | ------ | --- |
-| t-1 | Seed + publish the map; seed + bind the coach agent `public`/primary; set the module row `active`; author `smoke:reclaim` proving one streamed turn                                                                        | `prisma/seeds/app-reclaim/001-reclaim-map.ts`, `.../002-reclaim-coach-agent.ts`, `scripts/smoke/reclaim.ts`, `package.json` (`smoke:reclaim`), `tests/unit/app/programme/map.test.ts` | F2   | todo   | —   |
-| t-2 | Add the three silent-failure assertions to `smoke:reclaim`: agent visibility is `public`, a fresh `conversationId` is issued, no `reclaim_*` slot is `special_category`                                                    | `scripts/smoke/reclaim.ts`                                                                                                                                                            | t-1  | todo   | —   |
-| t-3 | Re-plan checkpoint: ledger every framework defect in [[daybreak-asks]] with a repro; lesson in [[planning-retro]] §A; re-verify the I5/I6/I14/I15 `lib/framework/**` citations; record the resolved node-type shape for F4 | `.context/app/daybreak-asks.md`, `.context/app/planning/planning-retro.md`, `.context/app/invariants.md` (only if drift found), this doc                                              | t-2  | todo   | —   |
+| t-1 | Seed + publish the map; seed + bind the coach agent `public`/primary; set the module row `active`; author `smoke:reclaim` proving one streamed turn                                                                        | `prisma/seeds/app-reclaim/001-reclaim-map.ts`, `.../002-reclaim-coach-agent.ts`, `scripts/smoke/reclaim.ts`, `package.json` (`smoke:reclaim`), `tests/unit/app/programme/map.test.ts` | F2   | done   | #25 |
+| t-2 | Add the three silent-failure assertions to `smoke:reclaim`: agent visibility is `public`, a fresh `conversationId` is issued, no `reclaim_*` slot is `special_category`                                                    | `scripts/smoke/reclaim.ts`                                                                                                                                                            | t-1  | done   | #25 |
+| t-3 | Re-plan checkpoint: ledger every framework defect in [[daybreak-asks]] with a repro; lesson in [[planning-retro]] §A; re-verify the I5/I6/I14/I15 `lib/framework/**` citations; record the resolved node-type shape for F4 | `.context/app/daybreak-asks.md`, `.context/app/planning/planning-retro.md`, `.context/app/invariants.md` (only if drift found), this doc                                              | t-2  | done   | #25 |
 
 > **Sizing note.** t-1 and t-2 are one continuous script build; they are split only so
 > the map/agent/publish plumbing (t-1) is reviewable before the assertion hardening
@@ -220,6 +220,35 @@ Docs + checkpoint → skips `/security-review` and `/code-review`.
 _Done when:_ the [[daybreak-asks]] rows exist (or an explicit "no defects" note); F4's
 go/no-go is recorded; the four invariant citations are re-verified; the node-type shape
 is written down where F4 will read it.
+
+_Outcome (2026-07-24, all of F3 in [PR #25]):_
+
+- **Node type resolved to `stage`.** A `module` node is a distinct place bound to a
+  registered `Module` and there is exactly one module, reached directly by the leaf's
+  run (I14) — so the seven phases are `stage` nodes (a maturity progression within the
+  journey), not seven module nodes. The decision and its rationale live in
+  `lib/app/programme/map.ts`; the [[plan]] F4 row now notes it so F4 t-4's
+  progress-bar-over-seven-nodes inherits the finding, not the guess.
+- **Zero framework bugs; F4 is GO.** The end-to-end run (boot → register → sync →
+  publish → resolve → stream) worked against real Postgres on the first pass. The
+  budgeted two-to-three framework _bugs_ did not appear, so the `>3 → re-scope F4`
+  circuit-breaker did not trip. Two _seam-ergonomics_ gaps surfaced instead and are
+  [[daybreak-asks]] rows (not framework code carried): (1) a standalone `db:seed`/smoke
+  never boots the app, so the seed replicates `initFramework → initLeafApp →
+syncFramework` itself; (2) Daybreak's core→framework ESLint ban exempts
+  `scripts/smoke/**` but not leaf seeds, re-permitted via the leaf `lib/app/eslint.config.mjs`
+  seam. Lesson in [[planning-retro]] §A.
+- **Citations re-verified, no drift.** I6 (`shared.ts:18-21`), I14 (`liveness.ts:53-83`,
+  `assemble.ts:66`), I15 (`surface.ts:69-79`) are all still exact against live code;
+  I5's `special_category` behaviour is now guarded by `smoke:reclaim` trap B.
+  [[invariants]] needed no edit.
+- **What shipped vs the estimate.** t-1's seed split landed as `001-reclaim-map.ts`
+  (map) + `002-reclaim-surface.ts` (module activate + agent seed + bind), not the
+  single `002-reclaim-coach-agent.ts` the table guessed; the map definition was
+  extracted to `lib/app/programme/map.ts` (shared by seed and the no-DB test). t-2's
+  three traps + the I15 resume/fresh check landed in `scripts/smoke/reclaim.ts`.
+  `/code-review` caught one real bug (a `process.exit` in the smoke skipped the
+  `finally` restore) — fixed.
 
 ## Notes / deferrals
 
