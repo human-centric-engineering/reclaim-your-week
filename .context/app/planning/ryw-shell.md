@@ -127,35 +127,52 @@ vitest runs on `happy-dom` with **no live DB** ([[building-a-feature]] §1.2). S
 | t-3 | Run lifecycle routes (create/transition/complete/answers) + journey creation + reflection gate | `app/api/v1/app/reclaim/runs/**`, `lib/app/programme/runs/**`, `tests/unit/app/api/**`                                                             | t-2  | todo   | —   |
 | t-4 | First consumer SSE client + seven-node progress shell                                          | `app/(protected)/programme/**`, `components/app/reclaim/**`                                                                                        | t-3  | todo   | —   |
 
-> **Sizing note — one decision for John.** The parent lists **eight** `app_reclaim_*` tables in t-1
-> (`invite, grant, audit_run, bucket_label, share, report_share, feedback, consent`), but F4 only
-> _uses_ `audit_run` (and `consent` carries F8 t-4's legal-basis record). Two readings: **(A) land the
-> whole schema now** — one migration, all cascades reviewed together, later features add only logic;
-> **(B) land only `audit_run` (+ `consent`)** and let F6/F7/F8 add their tables with their logic
-> (avoids shipping tables no code uses — "ship nothing a fork deletes"). Recommend **(A)** _only if_
-> each table's shape is settled enough to not churn; otherwise **(B)**, which keeps each table next to
-> the feature that gives it meaning. Flagged because it changes t-1's size materially and is a genuine
-> judgment call, not a reconciliation fact.
+> **Sizing note — resolved (2026-07-24, John): (A) land the whole schema now.** The parent lists
+> **eight** `app_reclaim_*` tables in t-1 (`invite, grant, audit_run, bucket_label, share,
+report_share, feedback, consent`); F4 only _uses_ `audit_run` (and `consent`, F8 t-4's legal-basis
+> record). We land all eight in one migration — one place the cascades are reviewed together, and later
+> features add only logic. **The one real risk this takes on is unverified cascades:** six tables get a
+> hand-written `ON DELETE` that no F4 code path exercises, so a wrong policy would sit latent until F10
+> t-5's erasure smoke. **Mitigation (t-1 done-when):** extend `smoke:reclaim`'s erasure assertion to
+> cover **every** `app_reclaim_*` table now, so all eight cascades are verified as they land, not weeks
+> later. The residual risk — designing F6/F7/F8's table shapes ahead of their features — is accepted:
+> the shapes are sketched in the parent, and a wrong guess costs a cheap forward `ALTER` migration, not
+> a reset (never reset). If a later feature's design does move a table's shape, that ALTER is the
+> expected cost of front-loading, recorded here so it reads as a decision, not drift.
 
 ### t-1 — leaf schema + cascades + drift probes
 
-- `prisma/schema/app-reclaim.prisma` (a **new** file — `app.prisma` is Sunrise's). Per the scope
-  decision above: at minimum `app_reclaim_audit_run` and `app_reclaim_consent`.
-  - **`app_reclaim_audit_run`** — `id`, plain `userId`, `status` (`in_progress | complete | abandoned`),
-    `quarter`, timestamps. **Partial unique index `(userId) WHERE status = 'in_progress'`** (one active
-    run per user) — a Prisma-unmodelled object → a `indexExists` drift probe. `onDelete CASCADE`
-    (personal data), hand-written.
+- `prisma/schema/app-reclaim.prisma` (a **new** file — `app.prisma` is Sunrise's). Per the resolved
+  scope (A), all **eight** tables: `invite, grant, audit_run, bucket_label, share, report_share,
+feedback, consent`. F4 gives behaviour only to `audit_run` (+ `consent`); the other six land with
+  correct cascades for F6/F7/F8 to fill.
+  - **`app_reclaim_audit_run`** (F4) — `id`, plain `userId`, `status` (`in_progress | complete |
+abandoned`), `quarter`, timestamps. **Partial unique index `(userId) WHERE status = 'in_progress'`**
+    (one active run per user) — a Prisma-unmodelled object → an `indexExists` drift probe.
+    `onDelete CASCADE` (personal data), hand-written.
   - **`app_reclaim_consent`** (F8 t-4's seam) — `userId` **nullable**, `policyVersion`, `acceptedAt`,
     and a separate `marketingOptIn` boolean. **`onDelete SET NULL`, not CASCADE** — the consent record
     is the evidence that processing was lawful; erasing it with the user destroys the proof. That makes
     `userId` nullable **here and nowhere else** in this schema — deliberate, not a mistake.
+  - **The other six** (`grant`, `invite`, `bucket_label`, `share`, `report_share`, `feedback`) —
+    shapes per the parent's F6/F7/F8 descriptions, each `userId`-keyed with `onDelete CASCADE` (personal
+    data). `invite` is issued to an email and redeemed by a user, so its user reference (`redeemedBy`)
+    is nullable `SET NULL` if the design keeps it; settle per F8's row. Bodies stay minimal — no logic,
+    just the table + FK + indexes the later feature needs.
 - Hand-write each FK + `ON DELETE` in the migration SQL (`migrate dev --create-only`, then edit), and
   register a probe per object in `leaf-db-drift.ts` (`constraintExists` for each FK, `indexExists` for
   the partial unique). **No calendar table** (I4).
+- **Cascade-verification mitigation (the risk (A) takes on):** extend `smoke:reclaim` so its erasure
+  assertion covers **every** `app_reclaim_*` table — seed one throwaway row per table under the smoke
+  user, erase the user, assert zero `app_reclaim_*` rows remain (and the `consent` row survives with a
+  null `userId`). This verifies all eight cascades **as they land**, rather than leaving the six
+  F4-doesn't-exercise latent until F10 t-5.
 
-_Done when:_ `db:migrate:dev` applies; `db:drift-check` passes with the new probes; the partial-unique
-index refuses a second `in_progress` run for a user (real-DB check); `framework:boundary` + type-check
-green; a fresh checkout still boots clean (schema only, no seeded audit rows).
+_Done when:_ `db:migrate:dev` applies; `db:drift-check` passes with a probe per new object; the
+partial-unique index refuses a second `in_progress` run for a user (real-DB check); the erasure smoke
+proves every `app_reclaim_*` cascade (CASCADE tables emptied, `consent` retained with null `userId`);
+`framework:boundary` + type-check green; a fresh checkout still boots clean (schema only, no seeded
+audit rows).
 
 _Gates:_ `commit → /pre-pr → /security-review → npm run format → push → open PR → /code-review`.
 (Schema + cascades — `/code-review` earns its keep here per [[planning-retro]].)
