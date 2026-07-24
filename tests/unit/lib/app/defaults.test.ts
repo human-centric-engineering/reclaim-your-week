@@ -110,7 +110,13 @@ describe('lib/app/ bootstrap defaults are no-ops', () => {
     // glob, and that it restates the core `@/`-alias ban rather than dropping it.
     expect(appEslintConfig).toHaveLength(1);
     const [block] = appEslintConfig;
-    expect(block.files).toEqual(['prisma/seeds/app-reclaim/**/*.{ts,tsx}']);
+    // The leaf-owned framework-consuming paths: seeds + the app API/UI surfaces (F3, F4).
+    expect(block.files).toEqual([
+      'prisma/seeds/app-reclaim/**/*.{ts,tsx}',
+      'app/api/v1/app/**/*.{ts,tsx}',
+      'app/(protected)/programme/**/*.{ts,tsx}',
+      'app/admin/programme/**/*.{ts,tsx}',
+    ]);
     expect(block.rules['no-restricted-imports']).toBeDefined();
   });
 });
