@@ -34,7 +34,8 @@ import {
 /** The module's stable slug — the storage key everywhere (`Module.slug`). Never changes (I7 sibling). */
 export const RECLAIM_MODULE_SLUG = 'reclaim-audit';
 
-/** The agent seat this module offers. F3 binds the coach `AiAgent` into it; F2 t-4 authors that agent. */
+/** The agent seat this module offers. `reclaimCoachAgent` (`./agent.ts`, F2 t-4) is authored for it;
+ *  F3 t-1 seeds that agent and binds it into this seat. */
 export const RECLAIM_COACH_ROLE = 'coach';
 
 /**
