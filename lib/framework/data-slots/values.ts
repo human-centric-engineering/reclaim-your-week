@@ -38,6 +38,15 @@ export interface SlotValueProvenance {
    */
   capturedAt?: string;
   contextExcerptRef?: string;
+  /**
+   * The run this reading belongs to — a facilitation `contextKey` that scopes a
+   * value to one journey run. A consuming app stamps it at its single write path so
+   * a repeat run appends a fresh version of a slug under a new `runId` instead of
+   * overwriting the prior run's picture; readers group a slug's history by it (see
+   * {@link getSlotHistory}). Optional and generic: the engine only stores it, and
+   * apps that never repeat a run leave it unset.
+   */
+  runId?: string;
 }
 
 /** The caller-supplied fields of a new slot value. `version`/`supersededAt`/`capturedAt` are engine-managed. */
@@ -145,5 +154,26 @@ export async function getSlotHeads(
       ...(options?.slotSlugs?.length ? { slotSlug: { in: options.slotSlugs } } : {}),
     },
     orderBy: [{ capturedAt: 'desc' }, { slotSlug: 'asc' }],
+  });
+}
+
+/**
+ * Read the full version history of one slug for one user — the current head **and**
+ * every superseded version — oldest first (`version` ascending, which is monotonic
+ * per `(userId, slotSlug)`). This is the counterpart to {@link getSlotHeads}, which
+ * returns only the live head: history is what a trend or comparison over time needs,
+ * where the caller groups the returned versions by `provenance.runId` to line up one
+ * run against another. There is deliberately no `supersededAt` filter here — the
+ * superseded rows are the point.
+ *
+ * Per-slug and per-user by design: access scoping (`canRead`) wraps this the same way
+ * it wraps `getSlotHeads`, and `userId` is the seam that predicate supplies. A caller
+ * needing several slugs at once calls this per slug; a batched variant is an additive
+ * change if a hot path ever wants one.
+ */
+export async function getSlotHistory(userId: string, slotSlug: string): Promise<SlotValue[]> {
+  return prisma.slotValue.findMany({
+    where: { userId, slotSlug },
+    orderBy: { version: 'asc' },
   });
 }

@@ -12,6 +12,8 @@
  *   - `valueJson` omitted ⇒ absent from the create payload (column stays NULL);
  *   - `getSlotHeads` filters `supersededAt: null` + `userId`, newest first, with an
  *     optional slug narrowing.
+ *   - `getSlotHistory` reads ALL versions of one slug (no `supersededAt` filter),
+ *     oldest first, and passes superseded rows through untouched.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -37,7 +39,8 @@ vi.mock('@/lib/db/utils', () => ({
   executeTransaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) => cb(txMock)),
 }));
 
-const { appendSlotValue, getSlotHeads } = await import('@/lib/framework/data-slots/values');
+const { appendSlotValue, getSlotHeads, getSlotHistory } =
+  await import('@/lib/framework/data-slots/values');
 const { executeTransaction } = await import('@/lib/db/utils');
 const executeTransactionMock = executeTransaction as ReturnType<typeof vi.fn>;
 
@@ -177,5 +180,34 @@ describe('getSlotHeads', () => {
       where: { userId: 'user_1', supersededAt: null },
       orderBy: [{ capturedAt: 'desc' }, { slotSlug: 'asc' }],
     });
+  });
+});
+
+describe('getSlotHistory', () => {
+  it('reads every version of one slug for the user, oldest first, with NO supersededAt filter', async () => {
+    prismaMock.slotValue.findMany.mockResolvedValue([]);
+
+    await getSlotHistory('user_1', 'primary_goal');
+
+    // The whole point: superseded rows are included, so the where clause must not
+    // constrain `supersededAt`. Oldest-first by monotonic `version`.
+    expect(prismaMock.slotValue.findMany).toHaveBeenCalledWith({
+      where: { userId: 'user_1', slotSlug: 'primary_goal' },
+      orderBy: { version: 'asc' },
+    });
+    const where = prismaMock.slotValue.findMany.mock.calls[0]?.[0]?.where;
+    expect('supersededAt' in where).toBe(false);
+  });
+
+  it('passes superseded and head rows through untouched (history includes both)', async () => {
+    const superseded = headRow({ version: 1, id: 'sv_1', supersededAt: new Date(1) });
+    const head = headRow({ version: 2, id: 'sv_2' }); // supersededAt: null (still live)
+    prismaMock.slotValue.findMany.mockResolvedValue([superseded, head]);
+
+    const result = await getSlotHistory('user_1', 'primary_goal');
+
+    // No client-side filtering — both the superseded version and the live head return.
+    expect(result).toEqual([superseded, head]);
+    expect(result.map((r) => r.version)).toEqual([1, 2]);
   });
 });
