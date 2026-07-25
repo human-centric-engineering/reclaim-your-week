@@ -60,6 +60,26 @@ way the framework retro does.
 
 ## §B — feature-plan authoring
 
+- **When two independent reviewers flag the same thing, it's real — and a check-then-write on an
+  un-constrained table is always a race (F6 `ryw-current`).** `/security-review` and `/code-review`,
+  run separately, _both_ landed on the entitlement bootstrap: `findMany` → "no grant?" → `create`,
+  with no unique constraint and no transaction, lets two concurrent first-run requests each mint a free
+  grant (two free audits). Convergent findings from independent lenses are the strongest signal a gate
+  gives — treat them as confirmed, not "probably." **The fix generalises: any "read, decide, insert"
+  on a table without the right unique index is a TOCTOU; the cheapest idempotent fix is often a
+  deterministic primary key** (here `free_<userId>`, so the second insert collides on the PK — no
+  migration, no new constraint). Watch for this shape in F8's grant/referral writes.
+
+- **A brand palette cannot pass strict categorical-colour validation at nine series — carry identity on
+  the labels, not the hue (F6 t-3, `<ReclaimChart>`).** The dataviz validator failed every
+  teal-and-cream nine-colour set on adjacent-pair separation, because nine distinguishable hues is past
+  the safe categorical limit _and_ "sympathetic to one brand" pulls them together. The resolution was
+  not a rainbow: it was to make the bars **directly labelled** (name + hours on each), which is the
+  sanctioned secondary encoding, so colour becomes decorative grouping and the strict 9-way separation
+  stops being load-bearing. **Lesson for any RYW chart: if the categories are fixed and labelled, don't
+  burn the plan chasing a validator green that the design doesn't need** — and keep the palette an
+  overridable leaf constant, since the real nine-colour choice is Rashmir's IP (open items 1 & 3).
+
 - **The gate suite earns its keep on parsing + data-model code — budget a real fix pass, not a rubber
   stamp (F5 `ryw-calendar`).** F5 type-checked, lint-passed, and had 31 green unit tests _before_
   `/code-review` — and the review still found two genuine correctness bugs the tests missed: an
