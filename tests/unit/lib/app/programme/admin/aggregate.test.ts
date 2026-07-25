@@ -54,8 +54,10 @@ describe('computeAggregate — the cohort floor', () => {
     const fundraising = view.buckets.find((b) => b.bucketSlug === 'fundraising-capital');
     expect(fundraising?.suppressed).toBe(true);
     expect(fundraising?.medianHours).toBeNull();
-    // The count is still shown — how many people answered is not itself disclosive; the figure is.
-    expect(fundraising?.leaders).toBe(2);
+    // The **count goes too**, not just the figure. `leaders: 2` beside a withheld median announces
+    // that exactly two leaders report fundraising time — the disclosure the suppression exists to
+    // prevent, wearing a different hat. (Raised by `/security-review` on this branch.)
+    expect(fundraising?.leaders).toBeNull();
   });
 
   it('reports the median, so one extreme week does not drag the cohort figure', () => {

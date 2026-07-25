@@ -13,10 +13,14 @@
  *      role off the session. `tests/unit/invariants/admin-support.test.ts` fails the build if the
  *      flag appears anywhere outside this module — it must never reach a helper a consumer route
  *      could also call.
- *   2. **Slot reads have no second line of defence.** `getSlotHeads(userId)` takes a bare user id
- *      with no viewer argument at all — the framework's own comment says access scoping "wraps this"
- *      and `userId` is the seam. So the route guard IS the gate, which is why these reads live in one
- *      reviewable place.
+ *   2. **Slot reads have no second line of defence, and the flag guard does not cover them.**
+ *      `getSlotHeads(userId)` takes a bare user id with no viewer argument at all — the framework's
+ *      own comment says access scoping "wraps this" and `userId` is the seam. So a module can read
+ *      any user's slots without ever mentioning `isAdminSupport`, which is exactly what `aggregate.ts`
+ *      and `export.ts` do. The guard therefore also carries a list of the modules permitted to read
+ *      across users at all, and asserts every importer of each is `withAdminAuth`-guarded. (Found by
+ *      `/security-review` on this branch: the first version of that guard claimed to cover cross-user
+ *      reads and only covered the flag.)
  *   3. **The two `sensitive` prose slots never enter the list payload** (plan D5, I5).
  *      `reclaim_setup_keeping_me_up` and `reclaim_setup_why_now` are legitimately Rashmir's to read —
  *      she is the coach — but a sensitive disclosure should be something you choose to open, not

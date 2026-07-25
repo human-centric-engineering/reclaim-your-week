@@ -93,7 +93,7 @@ const aggregateSchema = z.object({
     z.object({
       bucketSlug: z.string(),
       title: z.string(),
-      leaders: z.number(),
+      leaders: z.number().nullable(),
       medianHours: z.number().nullable(),
       suppressed: z.boolean(),
     })
@@ -161,7 +161,7 @@ export function listClients(): Promise<ClientListView> {
 /** One leader's record, including the sensitive context the list withholds. */
 export function getClient(userId: string): Promise<ClientDetailView> {
   return getJson(
-    `/api/v1/app/reclaim/admin/clients/${userId}`,
+    `/api/v1/app/reclaim/admin/clients/${encodeURIComponent(userId)}`,
     clientDetailSchema,
     'We could not load that record.'
   );

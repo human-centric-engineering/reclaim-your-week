@@ -31,8 +31,8 @@ import { readReclaimAdminConfig } from '@/lib/app/programme/config';
 export interface AggregateBucket {
   bucketSlug: string;
   title: string;
-  /** How many consenting leaders reported any hours in this bucket. */
-  leaders: number;
+  /** How many consenting leaders reported any hours in this bucket — `null` when suppressed. */
+  leaders: number | null;
   /** Median weekly hours across those leaders, or `null` when suppressed. */
   medianHours: number | null;
   suppressed: boolean;
@@ -103,11 +103,18 @@ export function computeAggregate(
 
     // A bucket can fall below the floor even when the cohort does not — the fundraising bucket only
     // appears for leaders it is relevant to, so its own n is genuinely smaller.
+    //
+    // When it is suppressed the **count goes too**, not just the median. An earlier version returned
+    // `leaders: 1` beside a withheld figure, which announces that exactly one leader reports time in
+    // this bucket — the same disclosure the suppression exists to prevent, wearing a different hat.
+    // No privilege boundary is crossed either way (the reader is an admin who could open the client
+    // record), but this is the surface that promises "withheld below the floor", and a promise that
+    // holds for the median and not the count is not the promise it appears to be.
     const suppressed = values.length < minimumCohort;
     return {
       bucketSlug: bucket.slug,
       title: bucket.title,
-      leaders: values.length,
+      leaders: suppressed ? null : values.length,
       medianHours: suppressed ? null : median(values),
       suppressed,
     };
