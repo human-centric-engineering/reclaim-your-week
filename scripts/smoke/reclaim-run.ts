@@ -16,6 +16,8 @@ import { getSlotHeads } from '@/lib/framework/data-slots';
 import { MODULE_SURFACE_CONTEXT_TYPE } from '@/lib/framework/guidance/surface';
 import { RECLAIM_MODULE_SLUG } from '@/lib/app/programme/module';
 import { missingReflectionSlug } from '@/lib/app/programme/runs/reflection';
+import { readRunAnswers } from '@/lib/app/programme/runs/answers';
+import { buildSummary } from '@/lib/app/programme/summary';
 import { recordConsent } from '@/lib/app/programme/access/consent';
 import { readReclaimAccessConfig } from '@/lib/app/programme/config';
 import {
@@ -150,6 +152,38 @@ async function main(): Promise<void> {
     const run2 = await createRun(uid);
     if (run2.id === run.id) fail('second run reused the first run id');
     console.log(`[7] free tier refused a 2nd audit; after a top-up, fresh run ${run2.id} allowed`);
+
+    // ── 8. The repeat-audit read: run 1 stays readable once run 2 answers ──
+    //
+    // This is the real-Postgres half of the run-scoping fix, and the only place the JSON-path filter
+    // and Postgres's actual supersession behaviour meet. Before the fix, answering ANY slug in run 2
+    // superseded run 1's version of it and `readRunAnswers(uid, run.id)` silently stopped returning
+    // it — which is what emptied the public share link a leader had already sent to a colleague.
+    await saveRunAnswer(uid, run2.id, {
+      slotSlug: 'reclaim_profile_first_name',
+      value: 'Sam (second audit)',
+    });
+
+    const runOneAfter = await readRunAnswers(uid, run.id);
+    if (runOneAfter['reclaim_profile_first_name']?.value !== 'Sam') {
+      fail(
+        `run 1's answer was lost once run 2 superseded it — got ${JSON.stringify(
+          runOneAfter['reclaim_profile_first_name']
+        )}, expected "Sam"`
+      );
+    }
+
+    const runTwoAfter = await readRunAnswers(uid, run2.id);
+    if (runTwoAfter['reclaim_profile_first_name']?.value !== 'Sam (second audit)') {
+      fail("run 2's own answer did not read back");
+    }
+
+    // And the summary built on it — the thing behind the share token — still renders run 1.
+    const runOneSummary = await buildSummary(uid, run.id);
+    if (runOneSummary.firstName !== 'Sam') {
+      fail(`the shared summary for run 1 hollowed out: firstName is ${runOneSummary.firstName}`);
+    }
+    console.log('[8] run 1 still reads (and still summarises) after run 2 superseded its answers');
   } finally {
     // Erase the throwaway user — cascades the runs, journey, slot values, and conversation.
     await eraseUser({
@@ -161,7 +195,9 @@ async function main(): Promise<void> {
     await prisma.$disconnect();
   }
 
-  console.log('\n✓ smoke:reclaim-run passed — create, answer, reflection gate, complete, resume');
+  console.log(
+    '\n✓ smoke:reclaim-run passed — create, answer, reflection gate, complete, repeat, run-scoped reads'
+  );
 }
 
 main().catch(async (err) => {
