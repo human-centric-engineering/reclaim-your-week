@@ -2,7 +2,7 @@
 name: ryw-calendar
 feature: F5 · ryw-calendar
 epic: RYW v1
-status: in flight
+status: shipped
 owner: John
 depends_on: F4 · ryw-shell (shipped #27–#30/#32)
 spec: ../invariants.md (I4, I-composite, I5, I8, I12, I17) · ../content-source.md §8 · ../slot-spec.md (reclaim_calendar 21 · reclaim_composite 10) · lib/orchestration/llm/structured-completion.ts · lib/app/programme/slots/write.ts (the seams)
@@ -123,10 +123,10 @@ vitest runs on `happy-dom` with **no live DB** ([[building-a-feature]] §1.2). S
 
 | id  | Intent                                                                                                                | Files likely to touch                                                                                                                                                                 | Deps | Status | PR  |
 | --- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | ------ | --- |
-| t-1 | Add `ical.js`; pure in-memory `.ics` parser with RRULE expansion                                                      | `package.json`, `lib/app/programme/calendar/parse.ts`, `tests/unit/lib/app/programme/calendar/parse.test.ts`, `tests/fixtures/calendar/*.ics`                                         | F4   | todo   | —   |
-| t-2 | Upload route: in-memory, one `runStructuredCompletion`, per-bucket totals via `saveAnswer` (I4)                       | `app/api/v1/app/reclaim/runs/[runId]/calendar/route.ts`, `lib/app/programme/calendar/categorise.ts`, `tests/unit/invariants/calendar-privacy.test.ts`, `package.json` (`leaf:checks`) | t-1  | todo   | —   |
-| t-3 | Review UI (by-bucket + ambiguous confirm gate) + the [X]/[Y]/[Z] & task-switching questions + composite (I-composite) | `app/(protected)/programme/**`, `components/app/reclaim/calendar/**`, `lib/app/programme/calendar/composite.ts`                                                                       | t-2  | todo   | —   |
-| t-4 | Both privacy messages at the upload step; `smoke:reclaim-calendar` proving no title in DB                             | `components/app/reclaim/calendar/**`, `scripts/smoke/reclaim-calendar.ts`, `package.json` (`smoke:reclaim-calendar`)                                                                  | t-3  | todo   | —   |
+| t-1 | Add `ical.js`; pure in-memory `.ics` parser with RRULE expansion                                                      | `package.json`, `lib/app/programme/calendar/parse.ts`, `tests/unit/lib/app/programme/calendar/parse.test.ts`, `tests/fixtures/calendar/*.ics`                                         | F4   | done   | #34 |
+| t-2 | Upload route: in-memory, one `runStructuredCompletion`, per-bucket totals via `saveAnswer` (I4)                       | `app/api/v1/app/reclaim/runs/[runId]/calendar/route.ts`, `lib/app/programme/calendar/categorise.ts`, `tests/unit/invariants/calendar-privacy.test.ts`, `package.json` (`leaf:checks`) | t-1  | done   | #34 |
+| t-3 | Review UI (by-bucket + ambiguous confirm gate) + the [X]/[Y]/[Z] & task-switching questions + composite (I-composite) | `app/(protected)/programme/**`, `components/app/reclaim/calendar/**`, `lib/app/programme/calendar/composite.ts`                                                                       | t-2  | done   | #34 |
+| t-4 | Both privacy messages at the upload step; `smoke:reclaim-calendar` proving no title in DB                             | `components/app/reclaim/calendar/**`, `scripts/smoke/reclaim-calendar.ts`, `package.json` (`smoke:reclaim-calendar`)                                                                  | t-3  | done   | #34 |
 
 > **Sizing note.** Four tasks, one PR each. t-1 (parser) and t-3 (review UI + composite) are the two
 > heavy ones; t-2 is the privacy-critical core; t-4 is the message surfacing + the machine proof. The
