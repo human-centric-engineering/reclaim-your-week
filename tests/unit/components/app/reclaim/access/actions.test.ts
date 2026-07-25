@@ -16,6 +16,7 @@ import {
   referSomeone,
   readConsentState,
   acceptConsent,
+  grantAnotherAudit,
 } from '@/components/app/reclaim/access/actions';
 
 const fetchMock = vi.fn();
@@ -163,5 +164,59 @@ describe('consent', () => {
     fetchMock.mockResolvedValue(fail('These terms have been updated'));
 
     await expect(acceptConsent('draft-0', false)).rejects.toThrow('These terms have been updated');
+  });
+});
+
+describe('grantAnotherAudit', () => {
+  it('posts the email and tier, and returns the server’s message', async () => {
+    fetchMock.mockResolvedValue(
+      ok({ granted: true, message: 'They can start another audit now.' })
+    );
+
+    expect(await grantAnotherAudit({ email: 'leader@example.org', tier: 'standard' })).toBe(
+      'They can start another audit now.'
+    );
+    const [url, init] = fetchMock.mock.calls[0] as [string, { body: string }];
+    expect(url).toBe('/api/v1/app/reclaim/grants');
+    expect(JSON.parse(init.body)).toEqual({ email: 'leader@example.org', tier: 'standard' });
+  });
+
+  it('surfaces "no account exists" rather than pretending it worked', async () => {
+    fetchMock.mockResolvedValue(
+      fail('No account exists for this email — send them an invitation instead')
+    );
+
+    await expect(
+      grantAnotherAudit({ email: 'nobody@example.org', tier: 'standard' })
+    ).rejects.toThrow(/send them an invitation instead/);
+  });
+});
+
+describe('failure handling when the server says nothing useful', () => {
+  // A 500 with an HTML body, a proxy timeout, a truncated response: `res.json()` rejects or yields a
+  // shape with no message. The leader must still get a sentence, never `undefined` or a raw throw.
+  it('falls back to the action’s own wording when the body is not the error envelope', async () => {
+    fetchMock.mockResolvedValue({ ok: false, json: () => Promise.reject(new Error('not json')) });
+
+    await expect(listInvites()).rejects.toThrow('We could not load the invitations.');
+  });
+
+  it('falls back for every action that can fail', async () => {
+    fetchMock.mockResolvedValue({ ok: false, json: () => Promise.resolve({ nonsense: true }) });
+
+    await expect(revokeInvite('inv1')).rejects.toThrow('That invitation could not be withdrawn.');
+    await expect(readConsentState()).rejects.toThrow('We could not load the terms just now.');
+    await expect(acceptConsent('draft-1', false)).rejects.toThrow(
+      'We could not record that just now.'
+    );
+    await expect(grantAnotherAudit({ email: 'a@b.co', tier: 'standard' })).rejects.toThrow(
+      'That audit could not be granted.'
+    );
+    await expect(
+      issueInvite({ name: 'A', email: 'a@b.co', tier: 'standard', resend: false })
+    ).rejects.toThrow('The invitation could not be issued.');
+    await expect(referSomeone({ name: 'A', email: 'a@b.co' })).rejects.toThrow(
+      'That invitation could not be sent.'
+    );
   });
 });
