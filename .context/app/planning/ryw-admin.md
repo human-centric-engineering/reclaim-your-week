@@ -2,12 +2,13 @@
 name: ryw-admin
 feature: F10 · ryw-admin
 epic: RYW v1
-status: in flight
+status: shipped
 owner: John
 depends_on: F7 · ryw-phases (shipped #39) · F8 · ryw-access (shipped #41)
 spec: ../sources/Reclaim_Your_Week_Brief_for_John.md §1 (the success measures) · §2 (qualification, confidentiality, aggregate patterns) · §3 (feedback + quote consent) · §8 (cost of a free tier) · ../invariants.md (I5 sensitivity, I7 canonical slugs, I10 tier boundary, I11 content is loaded, I12 no interpretation) · plan.md reconciliation 3 + 7
 parent: plan.md
 opened: 2026-07-25
+shipped: 2026-07-25 (#43; plan #42) — all five tasks in one branch
 ---
 
 # ryw-admin — the operator surface, and the compliance floor
