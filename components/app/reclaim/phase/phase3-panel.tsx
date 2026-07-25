@@ -13,16 +13,12 @@ import { truthy } from '@/lib/app/programme/chart/series';
 import { Reflection } from '@/components/app/reclaim/phase/reflection';
 import { NumberField, TextAreaField } from '@/components/app/reclaim/phase/fields';
 import { AdvanceControls } from '@/components/app/reclaim/phase/advance-controls';
+import { parseHours, isHours } from '@/components/app/reclaim/phase/hours';
 import {
   readAnswers,
   type AnswerInput,
   type RunAnswers,
 } from '@/components/app/reclaim/phase/actions';
-
-const num = (v: string) => {
-  const n = Number(v);
-  return v.trim() && Number.isFinite(n) && n >= 0 ? n : 0;
-};
 
 export function Phase3Panel({ runId, onAdvanced }: { runId: string; onAdvanced: () => void }) {
   const [base, setBase] = useState<RunAnswers>({});
@@ -52,7 +48,7 @@ export function Phase3Panel({ runId, onAdvanced }: { runId: string; onAdvanced: 
   const currentHours = (token: string): number => {
     const a = base[`reclaim_current_hours__${token}`];
     if (!a) return 0;
-    return typeof a.valueJson === 'number' ? a.valueJson : num(a.value);
+    return typeof a.valueJson === 'number' ? a.valueJson : parseHours(a.value);
   };
 
   // The "suspiciously similar" heuristic (§8): most areas within an hour of current, esp. delivery
@@ -62,7 +58,9 @@ export function Phase3Panel({ runId, onAdvanced }: { runId: string; onAdvanced: 
     if (withIdeal.length < 3) return false;
     const nearlySame = withIdeal.every(
       (b) =>
-        Math.abs(num(ideal[bucketToken(b.slug)] ?? '') - currentHours(bucketToken(b.slug))) <= 1
+        Math.abs(
+          parseHours(ideal[bucketToken(b.slug)] ?? '') - currentHours(bucketToken(b.slug))
+        ) <= 1
     );
     return nearlySame;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -73,14 +71,14 @@ export function Phase3Panel({ runId, onAdvanced }: { runId: string; onAdvanced: 
     for (const b of visible) {
       const token = bucketToken(b.slug);
       const v = ideal[token]?.trim();
-      if (v && Number.isFinite(Number(v)) && num(v) >= 0)
-        out.push({ slotSlug: `reclaim_ideal_hours__${token}`, value: v, valueJson: num(v) });
+      if (v && isHours(v))
+        out.push({ slotSlug: `reclaim_ideal_hours__${token}`, value: v, valueJson: parseHours(v) });
     }
-    if (total.trim() && num(total) > 0)
+    if (total.trim() && parseHours(total) > 0)
       out.push({
         slotSlug: 'reclaim_ideal_total_hours',
         value: total.trim(),
-        valueJson: num(total),
+        valueJson: parseHours(total),
       });
     if (deepWhen.trim())
       out.push({ slotSlug: 'reclaim_ideal_deep_block_when', value: deepWhen.trim() });
@@ -135,7 +133,7 @@ export function Phase3Panel({ runId, onAdvanced }: { runId: string; onAdvanced: 
             {visible.map((b) => {
               const token = bucketToken(b.slug);
               const now = currentHours(token);
-              const want = num(ideal[token] ?? '');
+              const want = parseHours(ideal[token] ?? '');
               const gap = ideal[token]?.trim() ? Math.round((want - now) * 10) / 10 : null;
               return (
                 <tr key={b.slug} className="border-border/60 border-b">

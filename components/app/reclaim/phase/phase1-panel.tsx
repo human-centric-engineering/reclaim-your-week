@@ -15,6 +15,7 @@ import { buildChartData, truthy, type Answers } from '@/lib/app/programme/chart/
 import { ReclaimChart } from '@/components/app/reclaim/chart/reclaim-chart';
 import { Reflection } from '@/components/app/reclaim/phase/reflection';
 import { NumberField, TextAreaField, BooleanField } from '@/components/app/reclaim/phase/fields';
+import { parseHours, isHours } from '@/components/app/reclaim/phase/hours';
 import {
   saveBatch,
   advancePhase,
@@ -59,9 +60,8 @@ export function Phase1Panel({ runId, onAdvanced }: { runId: string; onAdvanced: 
   const chartData = useMemo(() => {
     const live: Answers = { ...base };
     for (const [token, v] of Object.entries(hours)) {
-      const n = Number(v);
-      if (v.trim() && Number.isFinite(n) && n >= 0)
-        live[`reclaim_current_hours__${token}`] = { value: v, valueJson: n };
+      if (isHours(v))
+        live[`reclaim_current_hours__${token}`] = { value: v, valueJson: parseHours(v) };
     }
     return buildChartData(live, labels);
   }, [base, hours, labels]);
@@ -81,9 +81,12 @@ export function Phase1Panel({ runId, onAdvanced }: { runId: string; onAdvanced: 
       for (const b of visible) {
         const token = bucketToken(b.slug);
         const h = hours[token]?.trim();
-        const n = Number(h);
-        if (h && Number.isFinite(n) && n >= 0) {
-          answers.push({ slotSlug: `reclaim_current_hours__${token}`, value: h, valueJson: n });
+        if (h && isHours(h)) {
+          answers.push({
+            slotSlug: `reclaim_current_hours__${token}`,
+            value: h,
+            valueJson: parseHours(h),
+          });
         }
         const d = detail[token]?.trim();
         if (d) answers.push({ slotSlug: `reclaim_current_detail__${token}`, value: d });

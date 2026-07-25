@@ -11,6 +11,7 @@
 
 import { useState } from 'react';
 import { RECLAIM_PROCESS_OUTLINE } from '@/lib/app/programme/content';
+import { parseHours, isHours } from '@/components/app/reclaim/phase/hours';
 import { saveBatch, advancePhase, type AnswerInput } from '@/components/app/reclaim/phase/actions';
 import {
   TextField,
@@ -67,11 +68,8 @@ function toAnswers(s: SetupState): AnswerInput[] {
     if (v.trim()) out.push({ slotSlug: slug, value: v.trim() });
   };
   const num = (slug: string, v: string) => {
-    const n = Number(v);
     // Counts/hours are non-negative — a stray "-" never reaches a slot.
-    if (v.trim() && Number.isFinite(n) && n >= 0) {
-      out.push({ slotSlug: slug, value: v.trim(), valueJson: n });
-    }
+    if (isHours(v)) out.push({ slotSlug: slug, value: v.trim(), valueJson: parseHours(v) });
   };
   const flag = (slug: string, v: boolean | null) => {
     if (v !== null) out.push({ slotSlug: slug, value: v ? 'Yes' : 'No', valueJson: v });
