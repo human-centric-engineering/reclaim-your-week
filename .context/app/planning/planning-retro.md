@@ -60,6 +60,17 @@ way the framework retro does.
 
 ## §B — feature-plan authoring
 
+- **The gate suite earns its keep on parsing + data-model code — budget a real fix pass, not a rubber
+  stamp (F5 `ryw-calendar`).** F5 type-checked, lint-passed, and had 31 green unit tests _before_
+  `/code-review` — and the review still found two genuine correctness bugs the tests missed: an
+  open-ended RRULE anchored to a years-old DTSTART silently dropped its _current_ occurrences (the exact
+  data a time audit needs), and a sparse per-bucket write left stale values on re-upload. Both were
+  invisible to type-check and to tests written against the happy path. **The lesson: for a feature whose
+  core is parsing external data or computing a persisted aggregate (F5's `.ics`, F6's charts, F7's
+  refer-back), plan for a code-review fix round as part of the task, not an afterthought — and prefer
+  "write the whole set" over "write the delta" for any multi-key persistence, so a re-run can't leave a
+  stale key.** The "friction is a finding" stance (§A) extends to your own diff.
+
 - **A merged PR is not a landed task — check the base branch, not the merge status (F4 t-4).** F4's
   four tasks each merged as their own PR, but t-4 (#30) was opened against the **t-3 feature branch**
   rather than `main`. GitHub happily showed it `MERGED`, yet `main` — which had already forked at the
