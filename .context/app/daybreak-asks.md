@@ -34,16 +34,17 @@ code is clean framework-tier work whose final home is upstream.
 
 ## Defects found in Daybreak
 
-_(none — F3 `ryw-firstlight` t-1/t-2 ran boot → register → sync → publish →
-resolve → stream end to end against real Postgres with **zero framework bugs**.
-The two integration gaps it surfaced are seam/ergonomics asks in the ledger
-above, not behavioural defects. The F3 budget was two to three defects; the
-`>3 → re-scope F4` circuit-breaker did not trip. Lesson recorded in
-[`planning/planning-retro.md`](./planning/planning-retro.md) §A.)_
+_F3 `ryw-firstlight` t-1/t-2 ran boot → register → sync → publish → resolve →
+stream end to end against real Postgres with **zero Daybreak-framework bugs** —
+the two integration gaps it surfaced are seam/ergonomics asks in the ledger
+above, not behavioural defects, and the `>3 → re-scope F4` circuit-breaker did
+not trip. F4 t-4's consumer chat client then found one **Sunrise-core** defect
+(below Daybreak) by being a real streaming consumer — logged below. Lesson
+recorded in [`planning/planning-retro.md`](./planning/planning-retro.md) §A._
 
-| Defect | Found by | Repro | Status |
-| ------ | -------- | ----- | ------ |
-| —      | —        | —     | —      |
+| Defect                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | Found by                                        | Repro                                                                                                                                                                                                                                                                                                                                                                                                 | Status                                                                                                                                                                                                                                                                                                                                                                     |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The shared client SSE schema `chatStreamEventSchema` (`components/admin/orchestration/chat/chat-events.ts`, Sunrise core) omits the **`budget_exceeded_per_turn`** variant, though `streamChat` (`lib/orchestration/chat`) emits it. On the tool-loop-abort path it is the **sole terminal frame** (no trailing `done`/`error`), so `parseChatStreamEvent` returns `null` and every consumer — the admin `ChatInterface` reference included — silently drops it, leaving an empty assistant turn with no explanation. `content_reset` **is** modelled, so only the budget event leaks. | F4 t-4 `ryw-shell` (consumer coach-chat client) | Send a message whose tool loop exceeds the per-turn USD cap; the handler yields `{ type: 'budget_exceeded_per_turn', … }` then returns; `sse.ts` closes cleanly on return (no `TERMINAL_ERROR_FRAME`, which only fires on throw). Client union has no such variant → dropped. Leaf works around it by falling back to the raw `parseSseBlock` frame in `coach-chat.tsx` (shared infra, no core edit). | **open — to file against Daybreak** (surfaces to Sunrise). Fix upstream: add `z.object({ type: z.literal('budget_exceeded_per_turn'), code: z.string().optional(), message: z.string(), usedUsd: z.number().optional(), limitUsd: z.number().optional() })` to `chatStreamEventSchema`. When it lands, drop the leaf's raw-frame fallback and handle the modelled variant. |
 
 ## Adding a row
 

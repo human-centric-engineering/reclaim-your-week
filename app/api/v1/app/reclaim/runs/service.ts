@@ -19,6 +19,9 @@ import {
   enterFirstPhase,
   advancePhase,
   completeFinalPhase,
+  emptyPhaseProgress,
+  loadPhaseProgress,
+  type PhaseView,
 } from '@/lib/app/programme/runs/journey';
 
 export const RUN_STATUS = {
@@ -132,4 +135,23 @@ export async function saveRunAnswer(
     value: input.value,
     conversationId: input.conversationId,
   });
+}
+
+/** The progress shell's data (F4 t-4): the active run (if any) and each phase's status, so the client
+ *  renders where the leader is and resumes there. All seven phases always appear (Phase 0 included). */
+export interface CurrentRunState {
+  run: { id: string; quarter: string | null } | null;
+  phases: PhaseView[];
+  currentPhaseKey: string;
+}
+
+export async function loadCurrentRunState(userId: string): Promise<CurrentRunState> {
+  const run = await prisma.reclaimAuditRun.findFirst({
+    where: { userId, status: RUN_STATUS.inProgress },
+    orderBy: { startedAt: 'desc' },
+  });
+  if (run === null) return { run: null, ...emptyPhaseProgress() };
+
+  const progress = await loadPhaseProgress(userId, run.id);
+  return { run: { id: run.id, quarter: run.quarter }, ...progress };
 }

@@ -8,8 +8,9 @@
  */
 
 import { applyJourneyTransition } from '@/lib/framework/guidance/guidance';
+import { getJourney, getNodeStates } from '@/lib/framework/facilitation/journey/queries';
 import { ValidationError } from '@/lib/api/errors';
-import { RECLAIM_MAP_SLUG } from '@/lib/app/programme/map';
+import { RECLAIM_MAP_SLUG, RECLAIM_PHASES } from '@/lib/app/programme/map';
 import { FIRST_PHASE_KEY, FINAL_PHASE_KEY, nextPhaseKey } from '@/lib/app/programme/runs/phases';
 
 type TransitionResult = Awaited<ReturnType<typeof applyJourneyTransition>>;
@@ -75,4 +76,50 @@ export async function completeFinalPhase(userId: string, runId: string): Promise
     nodeKey: FINAL_PHASE_KEY,
     kind: 'complete',
   }).catch(() => null);
+}
+
+export type PhaseStatus = 'completed' | 'active' | 'upcoming';
+export interface PhaseView {
+  key: string;
+  label: string;
+  status: PhaseStatus;
+}
+export interface PhaseProgress {
+  phases: PhaseView[];
+  currentPhaseKey: string;
+}
+
+/** All seven phases, not yet started — the shape shown before a run exists. */
+export function emptyPhaseProgress(): PhaseProgress {
+  return {
+    phases: RECLAIM_PHASES.map((p) => ({ key: p.key, label: p.label, status: 'upcoming' })),
+    currentPhaseKey: FIRST_PHASE_KEY,
+  };
+}
+
+/**
+ * Each phase's status for a run (from the journey node states) plus where the leader is now — the
+ * active node, else the first not-yet-complete, else the last. Reads the framework's node states, so
+ * it lives here rather than in the core-scanned `app/api` surface.
+ */
+export async function loadPhaseProgress(userId: string, runId: string): Promise<PhaseProgress> {
+  const viewer = { userId };
+  const journey = await getJourney(viewer, journeyKey(userId, runId));
+  const states = journey
+    ? await getNodeStates(viewer, { journeyId: journey.id, subject: userId })
+    : [];
+  const statusByKey = new Map(states.map((s) => [s.nodeKey, s.status]));
+
+  const phases: PhaseView[] = RECLAIM_PHASES.map((p) => {
+    const s = statusByKey.get(p.key);
+    const status: PhaseStatus =
+      s === 'completed' ? 'completed' : s === 'active' ? 'active' : 'upcoming';
+    return { key: p.key, label: p.label, status };
+  });
+  const currentPhaseKey =
+    phases.find((p) => p.status === 'active')?.key ??
+    phases.find((p) => p.status !== 'completed')?.key ??
+    FINAL_PHASE_KEY;
+
+  return { phases, currentPhaseKey };
 }
