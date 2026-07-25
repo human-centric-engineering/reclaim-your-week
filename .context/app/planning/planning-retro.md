@@ -75,6 +75,21 @@ way the framework retro does.
   failure mode is asymmetric, because "already built" quietly deletes a task from the plan while
   "built but not for us" only shows up when someone tries to use it.
 
+- **A read that filters the right field on the wrong set is invisible until a second instance exists
+  (F9, found at planning).** `readRunAnswers(userId, runId)` reads `getSlotHeads` — which is
+  `WHERE supersededAt IS NULL` — and then filters by `provenance.runId`. Correct-looking, correctly
+  named, and correct for exactly as long as every user has one run: the head of every slug _is_ that
+  run's value. The moment a leader starts a second audit, the first run's values are superseded and
+  the function silently returns less and less of them, hollowing out `buildSummary` and with it the
+  **public share link F7 invites leaders to send to colleagues** — a link that degrades because its
+  owner started a new audit, with nobody told. Nothing about the code reads as wrong, no test failed,
+  and `getSlotHistory` — built in F1 t-2 for precisely this — has sat unused since #17 because F9 is
+  its only consumer. **The check: when a feature introduces the _second_ of something the system has
+  only ever had one of (run, tenant, workspace, version), re-read every query that scopes to it and
+  ask what the first one now looks like.** The bug is never in the new instance; it is in the old
+  code's assumption that there was only ever one. Third §B entry in a row where the defect lived in a
+  join — here between a filter and the set it filters.
+
 - **A derived column is only as true as the column it derives from — go and check what actually
   writes it (F10 t-1, found by `/code-review`).** "Stalled" was computed from
   `ReclaimAuditRun.updatedAt`, which is the obvious column, is a real `@updatedAt`, and is **never
