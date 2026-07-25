@@ -14,6 +14,16 @@ import { prisma } from '@/lib/db/client';
 import { ForbiddenError } from '@/lib/api/errors';
 import { logger } from '@/lib/logging';
 
+/** A Prisma P2002 (unique-constraint) violation, duck-typed to avoid importing `@prisma/client` here. */
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: unknown }).code === 'P2002'
+  );
+}
+
 type Grant = Awaited<ReturnType<typeof prisma.reclaimGrant.findFirst>>;
 
 const TWELVE_MONTHS_MS = 365 * 24 * 60 * 60 * 1000;
@@ -49,10 +59,18 @@ export async function assertEntitled(userId: string): Promise<void> {
 
   if (grants.length === 0) {
     // First run: grant the free tier (one complete audit). F8 later issues client/referral grants.
-    await prisma.reclaimGrant.create({
-      data: { userId, tier: 'free', auditsGranted: 1, auditsUsed: 0 },
-    });
-    logger.info('Reclaim: bootstrapped a free-tier grant on first run', { userId });
+    // A **deterministic primary key** (`free_<userId>`) makes the bootstrap idempotent against two
+    // concurrent first-run requests: the second create collides on the PK (P2002) instead of minting
+    // a second free grant, so the "one complete audit" limit can't be doubled by a double-click.
+    try {
+      await prisma.reclaimGrant.create({
+        data: { id: `free_${userId}`, userId, tier: 'free', auditsGranted: 1, auditsUsed: 0 },
+      });
+      logger.info('Reclaim: bootstrapped a free-tier grant on first run', { userId });
+    } catch (error) {
+      // A concurrent first-run already bootstrapped it (PK collision). Any other error is real.
+      if (!isUniqueViolation(error)) throw error;
+    }
     return;
   }
 

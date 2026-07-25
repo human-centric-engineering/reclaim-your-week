@@ -9,7 +9,8 @@
 import type { ReactNode } from 'react';
 import { FieldHelp } from '@/components/ui/field-help';
 
-const inputClass =
+/** The programme's calm input styling — shared across the phase fields (and the reflection box). */
+export const inputClass =
   'border-border text-foreground placeholder:text-muted-foreground w-full rounded-lg border bg-transparent px-3 py-2 text-sm focus:outline-none';
 
 function Label({

@@ -103,6 +103,15 @@ describe('buildChartData — value parsing + benchmark edges', () => {
     expect(data.buckets.find((b) => b.token === 'deep_work')?.status).toBe('none');
   });
 
+  it('clamps a negative hours value to zero (no corrupted totals or bar widths)', () => {
+    const data = buildChartData({
+      reclaim_current_hours__deep_work: { value: '-5', valueJson: -5 },
+      reclaim_current_hours__strategic_planning: n(10),
+    });
+    expect(data.buckets.find((b) => b.token === 'deep_work')?.hours).toBe(0);
+    expect(data.totalHours).toBe(10); // the -5 did not subtract from the total
+  });
+
   it('gives every bucket a 0% share and no total when nothing was entered', () => {
     const data = buildChartData({});
     expect(data.totalHours).toBe(0);

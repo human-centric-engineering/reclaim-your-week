@@ -16,12 +16,7 @@ import { getRouteLogger } from '@/lib/api/context';
 import { ValidationError } from '@/lib/api/errors';
 import { cuidSchema } from '@/lib/validations/common';
 import { saveRunAnswers } from '@/app/api/v1/app/reclaim/runs/service';
-
-const answerSchema = z.object({
-  slotSlug: z.string().trim().min(1).max(120),
-  value: z.string().min(1),
-  valueJson: z.unknown().optional(),
-});
+import { answerSchema } from '@/app/api/v1/app/reclaim/runs/[runId]/answers/route';
 
 const batchSchema = z.object({
   answers: z.array(answerSchema).min(1).max(60),

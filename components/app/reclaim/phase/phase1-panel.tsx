@@ -11,7 +11,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { RECLAIM_BUCKETS, bucketToken, RECLAIM_DEEP_WORK_NOTE } from '@/lib/app/programme/content';
-import { buildChartData, type Answers } from '@/lib/app/programme/chart/series';
+import { buildChartData, truthy, type Answers } from '@/lib/app/programme/chart/series';
 import { ReclaimChart } from '@/components/app/reclaim/chart/reclaim-chart';
 import { Reflection } from '@/components/app/reclaim/phase/reflection';
 import { NumberField, TextAreaField, BooleanField } from '@/components/app/reclaim/phase/fields';
@@ -24,9 +24,6 @@ import {
   type AnswerInput,
   type RunAnswers,
 } from '@/components/app/reclaim/phase/actions';
-
-const truthy = (a: RunAnswers[string] | undefined) =>
-  a !== undefined && (a.valueJson === true || a.value === 'Yes' || a.value === 'true');
 
 export function Phase1Panel({ runId, onAdvanced }: { runId: string; onAdvanced: () => void }) {
   const [base, setBase] = useState<RunAnswers>({});
@@ -63,7 +60,7 @@ export function Phase1Panel({ runId, onAdvanced }: { runId: string; onAdvanced: 
     const live: Answers = { ...base };
     for (const [token, v] of Object.entries(hours)) {
       const n = Number(v);
-      if (v.trim() && Number.isFinite(n))
+      if (v.trim() && Number.isFinite(n) && n >= 0)
         live[`reclaim_current_hours__${token}`] = { value: v, valueJson: n };
     }
     return buildChartData(live, labels);
@@ -85,7 +82,7 @@ export function Phase1Panel({ runId, onAdvanced }: { runId: string; onAdvanced: 
         const token = bucketToken(b.slug);
         const h = hours[token]?.trim();
         const n = Number(h);
-        if (h && Number.isFinite(n)) {
+        if (h && Number.isFinite(n) && n >= 0) {
           answers.push({ slotSlug: `reclaim_current_hours__${token}`, value: h, valueJson: n });
         }
         const d = detail[token]?.trim();

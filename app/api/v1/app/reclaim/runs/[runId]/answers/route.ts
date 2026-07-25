@@ -20,7 +20,8 @@ import { cuidSchema } from '@/lib/validations/common';
 import { saveRunAnswer } from '@/app/api/v1/app/reclaim/runs/service';
 import { readRunAnswers } from '@/lib/app/programme/runs/answers';
 
-const answerSchema = z.object({
+/** One captured answer — shared with the batch route so the two shapes can never drift. */
+export const answerSchema = z.object({
   slotSlug: z.string().trim().min(1).max(120),
   value: z.string().min(1),
   valueJson: z.unknown().optional(),

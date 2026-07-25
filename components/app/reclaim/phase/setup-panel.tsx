@@ -68,7 +68,10 @@ function toAnswers(s: SetupState): AnswerInput[] {
   };
   const num = (slug: string, v: string) => {
     const n = Number(v);
-    if (v.trim() && Number.isFinite(n)) out.push({ slotSlug: slug, value: v.trim(), valueJson: n });
+    // Counts/hours are non-negative — a stray "-" never reaches a slot.
+    if (v.trim() && Number.isFinite(n) && n >= 0) {
+      out.push({ slotSlug: slug, value: v.trim(), valueJson: n });
+    }
   };
   const flag = (slug: string, v: boolean | null) => {
     if (v !== null) out.push({ slotSlug: slug, value: v ? 'Yes' : 'No', valueJson: v });

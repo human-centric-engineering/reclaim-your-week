@@ -9,6 +9,7 @@
  */
 
 import { FieldHelp } from '@/components/ui/field-help';
+import { inputClass } from '@/components/app/reclaim/phase/fields';
 
 export function Reflection({
   value,
@@ -37,7 +38,7 @@ export function Reflection({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder="Take a moment…"
-        className="border-border text-foreground placeholder:text-muted-foreground w-full resize-none rounded-lg border bg-transparent px-3 py-2 text-sm leading-relaxed focus:outline-none"
+        className={`${inputClass} resize-none leading-relaxed`}
       />
     </div>
   );

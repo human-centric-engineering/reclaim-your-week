@@ -36,12 +36,14 @@ export interface ChartData {
 
 function num(a: SlotAnswer): number {
   if (a === undefined) return 0;
-  if (typeof a.valueJson === 'number' && Number.isFinite(a.valueJson)) return a.valueJson;
-  const n = Number(a.value);
-  return Number.isFinite(n) ? n : 0;
+  const raw =
+    typeof a.valueJson === 'number' && Number.isFinite(a.valueJson) ? a.valueJson : Number(a.value);
+  // Hours are non-negative; clamp so a stray "-5" can't distort the total, the shares, or a bar width.
+  return Number.isFinite(raw) ? Math.max(0, raw) : 0;
 }
 
-function truthy(a: SlotAnswer): boolean {
+/** Read a boolean slot answer (yes/no fields) from either the typed `valueJson` or the prose value. */
+export function truthy(a: SlotAnswer): boolean {
   if (a === undefined) return false;
   if (typeof a.valueJson === 'boolean') return a.valueJson;
   return a.value === 'Yes' || a.value === 'true';

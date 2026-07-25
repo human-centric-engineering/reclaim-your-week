@@ -12,8 +12,6 @@
  * Dark steps are lighter re-steps of the same hues for a dark surface.
  */
 
-import { RECLAIM_BUCKETS, bucketToken } from '@/lib/app/programme/content';
-
 /** Light-mode hue per bucket token. */
 const LIGHT: Record<string, string> = {
   deep_work: '#0D6A86',
@@ -48,6 +46,3 @@ export function bucketColour(token: string, mode: 'light' | 'dark'): string {
   const map = mode === 'dark' ? DARK : LIGHT;
   return map[token] ?? (mode === 'dark' ? FALLBACK_DARK : FALLBACK_LIGHT);
 }
-
-/** Every bucket token in canonical display order (I7 order from `RECLAIM_BUCKETS`). */
-export const BUCKET_ORDER = RECLAIM_BUCKETS.map((b) => bucketToken(b.slug));

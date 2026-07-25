@@ -4,6 +4,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { Prisma } from '@prisma/client';
 
 const { findManyMock, createMock, updateMock } = vi.hoisted(() => ({
   findManyMock: vi.fn(),
@@ -39,12 +40,29 @@ beforeEach(() => {
 });
 
 describe('assertEntitled', () => {
-  it('bootstraps a free-tier grant on first run and allows it', async () => {
+  it('bootstraps a free-tier grant on first run (deterministic id) and allows it', async () => {
     findManyMock.mockResolvedValue([]);
     await expect(assertEntitled('u1')).resolves.toBeUndefined();
     expect(createMock).toHaveBeenCalledWith({
-      data: { userId: 'u1', tier: 'free', auditsGranted: 1, auditsUsed: 0 },
+      data: { id: 'free_u1', userId: 'u1', tier: 'free', auditsGranted: 1, auditsUsed: 0 },
     });
+  });
+
+  it('tolerates a concurrent bootstrap race (P2002 on the deterministic id) and still allows the run', async () => {
+    findManyMock.mockResolvedValue([]);
+    createMock.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('Unique constraint', {
+        code: 'P2002',
+        clientVersion: 'test',
+      })
+    );
+    await expect(assertEntitled('u1')).resolves.toBeUndefined();
+  });
+
+  it('re-throws a non-unique DB error during bootstrap', async () => {
+    findManyMock.mockResolvedValue([]);
+    createMock.mockRejectedValue(new Error('connection lost'));
+    await expect(assertEntitled('u1')).rejects.toThrow('connection lost');
   });
 
   it('allows a run when a grant has audits remaining', async () => {

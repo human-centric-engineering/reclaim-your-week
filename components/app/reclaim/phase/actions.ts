@@ -7,6 +7,7 @@
  */
 
 import { z } from 'zod';
+import { parseEnvelope, errorMessageFrom } from '@/components/app/reclaim/calendar/types';
 
 export interface AnswerInput {
   slotSlug: string;
@@ -17,17 +18,9 @@ export interface AnswerInput {
 const answersEnvelope = z.object({
   answers: z.record(z.string(), z.object({ value: z.string(), valueJson: z.unknown() })),
 });
+const labelsEnvelope = z.object({ labels: z.record(z.string(), z.string()) });
 
 export type RunAnswers = z.infer<typeof answersEnvelope>['answers'];
-
-function dataOf(json: unknown): unknown {
-  return json !== null && typeof json === 'object' && 'data' in json ? json.data : null;
-}
-
-function errorMessage(json: unknown): string | null {
-  const parsed = z.object({ error: z.object({ message: z.string() }) }).safeParse(json);
-  return parsed.success ? parsed.data.error.message : null;
-}
 
 /** Save many answers for the run. Throws with the server message on failure. */
 export async function saveBatch(runId: string, answers: AnswerInput[]): Promise<void> {
@@ -38,7 +31,7 @@ export async function saveBatch(runId: string, answers: AnswerInput[]): Promise<
   });
   if (!res.ok) {
     const json: unknown = await res.json().catch(() => null);
-    throw new Error(errorMessage(json) ?? 'We could not save your answers just now.');
+    throw new Error(errorMessageFrom(json) ?? 'We could not save your answers just now.');
   }
 }
 
@@ -47,21 +40,16 @@ export async function readAnswers(runId: string, slugs?: string[]): Promise<RunA
   const query = slugs && slugs.length > 0 ? `?slugs=${encodeURIComponent(slugs.join(','))}` : '';
   const res = await fetch(`/api/v1/app/reclaim/runs/${runId}/answers${query}`);
   const json: unknown = await res.json();
-  if (!res.ok) throw new Error(errorMessage(json) ?? 'We could not load your answers.');
-  const parsed = answersEnvelope.safeParse(dataOf(json));
-  if (!parsed.success) throw new Error('Unexpected response from the server.');
-  return parsed.data.answers;
+  if (!res.ok) throw new Error(errorMessageFrom(json) ?? 'We could not load your answers.');
+  return parseEnvelope(json, answersEnvelope).answers;
 }
-
-const labelsEnvelope = z.object({ labels: z.record(z.string(), z.string()) });
 
 /** Read the user's bucket display labels, keyed by slot token. Best-effort: `{}` on any failure. */
 export async function readLabels(): Promise<Record<string, string>> {
   try {
     const res = await fetch('/api/v1/app/reclaim/labels');
     if (!res.ok) return {};
-    const parsed = labelsEnvelope.safeParse(dataOf(await res.json()));
-    return parsed.success ? parsed.data.labels : {};
+    return parseEnvelope(await res.json(), labelsEnvelope).labels;
   } catch {
     return {};
   }
@@ -94,7 +82,7 @@ export async function advancePhase(runId: string, fromPhase: string): Promise<Ad
   const json: unknown = await res.json().catch(() => null);
   const code = z.object({ error: z.object({ code: z.string() }) }).safeParse(json);
   if (res.status === 422 && code.success && code.data.error.code === 'REFLECTION_REQUIRED') {
-    return { ok: false, reflectionRequired: true, message: errorMessage(json) ?? undefined };
+    return { ok: false, reflectionRequired: true, message: errorMessageFrom(json) ?? undefined };
   }
-  return { ok: false, message: errorMessage(json) ?? 'We could not move on just now.' };
+  return { ok: false, message: errorMessageFrom(json) ?? 'We could not move on just now.' };
 }
