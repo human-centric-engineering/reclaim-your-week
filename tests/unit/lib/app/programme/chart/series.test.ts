@@ -76,6 +76,40 @@ describe('buildChartData — fundraising visibility + priority-gap', () => {
   });
 });
 
+describe('buildChartData — value parsing + benchmark edges', () => {
+  it('reads hours from the string value when valueJson is absent', () => {
+    const data = buildChartData({
+      reclaim_current_hours__deep_work: { value: '7', valueJson: null },
+    });
+    expect(data.buckets.find((b) => b.token === 'deep_work')?.hours).toBe(7);
+  });
+
+  it('reads the fundraising flag from the string "Yes" when valueJson is absent', () => {
+    const data = buildChartData({
+      reclaim_setup_fundraising_relevant: { value: 'Yes', valueJson: null },
+      reclaim_current_hours__deep_work: n(5),
+    });
+    expect(data.buckets.some((b) => b.token === 'fundraising_capital')).toBe(true);
+  });
+
+  it('marks a bucket within its guide as "in", and an unbounded bucket as "none"', () => {
+    // strategic-planning guide 15–20%: 3h of 20h total = 15% → in range.
+    // deep-work has no percentage bounds → none.
+    const data = buildChartData({
+      reclaim_current_hours__strategic_planning: n(3),
+      reclaim_current_hours__deep_work: n(17),
+    });
+    expect(data.buckets.find((b) => b.token === 'strategic_planning')?.status).toBe('in');
+    expect(data.buckets.find((b) => b.token === 'deep_work')?.status).toBe('none');
+  });
+
+  it('gives every bucket a 0% share and no total when nothing was entered', () => {
+    const data = buildChartData({});
+    expect(data.totalHours).toBe(0);
+    expect(data.buckets.every((b) => b.percent === 0 && b.hours === 0)).toBe(true);
+  });
+});
+
 describe('buildChartData — labels (I7)', () => {
   it('applies a user display label but keeps the canonical token', () => {
     const data = buildChartData(

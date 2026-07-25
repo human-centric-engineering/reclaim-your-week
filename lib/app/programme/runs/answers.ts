@@ -35,12 +35,3 @@ export async function readRunAnswers(
   }
   return out;
 }
-
-/** Read a single run-scoped number slot (hours), or `null` when absent/non-numeric. */
-export function numberAnswer(answer: RunAnswer | undefined): number | null {
-  if (answer === undefined) return null;
-  if (typeof answer.valueJson === 'number' && Number.isFinite(answer.valueJson))
-    return answer.valueJson;
-  const n = Number(answer.value);
-  return Number.isFinite(n) ? n : null;
-}
