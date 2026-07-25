@@ -2,7 +2,7 @@
 name: ryw-current
 feature: F6 · ryw-current
 epic: RYW v1
-status: in flight
+status: shipped
 owner: John
 depends_on: F4 · ryw-shell (shipped #27–#30/#32) · F8 · ryw-access for the entitlement gate (t-1 only; see reconciliation)
 enriched_by: F5 · ryw-calendar (shipped #33/#34) — the composite the chart plots
@@ -115,10 +115,10 @@ vitest runs on `happy-dom` with **no live DB** ([[building-a-feature]] §1.2). S
 
 | id  | Intent                                                                                             | Files likely to touch                                                                                                                                                    | Deps | Status | PR  |
 | --- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---- | ------ | --- |
-| t-1 | Phase 0 setup form + entitlement gate (I14) + reflect-context-back + atypical-week reassurance     | `app/(protected)/programme/**`, `components/app/reclaim/setup/**`, `lib/app/programme/runs/entitlement.ts`, `app/api/v1/app/reclaim/runs/service.ts`, `scripts/smoke/**` | F4   | todo   | —   |
-| t-2 | Phase 1 nine-bucket overview + cards (hours, I8) + deep-work questions + reusable reflection       | `components/app/reclaim/phase1/**`, `app/(protected)/programme/**`, `lib/app/programme/**`                                                                               | t-1  | todo   | —   |
-| t-3 | The `<ReclaimChart>` family — composite/current plot (I-composite), benchmarks, priority-gap (I12) | `components/app/reclaim/chart/**`, `lib/app/programme/chart/**`                                                                                                          | t-2  | todo   | —   |
-| t-4 | Bucket relabelling — `ReclaimBucketLabel`, canonical slug untouched (I7)                           | `components/app/reclaim/**`, `app/api/v1/app/reclaim/**`, `lib/app/programme/buckets/**`                                                                                 | t-2  | todo   | —   |
+| t-1 | Phase 0 setup form + entitlement gate (I14) + reflect-context-back + atypical-week reassurance     | `app/(protected)/programme/**`, `components/app/reclaim/setup/**`, `lib/app/programme/runs/entitlement.ts`, `app/api/v1/app/reclaim/runs/service.ts`, `scripts/smoke/**` | F4   | done   | #37 |
+| t-2 | Phase 1 nine-bucket overview + cards (hours, I8) + deep-work questions + reusable reflection       | `components/app/reclaim/phase1/**`, `app/(protected)/programme/**`, `lib/app/programme/**`                                                                               | t-1  | done   | #37 |
+| t-3 | The `<ReclaimChart>` family — composite/current plot (I-composite), benchmarks, priority-gap (I12) | `components/app/reclaim/chart/**`, `lib/app/programme/chart/**`                                                                                                          | t-2  | done   | #37 |
+| t-4 | Bucket relabelling — `ReclaimBucketLabel`, canonical slug untouched (I7)                           | `components/app/reclaim/**`, `app/api/v1/app/reclaim/**`, `lib/app/programme/buckets/**`                                                                                 | t-2  | done   | #37 |
 
 > **Sizing note.** Four tasks. t-1 (setup + gate) and t-3 (the chart family) are the heavy ones; the
 > parent already asks "is `<ReclaimChart>` honestly one task or three?" ([[planning-retro]] §B). Held
