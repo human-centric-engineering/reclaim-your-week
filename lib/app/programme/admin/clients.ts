@@ -36,7 +36,7 @@ import { listJourneys } from '@/lib/framework/facilitation/journey/queries';
 import type { JourneyViewer } from '@/lib/framework/shared/access';
 import { RECLAIM_MAP_SLUG, RECLAIM_PHASES } from '@/lib/app/programme/map';
 import { readReclaimAdminConfig, readReclaimAccessConfig } from '@/lib/app/programme/config';
-import { grantExpiresAt } from '@/lib/app/programme/runs/entitlement';
+import { grantExpiresAt, grantIsLive } from '@/lib/app/programme/runs/entitlement';
 
 /**
  * The support viewer, built in exactly one place (plan D4).
@@ -161,7 +161,33 @@ function slotDisplay(value: { value: string | null; valueJson: unknown }): strin
  * something", because "signed up and never started" is one of the four statuses Rashmir asked for.
  * Pending invitees who have no account yet are not here: they live on the Access screen.
  */
-async function programmeUserIds(): Promise<string[]> {
+async function programmeUserIds(only?: string[]): Promise<string[]> {
+  // When the caller wants one leader (the detail view), skip the discovery queries entirely — asking
+  // "who is in the programme" to answer "is Ada in the programme" is four table scans for one bit.
+  if (only !== undefined) {
+    const [grant, consent, run, invite] = await Promise.all([
+      prisma.reclaimGrant.findFirst({ where: { userId: { in: only } }, select: { userId: true } }),
+      prisma.reclaimConsent.findFirst({
+        where: { userId: { in: only } },
+        select: { userId: true },
+      }),
+      prisma.reclaimAuditRun.findFirst({
+        where: { userId: { in: only } },
+        select: { userId: true },
+      }),
+      prisma.reclaimInvite.findFirst({
+        where: { redeemedByUserId: { in: only } },
+        select: { redeemedByUserId: true },
+      }),
+    ]);
+    const found = new Set(
+      [grant?.userId, consent?.userId, run?.userId, invite?.redeemedByUserId].filter(
+        (id): id is string => id != null
+      )
+    );
+    return only.filter((id) => found.has(id));
+  }
+
   const [grants, consents, runs, invites] = await Promise.all([
     prisma.reclaimGrant.findMany({ select: { userId: true }, distinct: ['userId'] }),
     prisma.reclaimConsent.findMany({
@@ -235,6 +261,30 @@ async function currentPhaseByRun(
 }
 
 /**
+ * When each leader last actually answered something — one batched `groupBy` over the slot store.
+ *
+ * This is what "stalled" has to mean. The run row is not written while a leader works (answers go to
+ * `framework_slot_value`, phase moves to `UserNodeState`), so its `updatedAt` freezes at creation and
+ * an active leader would read as abandoned. `capturedAt` is the timestamp the write path stamps on
+ * every answer, and is already the column `getSlotHeads` orders by.
+ */
+async function lastAnswerAtByUser(userIds: string[]): Promise<Map<string, Date>> {
+  if (userIds.length === 0) return new Map();
+
+  const rows = await prisma.slotValue.groupBy({
+    by: ['userId'],
+    where: { userId: { in: userIds } },
+    _max: { capturedAt: true },
+  });
+
+  const out = new Map<string, Date>();
+  for (const row of rows) {
+    if (row._max.capturedAt !== null) out.set(row.userId, row._max.capturedAt);
+  }
+  return out;
+}
+
+/**
  * Chat cost per run, in USD (plan D2). Only runs with a recorded `conversationId` appear in the
  * result — an absent entry is "not recorded", which the caller must keep distinct from zero.
  */
@@ -262,24 +312,57 @@ async function chatCostByRun(
   return out;
 }
 
-/** Sum a leader's per-run costs, or `null` when not one of their runs has a recorded conversation. */
-function totalCost(runIds: string[], costByRun: Map<string, number>): number | null {
-  const known = runIds.filter((id) => costByRun.has(id));
-  if (known.length === 0) return null;
-  return known.reduce((sum, id) => sum + (costByRun.get(id) ?? 0), 0);
+/**
+ * Sum a leader's costs, or `null` when not one of their runs has a recorded conversation.
+ *
+ * Summed **per conversation, not per run**. "One conversation per run" is true by construction of the
+ * surface and I15's close-on-completion, but it is enforced nowhere — `conversationId` is deliberately
+ * not an FK and carries no unique constraint, and if a completion ever fails between marking the run
+ * complete and deactivating the conversation, the next run links the same one. Two runs would then
+ * each report that conversation's full cost and double a leader's spend, on the one number the plan
+ * says has to be defensible. Deduplicating costs nothing and removes the dependence on a cross-request
+ * invariant.
+ */
+function totalCost(
+  runs: Array<{ id: string; conversationId: string | null }>,
+  costByRun: Map<string, number>
+): number | null {
+  const seen = new Set<string>();
+  let total = 0;
+  let known = false;
+
+  for (const run of runs) {
+    if (!costByRun.has(run.id)) continue;
+    known = true;
+    if (run.conversationId !== null) {
+      if (seen.has(run.conversationId)) continue;
+      seen.add(run.conversationId);
+    }
+    total += costByRun.get(run.id) ?? 0;
+  }
+
+  return known ? total : null;
 }
 
 /**
  * The whole client list in one call. Fixed query count: users, grants, consents, invites, runs,
  * journeys, node states, costs, slots — nine batched reads, none of them per-row.
  */
-export async function listClients(adminUserId: string): Promise<ClientListView> {
+export async function listClients(
+  adminUserId: string,
+  /**
+   * Narrow to specific leaders. The detail view passes one id rather than building the whole cohort
+   * and discarding all but a row — which cost a `getSlotHeads` per leader in the programme to render
+   * one person's page. Omit for the full list.
+   */
+  onlyUserIds?: string[]
+): Promise<ClientListView> {
   const viewer = supportViewer(adminUserId);
   const [{ abandonedAfterDays }, accessConfig] = await Promise.all([
     readReclaimAdminConfig(),
     readReclaimAccessConfig(),
   ]);
-  const userIds = await programmeUserIds();
+  const userIds = await programmeUserIds(onlyUserIds);
   if (userIds.length === 0) return { clients: [], abandonedAfterDays };
 
   const [users, grants, consents, invites, runs] = await Promise.all([
@@ -317,12 +400,13 @@ export async function listClients(adminUserId: string): Promise<ClientListView> 
     : [];
   const referrerName = new Map(referrers.map((r) => [r.id, r.name ?? r.email]));
 
-  const [phaseByRun, costByRun, slotHeads] = await Promise.all([
+  const [phaseByRun, costByRun, lastAnswerByUser, slotHeads] = await Promise.all([
     currentPhaseByRun(
       viewer,
       runs.filter((r) => r.status === 'in_progress').map((r) => r.id)
     ),
     chatCostByRun(runs),
+    lastAnswerAtByUser(userIds),
     // One read per leader is unavoidable here — `getSlotHeads` is per-user by design (the access
     // seam is its `userId` argument). It is a single indexed query each, and the list is a cohort of
     // tens, not thousands; if that ever changes, the batched variant is an additive framework ask.
@@ -349,24 +433,52 @@ export async function listClients(adminUserId: string): Promise<ClientListView> 
     qualificationByUser.set(userId, record);
   }
 
-  const stallThreshold = Date.now() - abandonedAfterDays * 24 * 60 * 60 * 1000;
+  const now = new Date();
+  const stallThreshold = now.getTime() - abandonedAfterDays * 24 * 60 * 60 * 1000;
 
   const clients = users.map((user) => {
     const userRuns = runs.filter((r) => r.userId === user.id);
-    const grant = grants.find((g) => g.userId === user.id) ?? null;
+
+    // The grant that is actually **live**, not simply the newest.
+    //
+    // Grants stack: a client-tier grant from an invite, then a referral unlock when someone they
+    // referred completes. Taking the newest showed a paying client as tier "Referral" with no expiry
+    // — their twelve-month contract and its end date vanished from the one screen that reports them.
+    // Same predicate the gate uses (`grantIsLive`), so the list agrees with what a run would find;
+    // a window-bounded grant wins the tie because that is the one with money and a deadline attached.
+    const userGrants = grants.filter((g) => g.userId === user.id);
+    const liveGrants = userGrants.filter((g) => grantIsLive(g, now, accessConfig));
+    const grant =
+      liveGrants.find((g) => g.windowStartsAt !== null || g.mustStartBy !== null) ??
+      liveGrants[0] ??
+      userGrants[0] ??
+      null;
     const consent = consents.find((c) => c.userId === user.id) ?? null;
     const invite = invites.find((i) => i.redeemedByUserId === user.id) ?? null;
 
     const active = userRuns.find((r) => r.status === 'in_progress') ?? null;
     const completedRuns = userRuns.filter((r) => r.status === 'complete').length;
-    const lastActivity = userRuns.reduce<Date | null>(
-      (latest, r) => (latest === null || r.updatedAt > latest ? r.updatedAt : latest),
+
+    // "Last active" is when they last **answered something**, not when the run row was last written.
+    //
+    // `ReclaimAuditRun.updatedAt` looks like the right column and is not: answers go to
+    // `framework_slot_value` and phase moves go to `UserNodeState`, so nothing writes the run row
+    // between creation and completion. Using it meant a leader working steadily for six weeks read as
+    // "Stalled, last active 1 June" — the most engaged person in the cohort flagged as the one to
+    // chase. The run timestamps stay in the max as a floor, so a leader who has started but not yet
+    // answered anything still shows a date.
+    const lastActivity = [
+      lastAnswerByUser.get(user.id) ?? null,
+      ...userRuns.map((r) => r.updatedAt),
+      ...userRuns.map((r) => r.startedAt),
+    ].reduce<Date | null>(
+      (latest, d) => (d !== null && (latest === null || d > latest) ? d : latest),
       null
     );
 
     const status: ClientStatus =
       active !== null
-        ? active.updatedAt.getTime() < stallThreshold
+        ? (lastActivity?.getTime() ?? 0) < stallThreshold
           ? 'stalled'
           : 'in_progress'
         : completedRuns > 0
@@ -395,10 +507,7 @@ export async function listClients(adminUserId: string): Promise<ClientListView> 
       currentPhaseLabel: active !== null ? (phaseByRun.get(active.id) ?? null) : null,
       completedRuns,
       lastActivityAt: iso(lastActivity),
-      chatCostUsd: totalCost(
-        userRuns.map((r) => r.id),
-        costByRun
-      ),
+      chatCostUsd: totalCost(userRuns, costByRun),
       qualification: qualificationByUser.get(user.id) ?? {},
     } satisfies ClientRow;
   });
@@ -417,7 +526,7 @@ export async function getClientDetail(
   adminUserId: string,
   userId: string
 ): Promise<ClientDetailView | null> {
-  const list = await listClients(adminUserId);
+  const list = await listClients(adminUserId, [userId]);
   const client = list.clients.find((c) => c.userId === userId);
   if (client === undefined) return null;
 

@@ -75,6 +75,30 @@ way the framework retro does.
   failure mode is asymmetric, because "already built" quietly deletes a task from the plan while
   "built but not for us" only shows up when someone tries to use it.
 
+- **A derived column is only as true as the column it derives from — go and check what actually
+  writes it (F10 t-1, found by `/code-review`).** "Stalled" was computed from
+  `ReclaimAuditRun.updatedAt`, which is the obvious column, is a real `@updatedAt`, and is **never
+  written while a leader works**: answers go to `framework_slot_value` and phase moves to
+  `UserNodeState`, so the run row is touched at creation and completion and at no point between. A
+  leader answering steadily for six weeks read as "Stalled, last active 1 June" — the most engaged
+  person in the cohort flagged as the one to chase, on the screen whose whole purpose is telling the
+  coach who to ring. Nothing about the code looked wrong, and a test written against the same
+  assumption passed (it hand-set `updatedAt` on a fixture, pinning the implementation rather than the
+  definition). **The check: for any derived figure, name the write that moves its input and find that
+  write in the codebase.** If you cannot point at the line, the figure is a guess. Sibling lesson to
+  the two below — the failure is again in a join, this time between a column's name and its actual
+  write path.
+
+- **An aggregate over an optional question counts the people who were never asked (F10 t-3, found by
+  `/code-review`).** The cross-client view reported which time buckets leaders most often left empty,
+  and ranked fundraising first — because fundraising is a _conditional_ bucket, shown only to leaders
+  whose setup marks it relevant, and every leader who never saw it scored a zero. The headline finding
+  on the page was an artefact of the question not being asked. The code already had the right instinct
+  one line away (it refuses to count zeroes for a leader who answered nothing at all, so unfinished
+  audits cannot fabricate them) and simply did not extend it to conditional fields. **Lesson: in any
+  aggregate, "absent" has at least three meanings — answered zero, not yet answered, and never asked —
+  and only the first is data.** Where a field is conditional, the aggregate needs to know it.
+
 - **When a leaf keys access on a user-editable field, the platform's edit rules become part of the
   leaf's threat model (F8 t-2, found by `/security-review`).** Invite redemption resolved a pending
   invite by matching `user.email`, which reads as obviously correct: the invite was sent to that

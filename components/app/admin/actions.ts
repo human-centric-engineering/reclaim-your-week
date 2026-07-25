@@ -126,7 +126,10 @@ const contentViewSchema = z.object({
   buckets: z.array(contentBucketSchema),
   bands: z.array(z.object({ id: z.string(), label: contentFieldSchema })),
   prose: z.array(contentFieldSchema),
+  rules: z.array(contentFieldSchema.extend({ min: z.number(), max: z.number() })),
   editedCount: z.number(),
+  /** The config version this view was built from — echoed back on save (optimistic concurrency). */
+  baseVersion: z.number().nullable(),
 });
 
 export type ClientRow = z.infer<typeof clientRowSchema>;
@@ -202,6 +205,8 @@ export function readContent(): Promise<ContentView> {
 export async function saveContent(input: {
   values: Record<string, string>;
   changeSummary: string;
+  /** The version the edit was composed against, so a concurrent save is refused rather than lost. */
+  baseVersion: number | null;
 }): Promise<void> {
   const res = await fetch('/api/v1/app/reclaim/admin/content', {
     method: 'PUT',

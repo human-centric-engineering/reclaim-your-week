@@ -97,11 +97,16 @@ export function ContentEditor() {
   }, []);
 
   const save = async () => {
+    if (view === null) return;
     setBusy(true);
     setError(null);
     setNotice(null);
     try {
-      await saveContent({ values: drafts, changeSummary: summary.trim() });
+      await saveContent({
+        values: drafts,
+        changeSummary: summary.trim(),
+        baseVersion: view.baseVersion,
+      });
       setSummary('');
       await load();
       setNotice('Saved. Everyone sees the new wording from now on.');
@@ -154,11 +159,17 @@ export function ContentEditor() {
               onChange={change}
               multiline
             />
-            <Field
-              field={bucket.benchmarkNote}
-              draft={drafts[bucket.benchmarkNote.key]}
-              onChange={change}
-            />
+            <div className="space-y-1">
+              <Field
+                field={bucket.benchmarkNote}
+                draft={drafts[bucket.benchmarkNote.key]}
+                onChange={change}
+              />
+              <p className="text-muted-foreground text-xs">
+                The range in your own words, shown to the leader. The numbers that decide whether a
+                bar is marked over or under are set separately and are not on this screen.
+              </p>
+            </div>
           </div>
         ))}
       </section>
@@ -173,6 +184,40 @@ export function ContentEditor() {
       </section>
 
       <section className="space-y-4">
+        <div className="flex items-center gap-1">
+          <h2 className="text-lg font-medium">Audit rules</h2>
+          <FieldHelp title="What these change">
+            <p>
+              Two thresholds rather than wording. <strong>Stalled</strong> is how long an audit can
+              sit untouched before the client list flags it — an audit is meant to be left and
+              returned to, so this is deliberately generous.
+            </p>
+            <p>
+              <strong>Smallest group</strong> is the anonymity floor on the shared-results page: any
+              figure covering fewer leaders than this is withheld rather than shown, so an average
+              can never point at one person.
+            </p>
+          </FieldHelp>
+        </div>
+        {view.rules.map((rule) => (
+          <label key={rule.key} className="block space-y-1 rounded-lg border p-4">
+            <span className="flex flex-wrap items-baseline justify-between gap-2">
+              <span className="text-sm font-medium">{rule.label}</span>
+              <SourceMarker matchesSource={rule.matchesSource} />
+            </span>
+            <input
+              type="number"
+              min={rule.min}
+              max={rule.max}
+              value={drafts[rule.key] ?? rule.value}
+              onChange={(e) => change(rule.key, e.target.value)}
+              className="bg-background w-32 rounded-md border p-2 text-sm"
+            />
+          </label>
+        ))}
+      </section>
+
+      <section className="space-y-4">
         <h2 className="text-lg font-medium">Framing and the footnote</h2>
         {view.prose.map((field) => (
           <div key={field.key} className="rounded-lg border p-4">
@@ -183,7 +228,20 @@ export function ContentEditor() {
 
       <section className="bg-background sticky bottom-0 space-y-2 border-t py-4">
         <label className="block space-y-1">
-          <span className="text-sm font-medium">What changed, and why</span>
+          <span className="flex items-center gap-1 text-sm font-medium">
+            What changed, and why
+            <FieldHelp title="Why this is required">
+              <p>
+                Every save is kept as a numbered version you can compare and roll back to. This line
+                is what makes that history readable a year from now — without it the history is a
+                list of anonymous diffs.
+              </p>
+              <p>
+                It also keeps the record straight about authorship: these are your words, and a
+                change with a reason attached can never be mistaken for someone else rewriting them.
+              </p>
+            </FieldHelp>
+          </span>
           <input
             type="text"
             value={summary}

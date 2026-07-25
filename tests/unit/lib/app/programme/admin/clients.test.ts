@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => ({
   runFindMany: vi.fn(),
   nodeStateFindMany: vi.fn(),
   costGroupBy: vi.fn(),
+  slotGroupBy: vi.fn(),
   moduleFindUnique: vi.fn(),
   getSlotHeads: vi.fn(),
   listJourneys: vi.fn(),
@@ -36,6 +37,7 @@ vi.mock('@/lib/db/client', () => ({
     reclaimAuditRun: { findMany: mocks.runFindMany },
     userNodeState: { findMany: mocks.nodeStateFindMany },
     aiCostLog: { groupBy: mocks.costGroupBy },
+    slotValue: { groupBy: mocks.slotGroupBy },
     module: { findUnique: mocks.moduleFindUnique },
   },
 }));
@@ -78,6 +80,7 @@ beforeEach(() => {
   mocks.runFindMany.mockResolvedValue([]);
   mocks.nodeStateFindMany.mockResolvedValue([]);
   mocks.costGroupBy.mockResolvedValue([]);
+  mocks.slotGroupBy.mockResolvedValue([]);
   mocks.getSlotHeads.mockResolvedValue([]);
   mocks.listJourneys.mockResolvedValue({ journeys: [], total: 0 });
 });
@@ -130,16 +133,48 @@ describe('listClients — the sensitive slots', () => {
 });
 
 describe('listClients — status', () => {
-  it('reads an untouched in-progress run past the threshold as stalled', async () => {
-    seedLeader([run({ updatedAt: new Date(Date.now() - 30 * DAY) })]);
+  it('reads an in-progress run with no recent answer as stalled', async () => {
+    seedLeader([
+      run({
+        startedAt: new Date(Date.now() - 40 * DAY),
+        updatedAt: new Date(Date.now() - 40 * DAY),
+      }),
+    ]);
+    mocks.slotGroupBy.mockResolvedValue([
+      { userId: 'ada', _max: { capturedAt: new Date(Date.now() - 30 * DAY) } },
+    ]);
 
     const view = await listClients(ADMIN);
     expect(view.clients[0]?.status).toBe('stalled');
     expect(view.abandonedAfterDays).toBe(21);
   });
 
-  it('reads a recently touched in-progress run as mid-audit, not stalled', async () => {
+  it('reads a leader answering steadily as mid-audit even though the run row never changes', async () => {
+    // The bug this pins: `ReclaimAuditRun.updatedAt` is not written while a leader works — answers go
+    // to the slot store and phase moves to the node states. Keying "stalled" on the run row flagged
+    // the most engaged person in the cohort as the one to chase.
+    seedLeader([
+      run({
+        startedAt: new Date(Date.now() - 40 * DAY),
+        updatedAt: new Date(Date.now() - 40 * DAY),
+      }),
+    ]);
+    mocks.slotGroupBy.mockResolvedValue([
+      { userId: 'ada', _max: { capturedAt: new Date(Date.now() - 2 * DAY) } },
+    ]);
+
+    const answeredAt = new Date(Date.now() - 2 * DAY);
+    mocks.slotGroupBy.mockResolvedValue([{ userId: 'ada', _max: { capturedAt: answeredAt } }]);
+
+    const view = await listClients(ADMIN);
+    expect(view.clients[0]?.status).toBe('in_progress');
+    // And "last active" is the answer, not the frozen run row 40 days back.
+    expect(view.clients[0]?.lastActivityAt).toBe(answeredAt.toISOString());
+  });
+
+  it('falls back to the run timestamps for a leader who has answered nothing yet', async () => {
     seedLeader([run({ updatedAt: new Date(Date.now() - 2 * DAY) })]);
+    mocks.slotGroupBy.mockResolvedValue([]);
 
     expect((await listClients(ADMIN)).clients[0]?.status).toBe('in_progress');
   });
@@ -174,6 +209,19 @@ describe('listClients — chat cost', () => {
     expect((await listClients(ADMIN)).clients[0]?.chatCostUsd).toBe(0);
   });
 
+  it('counts a conversation once even when two runs point at it', async () => {
+    // "One conversation per run" is true by construction and enforced nowhere: if a completion fails
+    // between marking the run complete and closing the conversation, the next run links the same one.
+    // Double-counting would inflate the one number the plan says must be defensible.
+    seedLeader([
+      run({ id: 'r1', conversationId: 'conv-1', status: 'complete' }),
+      run({ id: 'r2', conversationId: 'conv-1' }),
+    ]);
+    mocks.costGroupBy.mockResolvedValue([{ conversationId: 'conv-1', _sum: { totalCostUsd: 2 } }]);
+
+    expect((await listClients(ADMIN)).clients[0]?.chatCostUsd).toBe(2);
+  });
+
   it('sums the cost of the linked runs only', async () => {
     seedLeader([
       run({ id: 'r1', conversationId: 'conv-1', status: 'complete' }),
@@ -184,6 +232,40 @@ describe('listClients — chat cost', () => {
     ]);
 
     expect((await listClients(ADMIN)).clients[0]?.chatCostUsd).toBe(1.25);
+  });
+});
+
+describe('listClients — which grant is shown', () => {
+  it('shows the live window-bounded grant, not the most recent one', async () => {
+    // Grants stack: a paid client grant, then a referral unlock when someone they referred finishes.
+    // Taking the newest showed a paying client as tier "Referral" with no expiry — their twelve-month
+    // contract and its end date vanished from the one screen that reports them.
+    const inAMonth = new Date(Date.now() + 30 * DAY);
+    mocks.grantFindMany.mockResolvedValue([
+      grant({ id: 'referral', tier: 'referral', createdAt: new Date(Date.now() - DAY) }),
+      grant({
+        id: 'client',
+        tier: 'client',
+        windowStartsAt: new Date(Date.now() - 60 * DAY),
+        mustStartBy: inAMonth,
+        createdAt: new Date(Date.now() - 200 * DAY),
+      }),
+    ]);
+    mocks.runFindMany.mockResolvedValue([]);
+
+    const client = (await listClients(ADMIN)).clients[0];
+    expect(client?.tier).toBe('client');
+    expect(client?.windowEndsAt).not.toBeNull();
+  });
+
+  it('falls back to a grant that is no longer live rather than showing no tier at all', async () => {
+    mocks.grantFindMany.mockResolvedValue([
+      grant({ id: 'spent', tier: 'standard', auditsGranted: 1, auditsUsed: 1 }),
+    ]);
+    mocks.runFindMany.mockResolvedValue([]);
+
+    // Exhausted is a fact worth seeing — "no tier" would read as never having had access.
+    expect((await listClients(ADMIN)).clients[0]?.tier).toBe('standard');
   });
 });
 

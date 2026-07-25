@@ -162,11 +162,23 @@ export function contributionFromHeads(
 
   for (const bucket of RECLAIM_BUCKETS) {
     const token = bucketToken(bucket.slug);
-    const hours =
-      numeric(bySlug.get(`reclaim_composite_hours__${token}`)) ??
-      numeric(bySlug.get(`reclaim_current_hours__${token}`));
-    if (hours !== null && hours > 0) hoursByBucket[bucket.slug] = hours;
-    else zero.push(bucket.slug);
+    const composite = bySlug.get(`reclaim_composite_hours__${token}`);
+    const current = bySlug.get(`reclaim_current_hours__${token}`);
+    const hours = numeric(composite) ?? numeric(current);
+
+    if (hours !== null && hours > 0) {
+      hoursByBucket[bucket.slug] = hours;
+      continue;
+    }
+
+    // A **conditional** bucket that was never written was never *asked* — fundraising only appears
+    // for leaders Phase 0 marked it relevant to. Counting it as "left at zero" made the aggregate's
+    // headline finding an artefact of a question most of the cohort never saw: six leaders who were
+    // never shown fundraising ranked it the most-neglected part of everyone's week. An answered zero
+    // is a fact about a week; an unasked question is not.
+    if (bucket.conditional && composite === undefined && current === undefined) continue;
+
+    zero.push(bucket.slug);
   }
 
   // Only count empties for a leader who reported time SOMEWHERE. Otherwise a run that never got as
@@ -202,16 +214,38 @@ export async function readAggregate(): Promise<AggregateView> {
     return computeAggregate([], aggregateMinimumCohort);
   }
 
-  // Only leaders who actually finished an audit — a half-filled Phase 1 is not a picture of a week.
-  const completed = await prisma.reclaimAuditRun.findMany({
-    where: { userId: { in: consenting }, status: 'complete' },
-    select: { userId: true },
-    distinct: ['userId'],
-  });
+  // Only leaders who finished an audit **and are not part-way through another one**.
+  //
+  // The second half is not fussiness. `getSlotHeads` returns the live head per slug across all of a
+  // leader's runs, so someone who completed an audit in April and has filled in two buckets of a new
+  // one today contributes a Frankenstein week: two fresh values spliced onto seven from April. The
+  // same mechanism silently defeats the composite-over-current preference below — an April composite
+  // outranks today's self-reported hours because "prefer composite" has no notion of recency.
+  //
+  // Excluding leaders with an open run makes the heads unambiguously the last completed audit's, and
+  // the cost is that they rejoin the cohort when they finish. That is the right trade for a figure
+  // whose entire claim is "this is what a completed week looks like". (Filtering heads by
+  // `provenance.runId` would be exact, but a completed run's value that a newer run has superseded is
+  // not in the heads at all — it would need `getSlotHistory` per slug per leader.)
+  const [completed, openRuns] = await Promise.all([
+    prisma.reclaimAuditRun.findMany({
+      where: { userId: { in: consenting }, status: 'complete' },
+      select: { userId: true },
+      distinct: ['userId'],
+    }),
+    prisma.reclaimAuditRun.findMany({
+      where: { userId: { in: consenting }, status: 'in_progress' },
+      select: { userId: true },
+      distinct: ['userId'],
+    }),
+  ]);
+
+  const midAudit = new Set(openRuns.map((r) => r.userId));
+  const settled = completed.filter((r) => !midAudit.has(r.userId));
 
   const slugs = aggregateSlots();
   const contributions = await Promise.all(
-    completed.map(async (run) =>
+    settled.map(async (run) =>
       contributionFromHeads(await getSlotHeads(run.userId, { slotSlugs: slugs }))
     )
   );

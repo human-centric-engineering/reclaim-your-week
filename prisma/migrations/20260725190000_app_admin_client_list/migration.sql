@@ -27,6 +27,27 @@ ALTER TABLE "app_reclaim_audit_run" ADD COLUMN "conversationId" TEXT;
 -- where the inbox COUNTS these rows: a duplicate report-share would double-count a leader who shared
 -- once. The constraint is what makes the invariant true in the database; t-3 switches the writes to
 -- `upsert` so the guarantee is enforced rather than raced for.
+-- Dedupe FIRST. `CREATE UNIQUE INDEX` aborts on a table that already contains duplicates, and the
+-- whole reason these constraints exist is that F7's find-then-create raced and **an actual duplicate
+-- was observed** before it was patched. Any environment that predates that patch may still hold one,
+-- and there the bare CREATE would fail the migration — leaving `conversationId` unapplied too, which
+-- every admin route then reads. Keeping the OLDEST row of each pair matters for `app_reclaim_share`
+-- specifically: its token may already have been sent to someone, and deleting the row a leader shared
+-- would break a live link.
+DELETE FROM "app_reclaim_share"
+  WHERE "id" NOT IN (
+    SELECT DISTINCT ON ("userId", "auditRunId") "id"
+    FROM "app_reclaim_share"
+    ORDER BY "userId", "auditRunId", "createdAt" ASC, "id" ASC
+  );
+
+DELETE FROM "app_reclaim_report_share"
+  WHERE "id" NOT IN (
+    SELECT DISTINCT ON ("userId", "auditRunId") "id"
+    FROM "app_reclaim_report_share"
+    ORDER BY "userId", "auditRunId", "createdAt" ASC, "id" ASC
+  );
+
 CREATE UNIQUE INDEX "app_reclaim_share_userId_auditRunId_key"
   ON "app_reclaim_share"("userId", "auditRunId");
 

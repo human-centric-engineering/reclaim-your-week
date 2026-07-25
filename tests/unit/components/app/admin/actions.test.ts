@@ -173,7 +173,9 @@ describe('content', () => {
     ],
     bands: [],
     prose: [],
+    rules: [],
     editedCount: 1,
+    baseVersion: 7,
   };
 
   it('parses the content view with its divergence markers', async () => {
@@ -190,21 +192,25 @@ describe('content', () => {
     await saveContent({
       values: { 'buckets.0.description': 'Reworded.' },
       changeSummary: 'Softened the wording.',
+      baseVersion: 7,
     });
 
     const [url, init] = fetchMock.mock.calls[0] as [string, { method: string; body: string }];
     expect(url).toBe('/api/v1/app/reclaim/admin/content');
     expect(init.method).toBe('PUT');
+    // `baseVersion` is carried so a concurrent save is refused by the framework's optimistic-
+    // concurrency guard rather than silently overwriting the other tab's edit.
     expect(JSON.parse(init.body)).toEqual({
       values: { 'buckets.0.description': 'Reworded.' },
       changeSummary: 'Softened the wording.',
+      baseVersion: 7,
     });
   });
 
   it('surfaces a validation refusal from the framework’s schema verbatim', async () => {
     fetchMock.mockResolvedValue(fail('Bucket title must not be empty.'));
     await expect(
-      saveContent({ values: { 'buckets.0.title': '' }, changeSummary: 'Oops.' })
+      saveContent({ values: { 'buckets.0.title': '' }, changeSummary: 'Oops.', baseVersion: 7 })
     ).rejects.toThrow('Bucket title must not be empty.');
   });
 });

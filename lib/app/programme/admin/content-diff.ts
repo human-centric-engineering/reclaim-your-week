@@ -47,6 +47,16 @@ export interface ContentView {
   bands: Array<{ id: string; label: ContentField }>;
   /** The standalone prose fields — the governing frame, the deep-work note, the footnote. */
   prose: ContentField[];
+  /**
+   * The operator's own numbers, which are not Rashmir's content but are the only other thing she
+   * needs to change without a deploy: the stall rule and the anonymity floor.
+   *
+   * They live here because the client list's help text sends her to this screen for them, and a
+   * screen that tells you where to change something and then does not offer it is worse than one
+   * that stays quiet. They are marked against the defaults like everything else, though "differs
+   * from source" means something milder for a threshold than it does for a diagnostic.
+   */
+  rules: Array<ContentField & { min: number; max: number }>;
   /** How many fields differ from the source, so the page can say so once at the top. */
   editedCount: number;
 }
@@ -109,6 +119,35 @@ export function buildContentView(stored: ReclaimConfig): ContentView {
     field('governingFrame', 'The governing frame', stored.governingFrame, defaults.governingFrame),
     field('deepWorkNote', 'The deep-work note', stored.deepWorkNote, defaults.deepWorkNote),
     field('footnote', 'The summary footnote', stored.footnote, defaults.footnote),
+    field(
+      'consultationEmail',
+      'Where the consultation invitation points',
+      stored.consultationEmail,
+      defaults.consultationEmail
+    ),
+  ];
+
+  const rules = [
+    {
+      ...field(
+        'abandonedAfterDays',
+        'Days of silence before an audit reads as stalled',
+        String(stored.abandonedAfterDays),
+        String(defaults.abandonedAfterDays)
+      ),
+      min: 1,
+      max: 365,
+    },
+    {
+      ...field(
+        'aggregateMinimumCohort',
+        'Smallest group an aggregate figure may be shown for',
+        String(stored.aggregateMinimumCohort),
+        String(defaults.aggregateMinimumCohort)
+      ),
+      min: 2,
+      max: 100,
+    },
   ];
 
   const all = [
@@ -117,7 +156,7 @@ export function buildContentView(stored: ReclaimConfig): ContentView {
     ...prose,
   ];
 
-  return { buckets, bands, prose, editedCount: all.filter((f) => !f.matchesSource).length };
+  return { buckets, bands, prose, rules, editedCount: all.filter((f) => !f.matchesSource).length };
 }
 
 /**
@@ -159,6 +198,18 @@ export function applyContentEdits(
     if (key === 'governingFrame') next.governingFrame = value;
     else if (key === 'deepWorkNote') next.deepWorkNote = value;
     else if (key === 'footnote') next.footnote = value;
+    else if (key === 'consultationEmail') next.consultationEmail = value;
+    // The two numeric rules arrive as strings from a text input. A non-numeric value is DROPPED
+    // rather than coerced: `Number('')` is 0 and `Number('abc')` is NaN, and either silently written
+    // into the stall rule would make every audit read as stalled, or none. The schema would reject
+    // both, but failing here means the rest of a legitimate save is not lost to a stray keystroke.
+    else if (key === 'abandonedAfterDays' || key === 'aggregateMinimumCohort') {
+      const parsed = Number.parseInt(value, 10);
+      if (Number.isInteger(parsed)) {
+        if (key === 'abandonedAfterDays') next.abandonedAfterDays = parsed;
+        else next.aggregateMinimumCohort = parsed;
+      }
+    }
     // Anything else: deliberately dropped.
   }
 

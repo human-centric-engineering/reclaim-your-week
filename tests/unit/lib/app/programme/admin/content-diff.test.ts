@@ -104,6 +104,37 @@ describe('applyContentEdits', () => {
     expect(next.footnote).toBe('A legitimate edit.');
   });
 
+  it('applies the two numeric rules, and drops a value that is not a number', () => {
+    const config = defaults();
+
+    const applied = applyContentEdits(config, {
+      abandonedAfterDays: '30',
+      aggregateMinimumCohort: '8',
+    });
+    expect(applied.abandonedAfterDays).toBe(30);
+    expect(applied.aggregateMinimumCohort).toBe(8);
+
+    // A stray keystroke must not become the stall rule: `Number('')` is 0 and `Number('abc')` is NaN,
+    // and either written through would make every audit read as stalled, or none of them.
+    const rubbish = applyContentEdits(config, {
+      abandonedAfterDays: '',
+      aggregateMinimumCohort: 'soon',
+      footnote: 'A legitimate edit alongside.',
+    });
+    expect(rubbish.abandonedAfterDays).toBe(config.abandonedAfterDays);
+    expect(rubbish.aggregateMinimumCohort).toBe(config.aggregateMinimumCohort);
+    // …and the rest of the save is not lost with it.
+    expect(rubbish.footnote).toBe('A legitimate edit alongside.');
+  });
+
+  it('surfaces the rules and the consultation email, which the UI points the operator here for', () => {
+    const view = buildContentView(defaults());
+    const keys = view.rules.map((r) => r.key);
+
+    expect(keys).toEqual(['abandonedAfterDays', 'aggregateMinimumCohort']);
+    expect(view.prose.map((f) => f.key)).toContain('consultationEmail');
+  });
+
   it('ignores an out-of-range index rather than throwing', () => {
     const config = defaults();
     expect(() => applyContentEdits(config, { 'buckets.99.title': 'Nowhere' })).not.toThrow();

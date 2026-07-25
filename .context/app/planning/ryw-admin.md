@@ -449,6 +449,53 @@ the code stops being a check on the code.
   the words of someone who asked to be forgotten. Recorded in the schema, where the next person to
   wonder will be.
 
+## What the gates found
+
+`/security-review` returned **no High or Medium findings** — every new endpoint admin-guarded, the
+sensitive slots kept off the list in code, the aggregate's three privacy rules holding,
+`applyContentEdits` unreachable from `openSignup` (including via `__proto__`), and
+`linkRunConversation` unable to cross users. Its three sub-threshold notes were all worth fixing, and
+two of them were places a comment claimed more than the code did.
+
+`/code-review` earned its keep, again on the shape [[planning-retro]] predicts: derived numbers.
+
+- **"Stalled" was computed from a timestamp that never moves.** `ReclaimAuditRun.updatedAt` looks
+  like the column for "last touched" and is not: answers go to `framework_slot_value` and phase moves
+  to `UserNodeState`, so nothing writes the run row between creation and completion. A leader working
+  steadily for six weeks read as **Stalled, last active 1 June** — the most engaged person in the
+  cohort flagged as the one to chase, on the screen whose entire job is telling Rashmir who to ring.
+  Now derived from `max(SlotValue.capturedAt)`, one batched `groupBy`.
+- **The aggregate's headline finding was an artefact of a question most people never saw.**
+  Fundraising is a conditional bucket, shown only to leaders Phase 0 marks it relevant to. Every
+  leader who was never asked counted as having "left it at zero", so it ranked first. An answered
+  zero is a fact about a week; an unasked question is not.
+- **The aggregate read slot heads per _user_, not per completed audit.** Heads are the live value
+  across all runs, so a leader part-way through audit 2 contributed two fresh buckets spliced onto
+  seven from audit 1 — and an old composite silently outranked today's self-reported hours, because
+  "prefer composite" has no notion of recency. Leaders with an open run are now excluded until they
+  finish.
+- **The client list showed the newest grant, not the live one.** Grants stack (a client invite, then
+  a referral unlock), so a paying client displayed as tier _Referral_ with no expiry — their
+  twelve-month contract gone from the one screen that reports it. Now uses the gate's own
+  `grantIsLive`.
+- **The content editor did not contain the fields the UI sent the operator to it for.** The client
+  list's help text said "you can change how long that is in Content" and the stall rule was not there,
+  nor the anonymity floor, nor `consultationEmail` (which t-4's own plan text lists). All three added.
+- **The content save was a read-modify-write over the whole config with the framework's concurrency
+  guard declined.** Two tabs would clobber each other silently. Worse, a `safeParse` failure fell back
+  to schema defaults and then _wrote_ them — so rewording a bucket could have reset `openSignup`.
+  The write path now refuses on a parse failure and carries `expectedBaseVersion`.
+- **The migration created unique indexes with no dedupe**, on the two tables whose justification is
+  that a duplicate was once observed. It would abort on any environment still holding one, taking
+  `conversationId` down with it.
+- Plus: cost summed per run rather than per conversation (double-counting if a completion ever fails
+  between marking the run complete and closing the conversation), and `getClientDetail` built the
+  entire cohort — a `getSlotHeads` per leader in the programme — to render one person's page.
+
+`framework:boundary` also caught framework vocabulary (`moduleId`) leaking into the `app/**` surface,
+which moved the config read into `lib/app/programme/admin/content-config.ts` where `runs/journey.ts`
+already lives for the same reason.
+
 ## Notes / deferrals
 
 - **What F10 completes.** With F10 shipped, RYW v1 has both sides: the leader's audit (F1–F7), the
