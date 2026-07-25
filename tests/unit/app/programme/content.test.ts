@@ -20,7 +20,15 @@ import { join } from 'node:path';
 import { describe, it, expect } from 'vitest';
 import { extractBlockquotes } from '@/scripts/content-source/lib';
 import { reclaimConfigSchema } from '@/lib/app/programme/module';
-import { RECLAIM_PROCESS_OUTLINE } from '@/lib/app/programme/content';
+import {
+  RECLAIM_PROCESS_OUTLINE,
+  RECLAIM_UNDER_DELEGATION_INVITATION,
+  RECLAIM_JOURNEY_FRAMING,
+  RECLAIM_FORWARD_CLOSE,
+  RECLAIM_CLOSING_AFFIRMATION,
+  RECLAIM_STRATEGY_MIRROR,
+  RECLAIM_PHASE2_COACHING_SIGNAL,
+} from '@/lib/app/programme/content';
 
 const CONTENT_SOURCE = join(process.cwd(), '.context', 'app', 'content-source.md');
 const markdown = readFileSync(CONTENT_SOURCE, 'utf8');
@@ -91,6 +99,29 @@ describe('I11 hop 2 — config defaults are verbatim from content-source.md', ()
     const headingLine = lineOf(/^### 4a\. The process outline/);
     const sourceOutline = firstQuoteAfter(headingLine);
     expect(RECLAIM_PROCESS_OUTLINE).toBe(sourceOutline);
+  });
+
+  // F7 verbatim copy (Phases 4–6). `quoteContaining` finds the source blockquote by a distinctive
+  // phrase — several F7 sections carry more than one blockquote, so "first after heading" isn't enough.
+  const quoteContaining = (needle: string): string => {
+    const match = quotes.map((q) => joinQuote(q.raw)).find((q) => q.includes(needle));
+    if (!match) throw new Error(`no source blockquote contains: ${needle}`);
+    return match;
+  };
+
+  it.each([
+    [
+      'under-delegation invitation',
+      RECLAIM_UNDER_DELEGATION_INVITATION,
+      'lead more through others',
+    ],
+    ['journey framing', RECLAIM_JOURNEY_FRAMING, 'compound into transformation'],
+    ['forward-leaning close', RECLAIM_FORWARD_CLOSE, 'more true to what you are here to do'],
+    ['closing affirmation', RECLAIM_CLOSING_AFFIRMATION, 'takes courage'],
+    ['strategy mirror', RECLAIM_STRATEGY_MIRROR, 'If a stranger read your calendar'],
+    ['Phase 2 coaching signal', RECLAIM_PHASE2_COACHING_SIGNAL, 'can go much further here'],
+  ])('%s config default is character-identical to source (F7, I11)', (_name, constant, needle) => {
+    expect(constant).toBe(quoteContaining(needle));
   });
 
   it('deep-work note is character-identical to the §2 blockquote', () => {
