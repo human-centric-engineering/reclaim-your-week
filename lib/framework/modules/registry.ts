@@ -21,7 +21,23 @@
 
 import type { ModuleDefinition } from '@/lib/framework/modules/definition';
 
-const modules = new Map<string, ModuleDefinition>();
+// keep-mine (leaf defect fix — logged in `.context/app/daybreak-asks.md`): the registry
+// MUST be stashed on `globalThis`, not a bare module-scoped `Map`. `registerModule()` runs
+// only from `initApp()` at `instrumentation.ts` boot, but under Next 16 + Turbopack the
+// instrumentation module graph is separate from the route-handler/RSC graph — a plain module
+// singleton populated at boot is a DIFFERENT, empty instance at request time, so
+// `getRegisteredModule()` returns `undefined` and the admin module UI reports "no longer
+// registered" despite a successful boot-time sync. Mirrors `globalForPrisma` in
+// `lib/db/client.ts`. Delete this block and restore the plain `Map` once Daybreak lands the
+// fix upstream.
+const globalForModuleRegistry = globalThis as unknown as {
+  frameworkModuleRegistry?: Map<string, ModuleDefinition>;
+};
+
+const modules =
+  globalForModuleRegistry.frameworkModuleRegistry ?? new Map<string, ModuleDefinition>();
+
+globalForModuleRegistry.frameworkModuleRegistry = modules;
 
 /**
  * Register a module definition. Idempotent by slug: a later registration of the
