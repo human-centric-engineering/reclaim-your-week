@@ -1,24 +1,26 @@
 /**
- * Run lifecycle service (F4 t-3). The Prisma + framework orchestration behind the reclaim run routes,
- * factored out of the route handlers so `smoke:reclaim-run` can drive the same code against real
- * Postgres. Lives under `app/` (Prisma allowed here; `lib/app/**` is storage-agnostic).
+ * Run lifecycle service (F4 t-3). The Prisma + HTTP-glue side of the run routes, factored out so
+ * `smoke:reclaim-run` can drive the same code against real Postgres. Lives under `app/` (Prisma
+ * allowed here). The framework-journey side — `applyJourneyTransition`, keyed on node keys — lives in
+ * `lib/app/programme/runs/journey.ts`, which keeps framework vocabulary out of this core-scanned
+ * surface (`framework:boundary`); this file only does Prisma and delegates.
  *
  * The run id is the single spine: `app_reclaim_audit_run.id` = the journey `contextKey` = the slot
- * `provenance.runId`. It is server-owned — derived from the run the leaf created, never an LLM arg (I6).
- *
- * `applyJourneyTransition` is the framework's sole journey-state writer; there is no framework
- * journey-*creation* seam, so `createRun` writes the `UserJourney` row directly (daybreak-asks).
+ * `provenance.runId`. It is server-owned, derived from the run the leaf created, never an LLM arg (I6).
  */
 
 import { prisma } from '@/lib/db/client';
 import { NotFoundError, ValidationError } from '@/lib/api/errors';
-import { applyJourneyTransition } from '@/lib/framework/guidance/guidance';
 import { MODULE_SURFACE_CONTEXT_TYPE } from '@/lib/framework/guidance/surface';
 import { getJourney, getNodeStates } from '@/lib/framework/facilitation/journey/queries';
 import { saveAnswer } from '@/lib/app/programme/slots/write';
 import { RECLAIM_MAP_SLUG, RECLAIM_PHASES } from '@/lib/app/programme/map';
 import { RECLAIM_MODULE_SLUG } from '@/lib/app/programme/module';
-import { FIRST_PHASE_KEY, FINAL_PHASE_KEY, nextPhaseKey } from '@/lib/app/programme/runs/phases';
+import {
+  enterFirstPhase,
+  advancePhase,
+  completeFinalPhase,
+} from '@/lib/app/programme/runs/journey';
 
 export const RUN_STATUS = {
   inProgress: 'in_progress',
@@ -27,18 +29,6 @@ export const RUN_STATUS = {
 } as const;
 
 type ReclaimAuditRun = Awaited<ReturnType<typeof prisma.reclaimAuditRun.findFirstOrThrow>>;
-type TransitionResult = Awaited<ReturnType<typeof applyJourneyTransition>>;
-
-/** The journey natural key for a run: one journey per run, keyed on the run id as `contextKey`. */
-function journeyKey(userId: string, runId: string) {
-  return { userId, graphSlug: RECLAIM_MAP_SLUG, contextKey: runId };
-}
-
-/** A one-line reason a transition was refused, for a `ValidationError` detail. */
-function rejectionMessage(result: TransitionResult): string {
-  if (result === null) return 'The journey has not been started.';
-  return result.ok ? 'ok' : result.rejection.message;
-}
 
 /** Load a run the caller owns, or 404. Ownership is by `userId` — the run id alone never authorises. */
 export async function loadOwnedRun(runId: string, userId: string): Promise<ReclaimAuditRun> {
@@ -73,67 +63,31 @@ export async function createRun(userId: string, quarter?: string): Promise<Recla
     data: { userId, graphSlug: RECLAIM_MAP_SLUG, contextKey: run.id },
   });
 
-  // Enter the first phase. A fresh run starts at Phase 0.
-  await applyJourneyTransition({ userId }, journeyKey(userId, run.id), {
-    nodeKey: FIRST_PHASE_KEY,
-    kind: 'enter',
-  });
-
+  await enterFirstPhase(userId, run.id);
   return run;
 }
 
 /**
- * Advance one phase: complete the leaving node, then enter the next. The **reflection gate (I9) is
- * enforced by the route before this is called**; here `applyJourneyTransition` validates the move
- * itself (a non-active node can't complete), so a client that lies about `leavingPhaseKey` is refused
- * by the engine, not trusted. Assumes ownership already verified by the route.
+ * Advance one phase. The reflection gate (I9) is enforced by the route before this is called; the
+ * move itself is validated by the engine (`advancePhase`). Assumes ownership already verified.
  */
 export async function transitionRun(
   userId: string,
   runId: string,
   leavingPhaseKey: string
 ): Promise<{ enteredPhaseKey: string }> {
-  const next = nextPhaseKey(leavingPhaseKey);
-  if (next === null) {
-    throw new ValidationError('There is no phase after this one', {
-      phase: ['The final phase completes the run — use complete, not transition.'],
-    });
-  }
-
-  const key = journeyKey(userId, runId);
-  const completed = await applyJourneyTransition({ userId }, key, {
-    nodeKey: leavingPhaseKey,
-    kind: 'complete',
-  });
-  if (completed === null || !completed.ok) {
-    throw new ValidationError('Could not complete the current phase', {
-      phase: [rejectionMessage(completed)],
-    });
-  }
-
-  const entered = await applyJourneyTransition({ userId }, key, { nodeKey: next, kind: 'enter' });
-  if (entered === null || !entered.ok) {
-    throw new ValidationError('Could not enter the next phase', {
-      phase: [rejectionMessage(entered)],
-    });
-  }
-
-  return { enteredPhaseKey: next };
+  return advancePhase(userId, runId, leavingPhaseKey);
 }
 
 /**
  * Complete the run (I15): mark the row complete and set `isActive:false` on the module surface
  * conversation, so a repeat audit opens a fresh transcript rather than resuming this one. Idempotent.
- * Marking the final node complete is best-effort — the run completes regardless of journey state.
  */
 export async function completeRun(userId: string, runId: string): Promise<ReclaimAuditRun> {
   const run = await loadOwnedRun(runId, userId);
   if (run.status === RUN_STATUS.complete) return run;
 
-  await applyJourneyTransition({ userId }, journeyKey(userId, runId), {
-    nodeKey: FINAL_PHASE_KEY,
-    kind: 'complete',
-  }).catch(() => null);
+  await completeFinalPhase(userId, runId);
 
   const updated = await prisma.reclaimAuditRun.update({
     where: { id: runId },
@@ -158,7 +112,6 @@ export async function completeRun(userId: string, runId: string): Promise<Reclai
 export interface RunAnswerInput {
   slotSlug: string;
   value: string;
-  nodeKey?: string;
   conversationId?: string;
 }
 
@@ -178,7 +131,6 @@ export async function saveRunAnswer(
     runId,
     slotSlug: input.slotSlug,
     value: input.value,
-    nodeKey: input.nodeKey,
     conversationId: input.conversationId,
   });
 }

@@ -20,8 +20,6 @@ import { saveRunAnswer } from '@/app/api/v1/app/reclaim/runs/service';
 const answerSchema = z.object({
   slotSlug: z.string().trim().min(1).max(120),
   value: z.string().min(1),
-  /** The map node the answer was captured at, for provenance. */
-  nodeKey: z.string().trim().min(1).max(60).optional(),
 });
 
 export const POST = withAuth<{ runId: string }>(async (request, session, { params }) => {
