@@ -8,6 +8,7 @@
 
 import { z } from 'zod';
 import { parseEnvelope, errorMessageFrom } from '@/components/app/reclaim/calendar/types';
+import { auditSummarySchema, type AuditSummary } from '@/components/app/reclaim/summary/types';
 
 export interface AnswerInput {
   slotSlug: string;
@@ -69,6 +70,47 @@ export interface AdvanceResult {
   /** Set when the server refused because a reflection is still required (I9). */
   reflectionRequired?: boolean;
   message?: string;
+}
+
+/** Fetch the leader's own summary for a run (Phase 6). Throws on failure. */
+export async function fetchSummary(runId: string): Promise<AuditSummary> {
+  const res = await fetch(`/api/v1/app/reclaim/runs/${runId}/summary`);
+  const json: unknown = await res.json();
+  if (!res.ok) throw new Error(errorMessageFrom(json) ?? 'We could not load your summary.');
+  return parseEnvelope(json, auditSummarySchema);
+}
+
+export interface ShareInput {
+  publicLink?: boolean;
+  withCoach?: boolean;
+  ageBand?: string;
+  demographic1?: string;
+  demographic2?: string;
+  takeaway?: string;
+  quotable?: boolean;
+}
+
+/** Apply the leader's Phase 6 share choices; returns the public token (or null). */
+export async function shareSummary(runId: string, input: ShareInput): Promise<string | null> {
+  const res = await fetch(`/api/v1/app/reclaim/runs/${runId}/share`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  const json: unknown = await res.json();
+  if (!res.ok)
+    throw new Error(errorMessageFrom(json) ?? 'We could not save your choices just now.');
+  const parsed = parseEnvelope(json, z.object({ token: z.string().nullable() }));
+  return parsed.token;
+}
+
+/** Complete the run (Phase 6 finish) — closes the conversation (I15) and consumes the grant (I14). */
+export async function completeAudit(runId: string): Promise<void> {
+  const res = await fetch(`/api/v1/app/reclaim/runs/${runId}/complete`, { method: 'POST' });
+  if (!res.ok) {
+    const json: unknown = await res.json().catch(() => null);
+    throw new Error(errorMessageFrom(json) ?? 'We could not finish your audit just now.');
+  }
 }
 
 /** Advance from `fromPhase` to the next. Surfaces the server's 422 REFLECTION_REQUIRED distinctly. */

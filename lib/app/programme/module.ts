@@ -93,6 +93,12 @@ export const reclaimConfigSchema = z.object({
   footnote: z.string().default(RECLAIM_FOOTNOTE),
   /** Where the once-at-the-end consultation invitation points. Operator-set; seeded from §10. */
   consultationEmail: z.string().default(RECLAIM_CONSULTATION_EMAIL),
+  /**
+   * F7 open-item toggles (Rashmir's to rule — plan.md open items 10 & 11). Coach-editable, **default
+   * off** until she decides; this is `Module.config`, not feature-flag machinery.
+   */
+  phase2CoachingSignal: z.boolean().default(false),
+  strategyMirror: z.boolean().default(false),
 });
 
 /** The parsed shape of `reclaimConfigSchema` — the coach-editable config the app reads. */

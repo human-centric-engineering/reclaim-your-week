@@ -14,6 +14,11 @@ import { CoachChat } from '@/components/app/reclaim/coach-chat';
 import { BeginAudit } from '@/components/app/reclaim/begin-audit';
 import { SetupPanel } from '@/components/app/reclaim/phase/setup-panel';
 import { Phase1Panel } from '@/components/app/reclaim/phase/phase1-panel';
+import { Phase2Panel } from '@/components/app/reclaim/phase/phase2-panel';
+import { Phase3Panel } from '@/components/app/reclaim/phase/phase3-panel';
+import { Phase4Panel } from '@/components/app/reclaim/phase/phase4-panel';
+import { Phase5Panel } from '@/components/app/reclaim/phase/phase5-panel';
+import { Phase6Panel } from '@/components/app/reclaim/phase/phase6-panel';
 
 export function ProgrammeShell() {
   const [state, setState] = useState<CurrentRunState | null>(null);
@@ -92,16 +97,43 @@ export function ProgrammeShell() {
 
         <main className="min-w-0 space-y-9">
           <Signpost phaseKey={currentPhase.key} index={currentIndex} label={currentPhase.label} />
-          {currentPhase.key === 'phase-0-setup' ? (
-            <SetupPanel runId={state.run.id} onAdvanced={() => void load()} />
-          ) : currentPhase.key === 'phase-1-current' ? (
-            <Phase1Panel runId={state.run.id} onAdvanced={() => void load()} />
-          ) : (
-            // Phases 2–6 are F7; until then the coach conversation holds the space.
-            <CoachChat />
-          )}
+          <PhaseContent
+            phaseKey={currentPhase.key}
+            runId={state.run.id}
+            onAdvanced={() => void load()}
+          />
         </main>
       </div>
     </div>
   );
+}
+
+/** Render the panel for the current phase (F6/F7); phases with no panel yet show the coach chat. */
+function PhaseContent({
+  phaseKey,
+  runId,
+  onAdvanced,
+}: {
+  phaseKey: string;
+  runId: string;
+  onAdvanced: () => void;
+}) {
+  switch (phaseKey) {
+    case 'phase-0-setup':
+      return <SetupPanel runId={runId} onAdvanced={onAdvanced} />;
+    case 'phase-1-current':
+      return <Phase1Panel runId={runId} onAdvanced={onAdvanced} />;
+    case 'phase-2-energy':
+      return <Phase2Panel runId={runId} onAdvanced={onAdvanced} />;
+    case 'phase-3-ideal':
+      return <Phase3Panel runId={runId} onAdvanced={onAdvanced} />;
+    case 'phase-4-gap':
+      return <Phase4Panel runId={runId} onAdvanced={onAdvanced} />;
+    case 'phase-5-action':
+      return <Phase5Panel runId={runId} onAdvanced={onAdvanced} />;
+    case 'phase-6-summary':
+      return <Phase6Panel runId={runId} onAdvanced={onAdvanced} />;
+    default:
+      return <CoachChat />;
+  }
 }

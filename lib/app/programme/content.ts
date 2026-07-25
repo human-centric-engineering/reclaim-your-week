@@ -36,6 +36,34 @@ export const RECLAIM_GOVERNING_FRAME =
 export const RECLAIM_PROCESS_OUTLINE =
   'Before we begin, here is what we will cover together. We will start with a little context about you and your role. Then we will explore how you are currently spending your time across up to nine key areas of leadership, with the option to reality-check your estimates against your actual calendar data if you would like. We will look at your energy and when you do your best work. We will identify the gaps between where you are and where you want to be. We will finish by designing your ideal week and building a clear, prioritised action plan — one or two things you can start right away. The whole process takes around 30-60 minutes. Ready to begin?';
 
+/**
+ * The Phase 4 under-delegation invitation (§8) — offered where the gap points to it. An invitation,
+ * not a diagnosis (I16). Rashmir's verbatim IP (I11, hop-2 guarded); contains an em dash, like the
+ * deep-work note — verbatim content, not the coach's authored voice.
+ */
+export const RECLAIM_UNDER_DELEGATION_INVITATION =
+  "'What you are seeing here is common for leaders at your stage. And it often points to something worth looking at — not just about your calendar, but about what it might mean to lead differently. What would it take to let go of some of this, and lead more through others?'";
+
+/** The Phase 5 journey framing (§8) — a journey, not a makeover. Verbatim (I11, hop-2 guarded). */
+export const RECLAIM_JOURNEY_FRAMING =
+  '"Your calendar is a reflection of habits, commitments, and patterns built over time. It will not change overnight, and it does not need to. What matters is choosing one or two things to shift right now, making them stick, and then building from there. Small changes, consistently held, compound into transformation. That is how sustainable leadership change actually works."';
+
+/** The Phase 5 forward-leaning close (§8). Verbatim (I11, hop-2 guarded). */
+export const RECLAIM_FORWARD_CLOSE =
+  "'This is the beginning of leading in a way that is more sustainable, more impactful, and more true to what you are here to do.'";
+
+/** The Phase 6 closing affirmation (§8) — "vary the language each time", so this is one voice of it. Verbatim (I11). */
+export const RECLAIM_CLOSING_AFFIRMATION =
+  '"What you have done here takes courage. Most leaders never look this honestly at how they are spending their time. The fact that you have is already the beginning of a new level of performance and impact."';
+
+/** The strategy-mirror prompt (§8, Brief §5) — used once where it lands. Config-gated (open item 10). Verbatim. */
+export const RECLAIM_STRATEGY_MIRROR =
+  '"If a stranger read your calendar, what would they say your priorities are?"';
+
+/** The Phase 2 coaching signal (§8) — depth-of-topic, config-gated (open item 11, default off). Verbatim. */
+export const RECLAIM_PHASE2_COACHING_SIGNAL =
+  'Note: this is a rich topic worth exploring more deeply. Where useful, signal that a dedicated coaching conversation with Rashmir can go much further here.';
+
 /** The cross-cutting deep-work note (§2). Contains an em dash — verbatim descriptive content. */
 export const RECLAIM_DEEP_WORK_NOTE =
   'Deep work cuts across all buckets — it is the quality of focused, uninterrupted attention brought to the most important work. The research-informed recommendation for leaders is at least one protected block of 60-90 minutes per day, ideally during their peak energy window for high performance. Even one hour of genuine deep work daily is a significant win for most leaders. Four hours a day would be absolutely phenomenal, but is unlikely for most leaders.';
