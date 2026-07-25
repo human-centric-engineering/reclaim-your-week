@@ -144,13 +144,13 @@ gate** — say so in the code comment), and the ask itself.
 
 **The ask is a Sunrise ask, not a Daybreak one** — `lib/auth/config.ts`, the `/signup` page and
 `proxy.ts` are all Sunrise-core, and [[daybreak-asks]] step 2 says to file against the tier that owns
-the file (as sunrise#461 and sunrise#462 already were). **The row is already in the ledger**, filed
-here at plan time rather than deferred to t-2, because the finding is what motivated the feature and
-the gap exists whether or not F8 builds. Proposed shape: a `SIGNUP_MODE=open | invite_only` env
+the file (as sunrise#461 and sunrise#462 already were). **Filed at plan time as
+[sunrise#463](https://github.com/human-centric-engineering/sunrise/issues/463)** rather than deferred
+to t-2, because the finding is what motivated the feature and the gap exists whether or not F8
+builds. Proposed shape: a `SIGNUP_MODE=open | invite_only` env
 consumed in `lib/auth/config.ts`, gating **both** the better-auth sign-up route (a `hooks.before` on
 `/sign-up/email`) **and** the `/signup` page — a starter template is right to default open; a fork
-whose product is invite-gated should not have to reach into core to close it. **t-2 carries only the
-GitHub filing**, not the analysis.
+whose product is invite-gated should not have to reach into core to close it. **t-2 carries nothing here** — the ask is closed out.
 
 ### D5 — client tier: the 12-month window is the implemented shape.
 
@@ -343,7 +343,7 @@ artifact).
   involved (`lib/auth/config.ts`, `app/api/auth/accept-invite/**`, `lib/orchestration/hooks/types.ts`)
   is Sunrise-core, so they file against `human-centric-engineering/sunrise` with the `upstream-gap`
   label, the way sunrise#461/#462 did. All three are "friction is a finding", not defects: no platform
-  seam to close self-signup (**D4 — row already in the ledger**, filed at plan time), no leaf hook at
+  seam to close self-signup (**D4 — filed, sunrise#463**), no leaf hook at
   account creation (D2, t-2), and a closed hook-event enum with no leaf extension point (D7, t-4).
   **Do not carry core code for any of them** — each has a clean leaf-side answer already in the plan.
 - **What F8 does _not_ do:** payments (parked), the full admin client list (F10 t-1), the follow-up
