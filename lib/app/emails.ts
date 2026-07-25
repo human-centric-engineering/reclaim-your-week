@@ -27,5 +27,15 @@
  * Full guide: CUSTOMIZATION.md §4 · lib/email/registry.ts
  */
 import type { EmailOverrides } from '@/lib/email/registry';
+import ReclaimInvitationEmail from '@/components/app/emails/invitation';
 
-export const emailOverrides: EmailOverrides = {};
+export const emailOverrides: EmailOverrides = {
+  /**
+   * F8 t-1. The platform default is written for a SaaS team invite ("excited to have you on board",
+   * "start collaborating with your team"); this is the first thing an invited leader reads from
+   * Reclaim Your Week, and it needs Brief §7's reassurance register instead. Third-person attribution
+   * to Rashmir (I1). Overriding the kind here is exactly the seam's purpose — `emails/invitation.tsx`
+   * stays untouched as the platform reference (I10).
+   */
+  invitation: ReclaimInvitationEmail,
+};

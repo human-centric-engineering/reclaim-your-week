@@ -53,6 +53,13 @@ const RECLAIM_USER_FKS: ReadonlyArray<{ table: string; constraint: string; onDel
     constraint: 'app_reclaim_invite_redeemedByUserId_fkey',
     onDelete: 'SET NULL',
   },
+  // F8 t-1: the referrer. Retained like the rest of the invite row — an invite outlives both the
+  // person who sent it and the person who redeemed it.
+  {
+    table: 'app_reclaim_invite',
+    constraint: 'app_reclaim_invite_invitedByUserId_fkey',
+    onDelete: 'SET NULL',
+  },
 ];
 
 export function registerLeafDriftProbes(): void {
