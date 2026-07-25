@@ -60,9 +60,35 @@ way the framework retro does.
 
 ## §B — feature-plan authoring
 
-- _(none yet. Candidates the build is likely to surface: whether the 105-slot declaration in F2 wants
-  splitting from content-loading; whether the `<ReclaimChart>` family in F6 is honestly one task or
-  three; whether the refer-back context contributor in F7 needs a seam the framework doesn't expose.)_
+- **A merged PR is not a landed task — check the base branch, not the merge status (F4 t-4).** F4's
+  four tasks each merged as their own PR, but t-4 (#30) was opened against the **t-3 feature branch**
+  rather than `main`. GitHub happily showed it `MERGED`, yet `main` — which had already forked at the
+  t-3 merge (#29) — never received the consumer shell. It surfaced only at close-out, when the board
+  said "F4 shipped" but a fresh `main` checkout had no `/programme` UI. **The lesson: when a feature's
+  tasks stack (t-4 built on the t-3 branch while t-3's own PR was still open), the last task's PR base
+  silently defaults to the branch it was cut from, not `main`.** Close-out must verify each task's
+  commits are actually on `main` (`git branch --contains`, or that the files exist in a clean
+  checkout), not trust `gh pr list … MERGED`. Recovery was cheap here (re-target the branch to `main`
+  via a fresh PR, #32) precisely because the plan-first discipline caught it before F5 branched off the
+  hole.
+
+- **`/code-review` paid for itself on the one UI-over-backend task, exactly as the seed expectation
+  predicted (F4 t-4).** The shell, schema, lifecycle, and security all came back clean; the real
+  findings clustered in the one place doing bespoke I/O — the consumer SSE client hand-rolled its own
+  event schema, which had **drifted from the shared canonical union** and silently dropped two events
+  the server actually sends (`content_reset`, `budget_exceeded_per_turn`), plus never aborted the
+  stream on unmount. Two takeaways for later features: **(1) when the framework/core already ships a
+  shared parser+schema for a wire protocol, consume it — a leaf re-implementation will drift, and the
+  drift is invisible to type-check** (this is a live risk for F6/F7's richer chat surfaces and any
+  future SSE consumer). **(2) Being a real consumer finds core defects the reference client masks** —
+  the shared `chatStreamEventSchema` itself omits `budget_exceeded_per_turn`, so even the admin
+  `ChatInterface` drops it; logged in [[daybreak-asks]]. The "friction is a finding" stance (§A / seed
+  expectations) extends to core, not just Daybreak.
+
+- _(Open candidates the build is likely to surface: whether the `<ReclaimChart>` family in F6 is
+  honestly one task or three; whether the refer-back context contributor in F7 needs a seam the
+  framework doesn't expose; and — surfacing now — whether F5's `.ics` parse + LLM-categorise + review
+  UI is really one feature or wants the parser split from the upload/review path.)_
 
 ---
 
