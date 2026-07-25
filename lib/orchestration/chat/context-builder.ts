@@ -70,7 +70,24 @@ function cacheKey(type: string, id: string, userId?: string): string {
  */
 type ContextContributor = (id: string, request: ContextRequest) => Promise<string>;
 
-const contributors = new Map<string, ContextContributor>();
+// keep-mine (leaf defect fix — logged in `.context/app/daybreak-asks.md`, filed on Sunrise):
+// stash the contributor map on `globalThis`, not a bare module-scoped `Map`. The framework's
+// module-context contributor (`MODULE_CONTEXT_TYPE` → `loadModuleContext`) is registered only at
+// `initFramework()` boot, inside `instrumentation.ts`. Under Next 16 + Turbopack the
+// instrumentation module graph is separate from the route-handler/RSC graph, so a bare `Map` is a
+// DIFFERENT, empty instance at request time — the request-path self-heal below re-runs only the
+// APP contributors (`initAppContextContributors`), not the framework's, so a module-bound agent's
+// turn loses its module `LOCKED CONTEXT` block. Sharing the map makes the boot-time framework
+// registration visible to requests (mirrors `globalForPrisma`, `lib/db/client.ts`). Delete once
+// Sunrise lands the fix upstream.
+const globalForContributors = globalThis as unknown as {
+  chatContextContributors?: Map<string, ContextContributor>;
+};
+
+const contributors =
+  globalForContributors.chatContextContributors ?? new Map<string, ContextContributor>();
+
+globalForContributors.chatContextContributors = contributors;
 
 /** Whether the auto-wired app contributor init (`lib/app/context-contributors.ts`) has run. */
 let appInited = false;

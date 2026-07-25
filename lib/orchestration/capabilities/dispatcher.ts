@@ -692,8 +692,26 @@ function formatValidationIssues(issues: unknown[]): string {
   return parts.join('; ');
 }
 
-/** Module-level singleton, matching `providerManager` style. */
-export const capabilityDispatcher = new CapabilityDispatcher();
+// keep-mine (leaf defect fix — logged in `.context/app/daybreak-asks.md`, filed on Sunrise):
+// stash the singleton on `globalThis`, not a bare module-scoped `const`. Framework-tier
+// capability HANDLERS are registered only at `syncFramework()` boot (via
+// `registerFrameworkCapabilityHandlers`), which runs inside `instrumentation.ts`. Under
+// Next 16 + Turbopack the instrumentation module graph is separate from the route-handler/RSC
+// graph, so a bare singleton is a DIFFERENT, empty dispatcher at request time — the request-path
+// lazy `registerBuiltInCapabilities()` re-registers Sunrise built-ins + app caps but NOT
+// framework tools, so `getCapabilityDefinitions()` filters `get_state`/`fill_slot`/guidance/…
+// out of a module-bound agent's toolset. Sharing the singleton makes the boot-time framework
+// handlers visible to requests (mirrors `globalForPrisma`, `lib/db/client.ts`). Delete once
+// Sunrise lands the fix upstream.
+const globalForDispatcher = globalThis as unknown as {
+  capabilityDispatcher?: CapabilityDispatcher;
+};
+
+/** Process-wide singleton, matching `providerManager` style; globalThis-shared (see above). */
+export const capabilityDispatcher =
+  globalForDispatcher.capabilityDispatcher ?? new CapabilityDispatcher();
+
+globalForDispatcher.capabilityDispatcher = capabilityDispatcher;
 
 export type { CapabilityDispatcher };
 
