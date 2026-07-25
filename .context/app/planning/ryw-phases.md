@@ -2,7 +2,7 @@
 name: ryw-phases
 feature: F7 · ryw-phases
 epic: RYW v1
-status: in flight
+status: shipped (#39)
 owner: John
 depends_on: F6 · ryw-current (shipped #37) · F5 · ryw-calendar (optional, shipped #34)
 spec: ../content-source.md §8 (Phases 2–6) · §9 (footnote) · §10 (summary) · ../slot-spec.md (reclaim_energy 4 · reclaim_ideal 5 · reclaim_gap 6 · reclaim_action 5 · reclaim_share 6) · ../invariants.md (I13 refer-back, I11, I1/I2, I9, I12, I15, I16/I17, I-frame) · Brief §5 (coaching craft), §3 (share + quote consent)
@@ -128,10 +128,10 @@ vitest runs on `happy-dom` with **no live DB** ([[building-a-feature]] §1.2). S
 
 | id  | Intent                                                                                               | Files likely to touch                                                                                                                  | Deps | Status | PR  |
 | --- | ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ---- | ------ | --- |
-| t-1 | Phase 2 energy grid + Phase 3 ideal-week sliders (live gap) + current-vs-ideal chart + hard gate     | `components/app/reclaim/phase/**`, `lib/app/programme/chart/series.ts`, `components/app/reclaim/chart/**`                              | F6   | todo   | —   |
-| t-2 | Phase 4 gap analysis + **the refer-back** (I13 context contributor) + once-per-audit challenge       | `lib/app/context-contributors.ts`, `lib/app/programme/**`, `components/app/reclaim/phase/**`, `tests/unit/invariants/voice.test.ts`    | t-1  | todo   | —   |
-| t-3 | Phase 5 action plan — entry points, what/when/stop/how-known, wanted-not-dutiful, journey framing    | `components/app/reclaim/phase/**`, `lib/app/programme/content.ts` (verbatim config)                                                    | t-2  | todo   | —   |
-| t-4 | Phase 6 summary + share — downloadable artifact, tokenised link, optional demographics/quote consent | `app/(protected)/programme/**`, `app/api/v1/app/reclaim/share/**`, `components/app/reclaim/summary/**`, `lib/app/programme/summary/**` | t-3  | todo   | —   |
+| t-1 | Phase 2 energy grid + Phase 3 ideal-week sliders (live gap) + current-vs-ideal chart + hard gate     | `components/app/reclaim/phase/**`, `lib/app/programme/chart/series.ts`, `components/app/reclaim/chart/**`                              | F6   | done   | #39 |
+| t-2 | Phase 4 gap analysis + **the refer-back** (I13 context contributor) + once-per-audit challenge       | `lib/app/context-contributors.ts`, `lib/app/programme/**`, `components/app/reclaim/phase/**`, `tests/unit/invariants/voice.test.ts`    | t-1  | done   | #39 |
+| t-3 | Phase 5 action plan — entry points, what/when/stop/how-known, wanted-not-dutiful, journey framing    | `components/app/reclaim/phase/**`, `lib/app/programme/content.ts` (verbatim config)                                                    | t-2  | done   | #39 |
+| t-4 | Phase 6 summary + share — downloadable artifact, tokenised link, optional demographics/quote consent | `app/(protected)/programme/**`, `app/api/v1/app/reclaim/share/**`, `components/app/reclaim/summary/**`, `lib/app/programme/summary/**` | t-3  | done   | #39 |
 
 > **Sizing note.** Four tasks. t-1 (two phases + the paired chart) and t-4 (the summary artifact +
 > share + optional capture) are the heavy ones. **Watch:** if the Phase 6 share flow (tokenised link,

@@ -60,6 +60,29 @@ way the framework retro does.
 
 ## §B — feature-plan authoring
 
+- **A gate the plan describes is not a gate the app has — check the running behaviour, not the
+  intent (found while planning F8, built in F6).** Every document says Reclaim Your Week is
+  invite-gated, and the entitlement gate (I14) genuinely exists and is genuinely enforced at run
+  creation. It is still open: Sunrise's self-signup is enabled (`emailAndPassword`, a live `/signup`
+  page, no `disableSignUp`), and F6's `assertEntitled` **bootstraps a free grant for any account with
+  no grant** — a deliberate, documented "least-risky path until F8", which reads in the plan as
+  scaffolding and reads in production as a self-serve free tier. Neither half is a defect; the join
+  is. **The check that would have caught it is behavioural, not textual:** for any feature that
+  claims to restrict something, write down the actual path an unauthorised actor takes today and
+  where it stops. §A's "failures live in the joins between documents" has a sibling — failures live
+  in the join between a document and the running app.
+
+- **The tier boundary invalidates plan text written before the boundary was exercised (F8 t-1,
+  caught at planning).** `plan.md` told F8 to "**extend** `lib/utils/invitation-token.ts` +
+  `emails/invitation.tsx` + `app/admin/users/invite/page.tsx` (don't rebuild)" — sound instinct,
+  wrong verb: all three are **Sunrise-owned**, so extending them is exactly the merge conflict I10
+  exists to prevent. The resolution is a third verb the original framing did not have: **consume**.
+  Import the Sunrise token helpers from leaf-owned routes, register an email override through
+  `lib/app/emails.ts`, put the admin UI under `app/admin/programme/**` via `leaf-admin-nav.ts`.
+  **Lesson: when a feature's plan says "extend `<core file>`", resolve the ownership tier before
+  sizing the task** — "extend" and "wrap" differ by a whole task's worth of surface, and the boundary
+  check (`framework:boundary`) only catches the framework tier, not Sunrise's `lib/`.
+
 - **When two independent reviewers flag the same thing, it's real — and a check-then-write on an
   un-constrained table is always a race (F6 `ryw-current`).** `/security-review` and `/code-review`,
   run separately, _both_ landed on the entitlement bootstrap: `findMany` → "no grant?" → `create`,
