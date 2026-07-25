@@ -35,9 +35,19 @@ export interface ShareResult {
 
 /**
  * Apply a leader's share choices for a run. **Idempotent per run** — a leader may re-save (edit the
- * takeaway, tick a box) any number of times without duplicating records: the public link is reused,
- * the coach-share is created once, and the feedback line is updated in place. None of these three
- * tables carries a DB unique constraint, so idempotency is enforced here with a find-then-write.
+ * takeaway, tick a box) any number of times without duplicating records.
+ *
+ * F7 enforced that with find-then-write, which was the fix for an observed duplicate but is still a
+ * TOCTOU: two saves in flight together both read "no row" and both insert.
+ * [`planning-retro.md`](../../../.context/app/planning/planning-retro.md) §B names that shape as one
+ * to stop accepting, and F10 t-3 made it matter — the inbox **counts** `ReclaimReportShare` rows, so
+ * a duplicate would show a leader as having shared twice. F10 t-1 added
+ * `@@unique([userId, auditRunId])` to both share tables; these are now `upsert`s against those
+ * constraints, so the database enforces the invariant instead of this function racing for it.
+ *
+ * `ReclaimFeedback` keeps its find-then-write: it has no such constraint, and adding one would change
+ * the erasure question below rather than a correctness one. A duplicated feedback line shows up as an
+ * extra quote in a list a human reads, not as a miscount.
  */
 export async function createShare(
   userId: string,
@@ -47,21 +57,23 @@ export async function createShare(
   let token: string | null = null;
 
   if (input.publicLink) {
-    const existing = await prisma.reclaimShare.findFirst({ where: { userId, auditRunId: runId } });
-    token = existing?.token ?? mintToken();
-    if (!existing) {
-      await prisma.reclaimShare.create({ data: { userId, auditRunId: runId, token } });
-    }
+    // The token must not be regenerated on re-save — a leader who has already sent someone the link
+    // would find it dead. `update: {}` is deliberate: touch nothing, keep the existing token.
+    const share = await prisma.reclaimShare.upsert({
+      where: { userId_auditRunId: { userId, auditRunId: runId } },
+      create: { userId, auditRunId: runId, token: mintToken() },
+      update: {},
+      select: { token: true },
+    });
+    token = share.token;
   }
 
   if (input.withCoach) {
-    const existing = await prisma.reclaimReportShare.findFirst({
-      where: { userId, auditRunId: runId },
-      select: { id: true },
+    await prisma.reclaimReportShare.upsert({
+      where: { userId_auditRunId: { userId, auditRunId: runId } },
+      create: { userId, auditRunId: runId },
+      update: {},
     });
-    if (!existing) {
-      await prisma.reclaimReportShare.create({ data: { userId, auditRunId: runId } });
-    }
   }
 
   if (input.takeaway && input.takeaway.trim().length > 0) {

@@ -36,6 +36,26 @@ function addMonths(from: Date, months: number): Date {
   return to;
 }
 
+/**
+ * When a grant's access actually runs out — the window's end if it has started, else the start-by
+ * deadline, else `null` for the count-bounded tiers that have no clock at all.
+ *
+ * Exported so F10's admin surfaces show the same date the gate enforces. The alternative — the admin
+ * side recomputing "12 months" for display — is precisely how the 12 × 30 bug got in, and a client
+ * told the wrong expiry date is worse than one told none.
+ */
+export function grantExpiresAt(
+  grant: Pick<NonNullable<Grant>, 'windowStartsAt' | 'mustStartBy'>,
+  config: Pick<ReclaimAccessConfig, 'clientWindowMonths'>
+): Date | null {
+  // `!= null` rather than `!== null`: a partially-selected grant row (a `select` that omitted the
+  // column) yields `undefined`, and computing a window from `undefined` throws deep inside `addMonths`
+  // where the cause is unrecognisable. Absent and null both mean "no window started".
+  if (grant.windowStartsAt != null)
+    return addMonths(grant.windowStartsAt, config.clientWindowMonths);
+  return grant.mustStartBy ?? null;
+}
+
 /** Raised (→ 403) when a leader has no remaining entitlement to start a new audit. */
 export class EntitlementError extends ForbiddenError {
   constructor(message: string) {

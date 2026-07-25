@@ -49,8 +49,9 @@ export async function loadOwnedRun(runId: string, userId: string): Promise<Recla
  * phase so "you are here" is right on resume.
  */
 export async function createRun(userId: string, quarter?: string): Promise<ReclaimAuditRun> {
-  // Entitlement gate (I14, F6 t-1): refuse when the user's grant is exhausted/expired; bootstraps a
-  // free-tier grant on first run. F8 later issues client/referral grants over the same gate.
+  // Entitlement gate (I14, F6 t-1, closed by F8 t-2): resolve a live invite into a tiered grant, or
+  // refuse. The unconditional free-tier bootstrap this once carried is gone — its removal is what
+  // made "invite-only" true.
   await assertEntitled(userId);
 
   const existing = await prisma.reclaimAuditRun.findFirst({
@@ -94,6 +95,11 @@ export async function transitionRun(
 export async function completeRun(userId: string, runId: string): Promise<ReclaimAuditRun> {
   const run = await loadOwnedRun(runId, userId);
   if (run.status === RUN_STATUS.complete) return run;
+
+  // Last chance to attribute the cost: below, I15 closes the conversation, and once it is inactive
+  // "the run's conversation" is no longer identifiable. A leader who never saved an answer through a
+  // form (all chat, no cards) gets their link here or not at all.
+  if (run.conversationId === null) await linkRunConversation(runId, userId);
 
   await completeFinalPhase(userId, runId);
 
@@ -144,6 +150,47 @@ export interface RunAnswerInput {
   conversationId?: string;
 }
 
+/**
+ * Record which module-surface conversation this run's coaching happened in (F10 t-1, plan D2).
+ *
+ * Cost is logged per conversation and never per run, so without this the admin surface can only guess
+ * by timestamp overlap — which fails on exactly the run Brief §8 worries about (four hours in one
+ * audit, or one left open for weeks). The surface keeps a single conversation live per
+ * `(user, agent, module)` until completion closes it (I15), so "the active one" is unambiguous while
+ * a run is in progress.
+ *
+ * Write-once and idempotent: only ever fills a `null`, so a resumed run keeps its original
+ * attribution. Best-effort — this is bookkeeping for a report, and it must never be able to fail a
+ * leader's answer.
+ */
+async function linkRunConversation(runId: string, userId: string): Promise<void> {
+  try {
+    const conversation = await prisma.aiConversation.findFirst({
+      where: {
+        userId,
+        contextType: MODULE_SURFACE_CONTEXT_TYPE,
+        contextId: RECLAIM_MODULE_SLUG,
+        isActive: true,
+      },
+      orderBy: { updatedAt: 'desc' },
+      select: { id: true },
+    });
+    if (conversation === null) return;
+
+    // `updateMany` with the null guard makes this a conditional write rather than a read-then-write:
+    // two concurrent answer saves cannot race to set different conversations.
+    await prisma.reclaimAuditRun.updateMany({
+      where: { id: runId, conversationId: null },
+      data: { conversationId: conversation.id },
+    });
+  } catch (error: unknown) {
+    logger.warn('Reclaim: could not link run to its conversation', {
+      runId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 /** Assert the run is the caller's and still in progress (answers can only be saved to an active run). */
 async function assertActiveOwnedRun(userId: string, runId: string): Promise<void> {
   const run = await loadOwnedRun(runId, userId);
@@ -152,6 +199,9 @@ async function assertActiveOwnedRun(userId: string, runId: string): Promise<void
       run: ['Answers can only be saved to an active run.'],
     });
   }
+  // The first answer after the leader has spoken to the coach is where the conversation becomes
+  // observable. Cheap: the lookup only runs while the link is still missing.
+  if (run.conversationId === null) await linkRunConversation(runId, userId);
 }
 
 export async function saveRunAnswer(

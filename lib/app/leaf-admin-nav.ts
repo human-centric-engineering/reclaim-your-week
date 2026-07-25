@@ -12,17 +12,47 @@
  * registration is read during the sidebar's render, so it cannot be async (see
  * `lib/admin-nav/registry.ts`).
  */
-import { KeyRound } from 'lucide-react';
+import { KeyRound, LayoutDashboard, Users, Inbox, FileText } from 'lucide-react';
 import { registerNavSection } from '@/lib/admin-nav/registry';
 
 export function initLeafAdminNav(): void {
-  // F8 t-1. Reclaim Your Week's own admin section. Client-safe by the contract above: the registrar
-  // and a `lucide-react` icon only — no Prisma, no server-only imports (this file is evaluated inside
-  // the client sidebar bundle). The rest of the section (client list, shared results, content editing)
-  // lands with F10; access is the first entry because it is what gates the product.
+  // F8 t-1, completed by F10. Reclaim Your Week's own admin section. Client-safe by the contract
+  // above: the registrar and `lucide-react` icons only — no Prisma, no server-only imports (this file
+  // is evaluated inside the client sidebar bundle).
+  //
+  // Ordered as the operator's day runs, not as the features were built: the dashboard answers "is
+  // this working", clients answers "who needs me", and the rest are things she does occasionally.
   registerNavSection({
     title: 'Reclaim Your Week',
     items: [
+      {
+        // NOT "Overview": core's sidebar already has a top-level section by that name, and two
+        // identically-labelled entries in one sidebar is a navigation bug rather than a naming
+        // preference. Caught by Sunrise's own `admin-sidebar` test, which is the sort of thing a
+        // leaf only finds by being rendered inside the platform's chrome.
+        href: '/admin/programme',
+        label: 'Programme overview',
+        icon: LayoutDashboard,
+        description: 'Do people come back, and do they tell others',
+      },
+      {
+        href: '/admin/programme/clients',
+        label: 'Clients',
+        icon: Users,
+        description: 'Who is in, where they reached, what it cost',
+      },
+      {
+        href: '/admin/programme/shared',
+        label: 'Shared results',
+        icon: Inbox,
+        description: 'Results shared with you, and the anonymised picture',
+      },
+      {
+        href: '/admin/programme/content',
+        label: 'Content',
+        icon: FileText,
+        description: 'Bucket wording, hour bands, and the audit rules',
+      },
       {
         href: '/admin/programme/access',
         label: 'Access',

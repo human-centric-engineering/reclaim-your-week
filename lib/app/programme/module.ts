@@ -125,6 +125,24 @@ export const reclaimConfigSchema = z.object({
    * placeholder so the mechanism is testable before the text exists.
    */
   policyVersion: z.string().min(1).default('draft-1'),
+
+  /**
+   * F10 t-1 — **when an unfinished audit counts as stalled**, in days since the last answer.
+   *
+   * "Abandoned at which phase" (Brief §2) is a definition before it is a query: an audit is designed
+   * to be left and resumed, so silence is not abandonment until it has gone on long enough to be
+   * worth a note. Coach-editable because only Rashmir knows how long is too long for her cohort, and
+   * the admin surface states the current rule wherever it shows the column — an unexplained
+   * "abandoned" badge is a judgement about a person, which is the one thing these screens must not be.
+   */
+  abandonedAfterDays: z.number().int().min(1).max(365).default(21),
+
+  /**
+   * F10 t-3 — **the minimum cohort behind any aggregate figure.** Below this, a cell renders
+   * suppressed rather than as a number. Brief §2 promises individual data stays confidential, and in
+   * a private beta "the average across nonprofit CEOs" can quietly be one identifiable person.
+   */
+  aggregateMinimumCohort: z.number().int().min(2).max(100).default(5),
 });
 
 /** The parsed shape of `reclaimConfigSchema` — the coach-editable config the app reads. */
