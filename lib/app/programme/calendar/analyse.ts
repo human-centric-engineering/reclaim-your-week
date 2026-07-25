@@ -10,7 +10,6 @@
 
 import { z } from 'zod';
 import { getSlotHeads } from '@/lib/framework/data-slots';
-import { saveAnswer } from '@/lib/app/programme/slots/write';
 import { RECLAIM_BUCKETS } from '@/lib/app/programme/content';
 import { parseIcs } from '@/lib/app/programme/calendar/parse';
 import {
@@ -20,6 +19,11 @@ import {
   type AmbiguousItem,
   type TaskSwitchMetrics,
 } from '@/lib/app/programme/calendar/categorise';
+import {
+  round1,
+  writeCalendarAnswer,
+  writeAllBucketHours,
+} from '@/lib/app/programme/calendar/store';
 
 const TITLE_BY_TOKEN = new Map(RECLAIM_BUCKETS.map((b) => [bucketToken(b.slug), b.title]));
 
@@ -64,6 +68,23 @@ export interface AnalyseOptions {
 
 const numberHead = z.coerce.number();
 
+/**
+ * Default analysis window when the caller supplies none. The audit is about **recent typical weeks**,
+ * and — critically — real exports carry standing meetings as an open-ended RRULE anchored to their
+ * original (often years-old) DTSTART. Without a recent window, expansion would run from that old start
+ * and never reach the current occurrences. Bounding to the last ~12 weeks captures the present picture
+ * and lets the parser seed its recurrence walk at `windowStart` instead of trawling years of history.
+ * (§8's explicit "what period?" question is a later UI concern; this is the safe default until then.)
+ */
+const DEFAULT_ANALYSIS_DAYS = 84;
+
+function defaultedWindow(options: AnalyseOptions): { windowStart: Date; windowEnd: Date } {
+  const windowEnd = options.windowEnd ?? new Date();
+  const windowStart =
+    options.windowStart ?? new Date(windowEnd.getTime() - DEFAULT_ANALYSIS_DAYS * 86_400_000);
+  return { windowStart, windowEnd };
+}
+
 /** Read the Phase 0 context that sharpens categorisation. Best-effort — absent slots yield an empty context. */
 async function loadCalendarContext(userId: string): Promise<CalendarContext> {
   const heads = await getSlotHeads(userId, {
@@ -98,28 +119,23 @@ export async function analyseCalendarUpload(
   icsText: string,
   options: AnalyseOptions = {}
 ): Promise<CalendarReview> {
-  const parsed = parseIcs(icsText, {
-    windowStart: options.windowStart,
-    windowEnd: options.windowEnd,
-  });
+  const { windowStart, windowEnd } = defaultedWindow(options);
+  const parsed = parseIcs(icsText, { windowStart, windowEnd });
   const context = await loadCalendarContext(userId);
   const categorised = await categoriseCalendar(parsed.events, context);
 
   const save = (slotSlug: string, value: string, valueJson?: unknown) =>
-    saveAnswer({
-      userId,
-      runId,
-      slotSlug,
-      value,
-      valueJson: valueJson as Parameters<typeof saveAnswer>[0]['valueJson'],
-      sourceType: 'inferred',
-      reasoningNote: 'Inferred from the uploaded calendar; no event detail stored (I4).',
-    });
+    writeCalendarAnswer(userId, runId, slotSlug, value, valueJson);
 
   await save('reclaim_calendar_uploaded', 'true', true);
-  for (const [token, hours] of Object.entries(categorised.perBucketHours)) {
-    await save(`reclaim_calendar_hours__${token}`, String(hours), hours);
-  }
+  // Write all nine bucket slots (0 for absent) so a re-upload can't leave a stale figure behind.
+  await writeAllBucketHours(
+    userId,
+    runId,
+    'reclaim_calendar_hours__',
+    categorised.perBucketHours,
+    'inferred'
+  );
   await save(
     'reclaim_calendar_total_hours',
     String(categorised.totalHours),
@@ -140,10 +156,13 @@ export async function analyseCalendarUpload(
     String(categorised.metrics.longestBlockMinutes),
     categorised.metrics.longestBlockMinutes
   );
+  // I4 defence-in-depth: persist only the STRUCTURAL fields of each ambiguous item (bucket + hours).
+  // The free-text `reasoning` is LLM-authored and could echo a title fragment despite the prompt's
+  // instruction not to — so it is returned for the confirmation UI but never written to the DB.
   await save(
     'reclaim_calendar_ambiguous_items',
     `${categorised.ambiguous.length} item(s) to confirm`,
-    categorised.ambiguous
+    categorised.ambiguous.map((a) => ({ bucketSlug: a.bucketSlug, hours: a.hours }))
   );
   if (options.periodLabel) {
     await save('reclaim_calendar_period', options.periodLabel);
@@ -153,7 +172,7 @@ export async function analyseCalendarUpload(
   const unaccountedHours =
     selfReportedWeeklyHours === null
       ? null
-      : Math.round(Math.max(0, selfReportedWeeklyHours - categorised.totalHours) * 10) / 10;
+      : round1(Math.max(0, selfReportedWeeklyHours - categorised.totalHours));
 
   const buckets: CalendarReviewBucket[] = Object.entries(categorised.perBucketHours)
     .map(([token, hours]) => ({

@@ -7,12 +7,12 @@
  * (`reclaim_current_*`) and the calendar (`reclaim_calendar_*`). **F6 t-3 plots this; F5 computes it.**
  */
 
-import { getSlotHeads } from '@/lib/framework/data-slots';
-import { saveAnswer } from '@/lib/app/programme/slots/write';
-import { RECLAIM_BUCKETS } from '@/lib/app/programme/content';
-import { bucketToken } from '@/lib/app/programme/calendar/categorise';
-
-const BUCKET_TOKENS = RECLAIM_BUCKETS.map((b) => bucketToken(b.slug));
+import {
+  round1,
+  readHourSlots,
+  writeCalendarAnswer,
+  writeAllBucketHours,
+} from '@/lib/app/programme/calendar/store';
 
 /** A significant divergence between the Phase 1 estimate and the composite reality, for the chart note. */
 export interface VarianceEntry {
@@ -32,8 +32,6 @@ export interface CompositeResult {
 /** A divergence counts as significant at ≥ 3 hours OR ≥ 25% of the estimate — the chart's "small note". */
 const VARIANCE_MIN_HOURS = 3;
 const VARIANCE_MIN_RATIO = 0.25;
-
-const round1 = (n: number) => Math.round(n * 10) / 10;
 
 /**
  * Pure reconciliation: composite = calendar + off-calendar, per bucket, with a variance entry wherever
@@ -71,19 +69,6 @@ export function computeComposite(
   return { compositeHours, variance };
 }
 
-/** Read a set of number slots (token-suffixed) into a token→hours map. Absent/non-numeric are skipped. */
-async function readHourSlots(userId: string, prefix: string): Promise<Record<string, number>> {
-  const slugs = BUCKET_TOKENS.map((t) => `${prefix}${t}`);
-  const heads = await getSlotHeads(userId, { slotSlugs: slugs });
-  const out: Record<string, number> = {};
-  for (const head of heads) {
-    const token = head.slotSlug.slice(prefix.length);
-    const n = Number(head.value);
-    if (Number.isFinite(n)) out[token] = n;
-  }
-  return out;
-}
-
 /**
  * Read the calendar totals + Phase 1 estimate for this run, reconcile with the leader's off-calendar
  * attribution, and persist the composite hours + variance note (I-composite). Returns the result so
@@ -99,25 +84,23 @@ export async function persistComposite(
 
   const result = computeComposite(calendarHours, offCalHours, estimateHours);
 
-  const save = (slotSlug: string, value: string, valueJson: unknown) =>
-    saveAnswer({
-      userId,
-      runId,
-      slotSlug,
-      value,
-      valueJson: valueJson as Parameters<typeof saveAnswer>[0]['valueJson'],
-      sourceType: 'synthesised',
-      reasoningNote:
-        'Composite of calendar and off-calendar work (I-composite); no event detail stored.',
-    });
-
-  for (const [token, hours] of Object.entries(result.compositeHours)) {
-    await save(`reclaim_composite_hours__${token}`, String(hours), hours);
-  }
-  await save(
+  const note = 'Composite of calendar and off-calendar work (I-composite); no event detail stored.';
+  // Write all nine composite slots (0 for absent) so a re-confirmation can't leave a stale figure.
+  await writeAllBucketHours(
+    userId,
+    runId,
+    'reclaim_composite_hours__',
+    result.compositeHours,
+    'synthesised'
+  );
+  await writeCalendarAnswer(
+    userId,
+    runId,
     'reclaim_composite_variance_note',
     `${result.variance.length} bucket(s) diverged from the estimate`,
-    result.variance
+    result.variance,
+    'synthesised',
+    note
   );
 
   return result;

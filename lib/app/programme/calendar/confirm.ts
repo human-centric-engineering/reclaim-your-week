@@ -6,11 +6,14 @@
  * LLM (deterministic, and keeps the raw file out of a second call).
  */
 
-import { getSlotHeads } from '@/lib/framework/data-slots';
-import { saveAnswer } from '@/lib/app/programme/slots/write';
 import { RECLAIM_BUCKETS } from '@/lib/app/programme/content';
 import { bucketToken } from '@/lib/app/programme/calendar/categorise';
 import { persistComposite, type CompositeResult } from '@/lib/app/programme/calendar/composite';
+import {
+  round1,
+  writeCalendarAnswer,
+  writeAllBucketHours,
+} from '@/lib/app/programme/calendar/store';
 
 const BUCKET_TOKENS = new Set(RECLAIM_BUCKETS.map((b) => bucketToken(b.slug)));
 
@@ -27,8 +30,6 @@ export interface CalendarConfirmInput {
   messagingLoad?: string;
 }
 
-const round1 = (n: number) => Math.round(n * 10) / 10;
-
 /** Keep only entries whose key is one of the nine canonical bucket tokens (I7) with a finite value. */
 function cleanTokenMap(map: Record<string, number> | undefined): Record<string, number> {
   const out: Record<string, number> = {};
@@ -40,41 +41,31 @@ function cleanTokenMap(map: Record<string, number> | undefined): Record<string, 
 }
 
 /**
- * Apply the leader's review and persist the composite. Corrections overwrite the per-bucket calendar
- * hours and the total; the qualitative answers land in their text slots; the composite reconciles
- * calendar + off-calendar and records the variance note. Returns the composite for immediate render.
+ * Apply the leader's review and persist the composite. Corrections overwrite **all nine** per-bucket
+ * calendar hours and the total (via `writeAllBucketHours`, so a bucket the leader cleared drops to 0
+ * rather than keeping its stale value); the qualitative answers land in their text slots; the composite
+ * reconciles calendar + off-calendar and records the variance note. Returns the composite for render.
  */
 export async function confirmCalendarReview(
   userId: string,
   runId: string,
   input: CalendarConfirmInput
 ): Promise<CompositeResult> {
-  const write = (
-    slotSlug: string,
-    value: string,
-    valueJson?: unknown,
-    sourceType: 'user_confirmed' | 'direct' = 'direct'
-  ) =>
-    saveAnswer({
-      userId,
-      runId,
-      slotSlug,
-      value,
-      valueJson: valueJson as Parameters<typeof saveAnswer>[0]['valueJson'],
-      sourceType,
-    });
-
   const corrections = cleanTokenMap(input.corrections);
   if (Object.keys(corrections).length > 0) {
-    let total = 0;
-    for (const [token, hours] of Object.entries(corrections)) {
-      await write(`reclaim_calendar_hours__${token}`, String(hours), hours, 'user_confirmed');
-      total += hours;
-    }
-    await write(
+    const total = await writeAllBucketHours(
+      userId,
+      runId,
+      'reclaim_calendar_hours__',
+      corrections,
+      'user_confirmed'
+    );
+    await writeCalendarAnswer(
+      userId,
+      runId,
       'reclaim_calendar_total_hours',
-      String(round1(total)),
-      round1(total),
+      String(total),
+      total,
       'user_confirmed'
     );
   }
@@ -87,21 +78,10 @@ export async function confirmCalendarReview(
     ['reclaim_calendar_messaging_load', input.messagingLoad],
   ];
   for (const [slug, value] of qualitative) {
-    if (typeof value === 'string' && value.trim().length > 0) await write(slug, value.trim());
+    if (typeof value === 'string' && value.trim().length > 0) {
+      await writeCalendarAnswer(userId, runId, slug, value.trim(), undefined, 'user_confirmed');
+    }
   }
 
   return persistComposite(userId, runId, cleanTokenMap(input.offCalAttribution));
-}
-
-/** Read the current per-bucket calendar hours so the review UI can seed its editable form. */
-export async function readCalendarHours(userId: string): Promise<Record<string, number>> {
-  const slugs = [...BUCKET_TOKENS].map((t) => `reclaim_calendar_hours__${t}`);
-  const heads = await getSlotHeads(userId, { slotSlugs: slugs });
-  const out: Record<string, number> = {};
-  for (const head of heads) {
-    const token = head.slotSlug.replace('reclaim_calendar_hours__', '');
-    const n = Number(head.value);
-    if (Number.isFinite(n)) out[token] = n;
-  }
-  return out;
 }

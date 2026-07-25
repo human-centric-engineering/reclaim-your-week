@@ -12,6 +12,7 @@ import { useRef, useState } from 'react';
 import {
   calendarReviewSchema,
   parseEnvelope,
+  errorMessageFrom,
   type CalendarReview,
 } from '@/components/app/reclaim/calendar/types';
 import { FieldHelp } from '@/components/ui/field-help';
@@ -43,11 +44,7 @@ export function CalendarUpload({
       });
       const json: unknown = await res.json();
       if (!res.ok) {
-        const message =
-          json !== null && typeof json === 'object' && 'error' in json
-            ? ((json.error as { message?: string })?.message ?? null)
-            : null;
-        throw new Error(message ?? 'We could not read that calendar just now.');
+        throw new Error(errorMessageFrom(json) ?? 'We could not read that calendar just now.');
       }
       onReviewed(parseEnvelope(json, calendarReviewSchema));
     } catch (e) {

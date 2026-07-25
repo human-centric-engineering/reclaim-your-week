@@ -91,6 +91,32 @@ describe('parseIcs — safety', () => {
     expect(events).toEqual([]);
   });
 
+  it('yields the CURRENT occurrences of an open-ended series anchored to an old DTSTART', () => {
+    // A standing weekly meeting exported today carries its original (years-old) DTSTART + an
+    // open-ended RRULE. Seeding the iterator at windowStart must surface the recent occurrences,
+    // not stop a year after 2020.
+    const standing = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'BEGIN:VEVENT',
+      'UID:standing@ryw.test',
+      'DTSTAMP:20191201T000000Z',
+      'DTSTART:20200106T090000Z', // a Monday in 2020
+      'DTEND:20200106T100000Z',
+      'RRULE:FREQ=WEEKLY', // no COUNT/UNTIL — open-ended
+      'SUMMARY:Weekly leadership team',
+      'END:VEVENT',
+      'END:VCALENDAR',
+    ].join('\n');
+    const { events } = parseIcs(standing, {
+      windowStart: utc('2026-01-01T00:00:00Z'),
+      windowEnd: utc('2026-02-01T00:00:00Z'),
+    });
+    // Mondays in Jan 2026: 5, 12, 19, 26.
+    expect(events).toHaveLength(4);
+    expect(events.every((e) => e.start.getUTCFullYear() === 2026)).toBe(true);
+  });
+
   it('caps a runaway unbounded series and marks the result truncated', () => {
     const daily = [
       'BEGIN:VCALENDAR',

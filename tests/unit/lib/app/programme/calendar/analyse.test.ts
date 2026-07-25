@@ -57,7 +57,22 @@ describe('analyseCalendarUpload — persistence', () => {
     expect(w.get('reclaim_calendar_events_per_day')?.valueJson).toBe(4);
     expect(w.get('reclaim_calendar_back_to_back')?.valueJson).toBe(3);
     expect(w.get('reclaim_calendar_longest_block')?.valueJson).toBe(180);
-    expect(w.get('reclaim_calendar_ambiguous_items')?.valueJson).toEqual(categorised.ambiguous);
+    // I4: persisted ambiguous items carry only structural fields — never the LLM-authored reasoning.
+    expect(w.get('reclaim_calendar_ambiguous_items')?.valueJson).toEqual([
+      { bucketSlug: 'delivery-operations', hours: 2 },
+    ]);
+  });
+
+  it('never persists the free-text reasoning of an ambiguous item (I4 defence-in-depth)', async () => {
+    categoriseMock.mockResolvedValue({
+      ...categorised,
+      ambiguous: [
+        { bucketSlug: 'deep-work', reasoning: 'Secret meeting title leaked here', hours: 1 },
+      ],
+    });
+    await analyseCalendarUpload('u1', 'run-1', ICS, {});
+    const persisted = writes().get('reclaim_calendar_ambiguous_items');
+    expect(JSON.stringify(persisted?.valueJson)).not.toContain('Secret meeting title');
   });
 
   it('every write is run-scoped and routed through saveAnswer (I3)', async () => {
@@ -103,6 +118,24 @@ describe('analyseCalendarUpload — [X]/[Y]/[Z] arithmetic', () => {
     const review = await analyseCalendarUpload('u1', 'run-1', ICS, {});
     expect(review.selfReportedWeeklyHours).toBeNull();
     expect(review.unaccountedHours).toBeNull();
+  });
+
+  it('leaves Z null when the self-report slot is present but non-numeric', async () => {
+    getHeadsMock.mockResolvedValue([head('reclaim_setup_weekly_hours', 'about fifty')]);
+    const review = await analyseCalendarUpload('u1', 'run-1', ICS, {});
+    expect(review.selfReportedWeeklyHours).toBeNull();
+    expect(review.unaccountedHours).toBeNull();
+  });
+
+  it('passes the Phase 0 context (priorities, fundraising relevance) to the categoriser', async () => {
+    getHeadsMock.mockResolvedValue([
+      head('reclaim_setup_priorities', 'Growth and fundraising'),
+      head('reclaim_setup_fundraising_relevant', 'true'),
+    ]);
+    await analyseCalendarUpload('u1', 'run-1', ICS, {});
+    const [, context] = categoriseMock.mock.calls[0];
+    expect(context.priorities).toBe('Growth and fundraising');
+    expect(context.fundraisingRelevant).toBe(true);
   });
 
   it('returns buckets sorted by hours descending with titles', async () => {

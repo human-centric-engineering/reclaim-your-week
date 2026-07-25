@@ -52,6 +52,8 @@ const DEFAULT_MAX_INSTANCES = 10_000;
 const DEFAULT_MAX_PER_SERIES = 2_000;
 /** When a recurring series has no window end to bound it, expand at most this far past its start. */
 const UNBOUNDED_WINDOW_DAYS = 366;
+/** Backstop on how many raw occurrences one series may be walked (incl. skipped pre-window ones). */
+const MAX_SERIES_WALK = 50_000;
 const MS_PER_MINUTE = 60_000;
 const MS_PER_DAY = 86_400_000;
 
@@ -137,19 +139,30 @@ export function parseIcs(text: string, options: ParseOptions = {}): ParsedCalend
         continue;
       }
 
-      // Recurring: expand instance by instance, bounded by the window ceiling and the per-series cap.
+      // Recurring: expand from DTSTART, but bound two ways. The `ceiling` (= `windowEnd`) stops the
+      // walk at the end of the analysed period, so a standing meeting anchored to a years-old DTSTART
+      // is walked forward to — and yields — its *current* occurrences rather than stopping a year after
+      // its original start. `walked` is a hard backstop against a pathological open-ended series (e.g.
+      // daily since 2000 with a very wide window); `perSeries` counts only the occurrences actually
+      // kept, so pre-window history never spends the per-series budget. `event.iterator()` is seeded at
+      // DTSTART (a real occurrence) — seeding at an arbitrary window edge re-bases the series wrongly.
       const ceiling = event.startDate ? seriesCeiling(event.startDate.toJSDate(), options) : null;
       const iterator = event.iterator();
       let perSeries = 0;
+      let walked = 0;
       let next = iterator.next();
       while (next) {
-        const startJs = next.toJSDate();
-        if (ceiling && startJs >= ceiling) break;
-        if (++perSeries > maxPerSeries) {
+        if (++walked > MAX_SERIES_WALK) {
           truncated = true;
           break;
         }
+        const startJs = next.toJSDate();
+        if (ceiling && startJs >= ceiling) break;
         if (withinWindow(startJs, options)) {
+          if (++perSeries > maxPerSeries) {
+            truncated = true;
+            break;
+          }
           const details = event.getOccurrenceDetails(next);
           events.push(toCalendarEvent(details.startDate, details.endDate, event, calendarName));
           if (events.length >= maxInstances) return finish();

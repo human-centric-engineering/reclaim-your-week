@@ -12,6 +12,7 @@ import { useMemo, useState } from 'react';
 import {
   compositeResultSchema,
   parseEnvelope,
+  errorMessageFrom,
   type CalendarReview,
 } from '@/components/app/reclaim/calendar/types';
 import { FieldHelp } from '@/components/ui/field-help';
@@ -67,10 +68,12 @@ export function CalendarReviewPanel({
     setBusy(true);
     setError(null);
     try {
+      // Send every bucket (blank → 0) so the server's write-all-nine can zero a bucket the leader
+      // cleared, rather than leaving its previous value behind.
       const corrections: Record<string, number> = {};
       const offCalAttribution: Record<string, number> = {};
       for (const r of rows) {
-        if (r.calendar.trim() !== '') corrections[r.token] = num(r.calendar);
+        corrections[r.token] = num(r.calendar);
         if (num(r.offCal) > 0) offCalAttribution[r.token] = num(r.offCal);
       }
       const res = await fetch(`/api/v1/app/reclaim/runs/${runId}/calendar/confirm`, {
@@ -87,7 +90,8 @@ export function CalendarReviewPanel({
         }),
       });
       const json: unknown = await res.json();
-      if (!res.ok) throw new Error('We could not save your review just now.');
+      if (!res.ok)
+        throw new Error(errorMessageFrom(json) ?? 'We could not save your review just now.');
       parseEnvelope(json, compositeResultSchema); // validate the response shape
       onConfirmed();
     } catch (e) {

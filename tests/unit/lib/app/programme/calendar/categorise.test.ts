@@ -156,4 +156,92 @@ describe('categoriseCalendar', () => {
       CalendarProviderUnavailableError
     );
   });
+
+  it('builds the leader-context lines and truncates long descriptions (no crash)', async () => {
+    let sentContent = '';
+    runStructuredMock.mockImplementation((opts: { messages: Array<{ content: string }> }) => {
+      sentContent = opts.messages[1].content;
+      return Promise.resolve({
+        value: [{ index: 0, bucketSlug: 'deep-work', ambiguous: false, reasoning: '' }],
+        costUsd: 0,
+      });
+    });
+    const longDesc = 'x'.repeat(400);
+    await categoriseCalendar(
+      [event({ start: '2026-01-05T09:00:00Z', durationMinutes: 60, description: longDesc })],
+      { role: 'CEO', orgType: 'Charity', priorities: 'Fundraising', fundraisingRelevant: false }
+    );
+    expect(sentContent).toContain('Role: CEO');
+    expect(sentContent).toContain('Fundraising is not relevant');
+    // The 400-char description is capped at 200 in the payload.
+    expect(sentContent).not.toContain('x'.repeat(201));
+  });
+
+  it('spreads hours across multiple weeks when the span exceeds seven days', async () => {
+    runStructuredMock.mockResolvedValue({
+      value: [
+        { index: 0, bucketSlug: 'deep-work', ambiguous: false, reasoning: '' },
+        { index: 1, bucketSlug: 'deep-work', ambiguous: false, reasoning: '' },
+      ],
+      costUsd: 0,
+    });
+    // Two 10h blocks 14 days apart → span 2 weeks → 20h / 2 = 10h/week.
+    const result = await categoriseCalendar([
+      event({ start: '2026-01-05T09:00:00Z', durationMinutes: 600 }),
+      event({ start: '2026-01-19T09:00:00Z', durationMinutes: 600 }),
+    ]);
+    expect(result.perBucketHours[bucketToken('deep-work')]).toBe(10);
+  });
+});
+
+describe('categoriseCalendar — the parse callback (LLM output validation)', () => {
+  /** Capture the real `parse` function the categoriser hands to runStructuredCompletion. */
+  async function captureParse(): Promise<(raw: string) => unknown> {
+    let parseFn: ((raw: string) => unknown) | undefined;
+    runStructuredMock.mockImplementation((opts: { parse: (raw: string) => unknown }) => {
+      parseFn = opts.parse;
+      return Promise.resolve({
+        value: opts.parse(
+          JSON.stringify({
+            classifications: [
+              { index: 0, bucketSlug: 'deep-work', ambiguous: false, reasoning: '' },
+            ],
+          })
+        ),
+        costUsd: 0,
+      });
+    });
+    await categoriseCalendar([oneWeek[0]]);
+    if (!parseFn) throw new Error('parse was not captured');
+    return parseFn;
+  }
+
+  it('rejects malformed and structurally-wrong payloads', async () => {
+    const parse = await captureParse();
+    expect(parse('not json')).toBeNull();
+    expect(parse(JSON.stringify({}))).toBeNull(); // no classifications
+    expect(parse(JSON.stringify({ classifications: 'x' }))).toBeNull(); // not an array
+    expect(parse(JSON.stringify({ classifications: [] }))).toBeNull(); // empty → null
+    expect(
+      parse(JSON.stringify({ classifications: [{ index: 'bad', bucketSlug: 'deep-work' }] }))
+    ).toBeNull(); // bad index type → filtered → empty → null
+    expect(
+      parse(JSON.stringify({ classifications: [{ index: 0, bucketSlug: 'not-a-bucket' }] }))
+    ).toBeNull(); // unknown bucket → filtered
+  });
+
+  it('accepts valid items and defaults missing ambiguous/reasoning', async () => {
+    const parse = await captureParse();
+    const out = parse(
+      JSON.stringify({
+        classifications: [
+          { index: 0, bucketSlug: 'personal', ambiguous: true, reasoning: 'r' },
+          { index: 1, bucketSlug: 'deep-work' }, // missing ambiguous/reasoning → defaults
+        ],
+      })
+    ) as Array<{ index: number; ambiguous: boolean; reasoning: string }>;
+    expect(out).toHaveLength(2);
+    expect(out[1].ambiguous).toBe(false);
+    expect(out[1].reasoning).toBe('');
+  });
 });

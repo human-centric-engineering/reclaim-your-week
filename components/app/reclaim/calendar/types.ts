@@ -65,3 +65,11 @@ export function parseEnvelope<T>(json: unknown, schema: z.ZodType<T>): T {
   if (!parsed.success) throw new Error('Unexpected response from the server.');
   return parsed.data;
 }
+
+const errorEnvelopeSchema = z.object({ error: z.object({ message: z.string() }) });
+
+/** Read the `{ error: { message } }` envelope's message without casting external data, or `null`. */
+export function errorMessageFrom(json: unknown): string | null {
+  const parsed = errorEnvelopeSchema.safeParse(json);
+  return parsed.success ? parsed.data.error.message : null;
+}

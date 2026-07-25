@@ -21,6 +21,7 @@ import { getRouteLogger } from '@/lib/api/context';
 import { ValidationError } from '@/lib/api/errors';
 import { cuidSchema } from '@/lib/validations/common';
 import { uploadLimiter, createRateLimitResponse } from '@/lib/security/rate-limit';
+import { enforceContentLengthCap } from '@/lib/api/multipart-guard';
 import { loadOwnedRun, RUN_STATUS } from '@/app/api/v1/app/reclaim/runs/service';
 import { analyseCalendarUpload } from '@/lib/app/programme/calendar/analyse';
 import { CalendarProviderUnavailableError } from '@/lib/app/programme/calendar/categorise';
@@ -45,6 +46,14 @@ export const POST = withAuth<{ runId: string }>(async (request, session, { param
   // of the inherited 100/min section cap.
   const limit = uploadLimiter.check(`reclaim-calendar:user:${userId}`);
   if (!limit.success) return createRateLimitResponse(limit);
+
+  // Reject an over-large upload from its Content-Length before reading it into memory (§8 file-too-large).
+  const oversize = enforceContentLengthCap(request, {
+    maxBytes: MAX_ICS_CHARS,
+    errorCode: 'CALENDAR_TOO_LARGE',
+    errorMessage: 'That calendar file is too large. Please export a shorter period and try again.',
+  });
+  if (oversize) return oversize;
 
   const { runId: rawRunId } = await params;
   const runIdParsed = cuidSchema.safeParse(rawRunId);
