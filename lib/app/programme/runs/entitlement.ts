@@ -1,32 +1,31 @@
 /**
- * Entitlement gate for run creation (F6 t-1, I14). Enforced at the one place it is sufficient — the
- * run the leaf creates is the only door to the module surface (reconciliation 1), so gating creation
+ * Entitlement gate for run creation (F6 t-1, F8 t-2 — I14). Enforced at the one place it is sufficient:
+ * the run the leaf creates is the only door to the module surface (reconciliation 1), so gating creation
  * gates everything.
  *
- * **Free tier = one complete audit.** A grant carries `auditsGranted` / `auditsUsed`; a run consumes
- * one on *completion* (not creation), so a leader may abandon and restart but complete only their
- * allowance. `assertEntitled` **bootstraps a free-tier grant on first run** when none exists — the
- * least-risky path until F8 (`ryw-access`) lands the invite→grant flow, which adds client/referral
- * tiers on top of this same gate without changing it (see `ryw-current.md` reconciliation).
+ * **F8 closed the door F6 left open.** F6 bootstrapped a free grant for any account with none — the
+ * documented least-risky path while the invite flow did not exist. In production that read as a
+ * self-serve free tier, because Sunrise's public signup is open and there is no platform seam to close
+ * it (sunrise#463). Now: no live grant → resolve a live **invite** for this account → mint the tiered
+ * grant → otherwise **refuse**. The free-tier bootstrap is gone; `openSignup` in `Module.config` is what
+ * re-opens the door, deliberately (Brief §2: "we open the doors deliberately rather than by default").
+ *
+ * **Two tier shapes** (Brief §8, `access/tiers.ts`): free/standard/referral are bounded by their audit
+ * count; client is bounded by its window, so the count is bookkeeping only and `grantIsLive` ignores it.
  */
 
 import { prisma } from '@/lib/db/client';
 import { ForbiddenError } from '@/lib/api/errors';
 import { logger } from '@/lib/logging';
-
-/** A Prisma P2002 (unique-constraint) violation, duck-typed to avoid importing `@prisma/client` here. */
-function isUniqueViolation(error: unknown): boolean {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    (error as { code?: unknown }).code === 'P2002'
-  );
-}
+import { isWindowBounded } from '@/lib/app/programme/access/tiers';
+import { redeemInviteForUser, grantOpenSignupTier } from '@/lib/app/programme/access/grants';
+import { readConsent, ConsentRequiredError } from '@/lib/app/programme/access/consent';
+import { emitReclaimAccessEvent } from '@/lib/app/programme/access/events';
+import { readReclaimAccessConfig, type ReclaimAccessConfig } from '@/lib/app/programme/config';
 
 type Grant = Awaited<ReturnType<typeof prisma.reclaimGrant.findFirst>>;
 
-const TWELVE_MONTHS_MS = 365 * 24 * 60 * 60 * 1000;
+const MONTH_MS = 30 * 24 * 60 * 60 * 1000;
 
 /** Raised (→ 403) when a leader has no remaining entitlement to start a new audit. */
 export class EntitlementError extends ForbiddenError {
@@ -36,49 +35,108 @@ export class EntitlementError extends ForbiddenError {
   }
 }
 
-/** A grant still confers a run if it has audits left AND (for a client window) has not expired. */
-function grantIsLive(grant: NonNullable<Grant>, now: Date): boolean {
-  if (grant.auditsUsed >= grant.auditsGranted) return false;
-  // Client-tier window (F8): a started window expires 12 months after first use; an unstarted grant
-  // expires at `mustStartBy`. Free grants set neither, so they are bounded only by the audit count.
-  if (grant.windowStartsAt && now.getTime() > grant.windowStartsAt.getTime() + TWELVE_MONTHS_MS) {
+/**
+ * A grant still confers a run when it has audits left AND its window has not closed.
+ *
+ * Client tier is **window-bounded, not count-bounded** (Brief §8: "unlimited use while under contract",
+ * shaped as a 12-month window): the audit count is bookkeeping for F10's reporting, so it does not
+ * refuse here. Free/standard/referral have no window and are bounded purely by the count.
+ */
+export function grantIsLive(
+  grant: NonNullable<Grant>,
+  now: Date,
+  config: Pick<ReclaimAccessConfig, 'clientWindowMonths'>
+): boolean {
+  if (!isWindowBounded(grant.tier) && grant.auditsUsed >= grant.auditsGranted) return false;
+
+  if (grant.windowStartsAt !== null) {
+    const windowEnds = grant.windowStartsAt.getTime() + config.clientWindowMonths * MONTH_MS;
+    if (now.getTime() > windowEnds) return false;
+  } else if (grant.mustStartBy !== null && now > grant.mustStartBy) {
+    // Issued but never started, and the start-by deadline has passed (Brief §8).
     return false;
   }
-  if (!grant.windowStartsAt && grant.mustStartBy && now > grant.mustStartBy) return false;
   return true;
 }
 
+/** Why a run was refused — so the surface can say something true rather than a generic 403. */
+export type RefusalReason = 'no_invite' | 'exhausted' | 'expired';
+
+const REFUSAL_MESSAGE: Record<RefusalReason, string> = {
+  // Invitation, not a wall: this is the first thing an uninvited account ever hears from the product.
+  no_invite:
+    'Reclaim Your Week is invite-only while it is in preview. If someone has invited you, use the link in your invitation to sign in.',
+  // Brief §8 — the free tier is one complete audit. No pitch here (Brief §2: offers at the end, never
+  // mid-process), and no suggestion they did something wrong (I17).
+  exhausted:
+    'You have completed the audit your invitation included. If you would like to run it again, Rashmir can open that up for you.',
+  expired:
+    'The access window on your invitation has closed. Rashmir can open a new one whenever you are ready.',
+};
+
+export class EntitlementRefused extends EntitlementError {
+  readonly reason: RefusalReason;
+  constructor(reason: RefusalReason) {
+    super(REFUSAL_MESSAGE[reason]);
+    this.name = 'EntitlementRefused';
+    this.reason = reason;
+  }
+}
+
 /**
- * Assert the user may start a new audit, or throw `EntitlementError`. Bootstraps a free-tier grant the
- * first time (so run creation is never blanket-refused before F8 seeds grants). Does **not** consume —
- * consumption is on completion (`consumeAudit`).
+ * Assert the user may start a new audit, or throw `EntitlementRefused`.
+ *
+ * Resolves an invite into a grant on first use (F8 t-2) — lazily, because there is no leaf hook at
+ * account creation (sunrise#464). Does **not** consume: consumption is on completion (`consumeAudit`),
+ * so a leader may abandon and restart but complete only their allowance.
  */
 export async function assertEntitled(userId: string): Promise<void> {
-  const grants = await prisma.reclaimGrant.findMany({ where: { userId } });
+  const [user, grants, config] = await Promise.all([
+    prisma.user.findUnique({ where: { id: userId }, select: { email: true } }),
+    prisma.reclaimGrant.findMany({ where: { userId } }),
+    readReclaimAccessConfig(),
+  ]);
   const now = new Date();
 
-  if (grants.length === 0) {
-    // First run: grant the free tier (one complete audit). F8 later issues client/referral grants.
-    // A **deterministic primary key** (`free_<userId>`) makes the bootstrap idempotent against two
-    // concurrent first-run requests: the second create collides on the PK (P2002) instead of minting
-    // a second free grant, so the "one complete audit" limit can't be doubled by a double-click.
-    try {
-      await prisma.reclaimGrant.create({
-        data: { id: `free_${userId}`, userId, tier: 'free', auditsGranted: 1, auditsUsed: 0 },
-      });
-      logger.info('Reclaim: bootstrapped a free-tier grant on first run', { userId });
-    } catch (error) {
-      // A concurrent first-run already bootstrapped it (PK collision). Any other error is real.
-      if (!isUniqueViolation(error)) throw error;
+  // Consent first (F8 t-4). Checked before entitlement deliberately: the lawful basis for processing
+  // this person's answers has to exist before we care whether they have an audit left, and a leader
+  // with no consent AND no invite should be told about the consent — it is the one they can act on.
+  const consent = await readConsent(userId, config.policyVersion);
+  if (!consent.accepted) throw new ConsentRequiredError(config.policyVersion);
+
+  if (grants.some((g) => grantIsLive(g, now, config))) return;
+
+  // No live grant. Two ways to earn one: an invitation addressed to this account, or the open-signup
+  // door if Rashmir has opened it.
+  if (user !== null && user.email !== '') {
+    const tier = await redeemInviteForUser(userId, user.email, config, now);
+    if (tier !== null) {
+      emitReclaimAccessEvent('reclaim.access_granted', { userId, tier, via: 'invite' });
+      return;
     }
+  }
+
+  if (config.openSignup) {
+    await grantOpenSignupTier(userId);
+    emitReclaimAccessEvent('reclaim.access_granted', {
+      userId,
+      tier: 'standard',
+      via: 'open_signup',
+    });
     return;
   }
 
-  if (grants.some((g) => grantIsLive(g, now))) return;
+  // Distinguish "never had access" from "had access and used it" — the same 403 to a client, but a
+  // materially different sentence to a person.
+  const reason: RefusalReason =
+    grants.length === 0
+      ? 'no_invite'
+      : grants.some((g) => g.windowStartsAt !== null || g.mustStartBy !== null)
+        ? 'expired'
+        : 'exhausted';
 
-  throw new EntitlementError(
-    'You have used your audit for now. Reclaim Your Week is invite-based while in preview.'
-  );
+  logger.info('Reclaim: run refused at the entitlement gate', { userId, reason });
+  throw new EntitlementRefused(reason);
 }
 
 /**
@@ -87,19 +145,20 @@ export async function assertEntitled(userId: string): Promise<void> {
  * is a no-op rather than an error, so completing a run never fails on entitlement bookkeeping.
  */
 export async function consumeAudit(userId: string): Promise<void> {
-  const grants = await prisma.reclaimGrant.findMany({
-    where: { userId },
-    orderBy: { createdAt: 'asc' },
-  });
+  const [grants, config] = await Promise.all([
+    prisma.reclaimGrant.findMany({ where: { userId }, orderBy: { createdAt: 'asc' } }),
+    readReclaimAccessConfig(),
+  ]);
   const now = new Date();
-  const target = grants.find((g) => grantIsLive(g, now));
-  if (!target) return;
+  const target = grants.find((g) => grantIsLive(g, now, config));
+  if (target === undefined) return;
+
   await prisma.reclaimGrant.update({
     where: { id: target.id },
     data: {
       auditsUsed: { increment: 1 },
-      // Start the client window on first use (F8 semantics). Free grants have no window.
-      ...(target.tier === 'client' && target.windowStartsAt === null
+      // Brief §8: the client window opens on first *use*, not on issue. Free grants have no window.
+      ...(isWindowBounded(target.tier) && target.windowStartsAt === null
         ? { windowStartsAt: now }
         : {}),
     },

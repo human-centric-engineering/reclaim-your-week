@@ -50,8 +50,15 @@ async function main(): Promise<void> {
   const consent = await prisma.reclaimConsent.create({
     data: { userId: uid, policyVersion: '2026-07-01', marketingOptIn: true },
   });
+  // F8 t-1 added a SECOND user reference to this row (`invitedByUserId`, the referrer). Both must be
+  // nulled on erasure, not just the one F4 knew about — an invite this user *sent* outlives them too.
   const invite = await prisma.reclaimInvite.create({
-    data: { email: subject.email, token: `${PREFIX}-invite-${process.pid}`, redeemedByUserId: uid },
+    data: {
+      email: subject.email,
+      token: `${PREFIX}-invite-${process.pid}`,
+      redeemedByUserId: uid,
+      invitedByUserId: uid,
+    },
   });
   console.log('[2] seeded one row in each of the eight app_reclaim_* tables');
 
@@ -94,7 +101,12 @@ async function main(): Promise<void> {
         `SET NULL failed: invite.redeemedByUserId is "${inviteAfter.redeemedByUserId}", expected null`
       );
     }
-    console.log('[4] consent + invite retained with a null user reference');
+    if (inviteAfter.invitedByUserId !== null) {
+      fail(
+        `SET NULL failed: invite.invitedByUserId is "${inviteAfter.invitedByUserId}", expected null (F8 t-1)`
+      );
+    }
+    console.log('[4] consent + invite retained, BOTH user references nulled');
   } finally {
     // ── 6. Clean up the retained rows + the receipt (scoped to this run) ──
     await prisma.reclaimConsent.deleteMany({ where: { id: consent.id } });

@@ -10,10 +10,13 @@
  */
 
 import { prisma } from '@/lib/db/client';
+import { logger } from '@/lib/logging';
 import { NotFoundError, ValidationError } from '@/lib/api/errors';
 import { MODULE_SURFACE_CONTEXT_TYPE } from '@/lib/framework/guidance/surface';
 import { saveAnswer } from '@/lib/app/programme/slots/write';
 import { assertEntitled, consumeAudit } from '@/lib/app/programme/runs/entitlement';
+import { grantReferralUnlock } from '@/lib/app/programme/access/referrals';
+import { emitReclaimAccessEvent } from '@/lib/app/programme/access/events';
 import { RECLAIM_MAP_SLUG } from '@/lib/app/programme/map';
 import { RECLAIM_MODULE_SLUG } from '@/lib/app/programme/module';
 import {
@@ -101,6 +104,20 @@ export async function completeRun(userId: string, runId: string): Promise<Reclai
 
   // Free tier = one *complete* audit (I14): consume the entitlement now, not at creation.
   await consumeAudit(userId);
+
+  // F8 t-3: if this leader arrived on someone's referral, that person's second audit unlocks now —
+  // on the referred leader's first *completion*, never on their signup (Brief §8). Idempotent, so
+  // repeat completions do not stack unlocks. Best-effort: a bookkeeping failure must not fail a run
+  // the leader has just finished.
+  await grantReferralUnlock(userId).catch((error: unknown) => {
+    logger.warn('Reclaim: referral unlock failed after completion', {
+      userId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
+
+  // F8 t-4: the follow-up-sequence seam (Brief §2). No ESP in v1 — one call site for when there is one.
+  emitReclaimAccessEvent('reclaim.audit_completed', { userId, runId });
 
   // I15: close the surface conversation so audit 2 does not resume audit 1's transcript.
   await prisma.aiConversation.updateMany({

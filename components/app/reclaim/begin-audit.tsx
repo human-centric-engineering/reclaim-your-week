@@ -20,7 +20,17 @@ export function BeginAudit({ onStarted }: { onStarted: () => void }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
       });
-      if (!res.ok) throw new Error('We could not start your audit just now.');
+      if (!res.ok) {
+        // The entitlement gate's refusal is *product copy*, not an error string (F8 t-2): it explains
+        // which tier the leader is on and what happens next, without a pitch and without implying they
+        // did something wrong (I16/I17). Surface it verbatim; fall back only when there is no message.
+        const body: unknown = await res.json().catch(() => null);
+        const message =
+          typeof body === 'object' && body !== null && 'error' in body
+            ? (body as { error?: { message?: string } }).error?.message
+            : undefined;
+        throw new Error(message ?? 'We could not start your audit just now.');
+      }
       onStarted();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Something went wrong.');
@@ -48,7 +58,11 @@ export function BeginAudit({ onStarted }: { onStarted: () => void }) {
       >
         {starting ? 'Beginning…' : 'Begin'}
       </button>
-      {error !== null && <p className="text-muted-foreground mt-5 text-sm">{error}</p>}
+      {error !== null && (
+        <p className="text-muted-foreground mx-auto mt-8 max-w-md text-[0.95rem] leading-relaxed">
+          {error}
+        </p>
+      )}
     </div>
   );
 }
