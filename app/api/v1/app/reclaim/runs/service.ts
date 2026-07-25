@@ -12,14 +12,16 @@
 import { prisma } from '@/lib/db/client';
 import { NotFoundError, ValidationError } from '@/lib/api/errors';
 import { MODULE_SURFACE_CONTEXT_TYPE } from '@/lib/framework/guidance/surface';
-import { getJourney, getNodeStates } from '@/lib/framework/facilitation/journey/queries';
 import { saveAnswer } from '@/lib/app/programme/slots/write';
-import { RECLAIM_MAP_SLUG, RECLAIM_PHASES } from '@/lib/app/programme/map';
+import { RECLAIM_MAP_SLUG } from '@/lib/app/programme/map';
 import { RECLAIM_MODULE_SLUG } from '@/lib/app/programme/module';
 import {
   enterFirstPhase,
   advancePhase,
   completeFinalPhase,
+  emptyPhaseProgress,
+  loadPhaseProgress,
+  type PhaseView,
 } from '@/lib/app/programme/runs/journey';
 
 export const RUN_STATUS = {
@@ -135,19 +137,11 @@ export async function saveRunAnswer(
   });
 }
 
-export type PhaseStatus = 'completed' | 'active' | 'upcoming';
-export interface PhaseView {
-  key: string;
-  label: string;
-  status: PhaseStatus;
-}
-
 /** The progress shell's data (F4 t-4): the active run (if any) and each phase's status, so the client
  *  renders where the leader is and resumes there. All seven phases always appear (Phase 0 included). */
 export interface CurrentRunState {
   run: { id: string; quarter: string | null } | null;
   phases: PhaseView[];
-  /** The phase the leader is on now — the active node, else the first not-yet-complete, else the last. */
   currentPhaseKey: string;
 }
 
@@ -156,35 +150,8 @@ export async function loadCurrentRunState(userId: string): Promise<CurrentRunSta
     where: { userId, status: RUN_STATUS.inProgress },
     orderBy: { startedAt: 'desc' },
   });
-  if (run === null) {
-    return {
-      run: null,
-      phases: RECLAIM_PHASES.map((p) => ({ key: p.key, label: p.label, status: 'upcoming' })),
-      currentPhaseKey: FIRST_PHASE_KEY,
-    };
-  }
+  if (run === null) return { run: null, ...emptyPhaseProgress() };
 
-  const viewer = { userId };
-  const journey = await getJourney(viewer, {
-    userId,
-    graphSlug: RECLAIM_MAP_SLUG,
-    contextKey: run.id,
-  });
-  const states = journey
-    ? await getNodeStates(viewer, { journeyId: journey.id, subject: userId })
-    : [];
-  const statusByKey = new Map(states.map((s) => [s.nodeKey, s.status]));
-
-  const phases: PhaseView[] = RECLAIM_PHASES.map((p) => {
-    const s = statusByKey.get(p.key);
-    const status: PhaseStatus =
-      s === 'completed' ? 'completed' : s === 'active' ? 'active' : 'upcoming';
-    return { key: p.key, label: p.label, status };
-  });
-  const currentPhaseKey =
-    phases.find((p) => p.status === 'active')?.key ??
-    phases.find((p) => p.status !== 'completed')?.key ??
-    FINAL_PHASE_KEY;
-
-  return { run: { id: run.id, quarter: run.quarter }, phases, currentPhaseKey };
+  const progress = await loadPhaseProgress(userId, run.id);
+  return { run: { id: run.id, quarter: run.quarter }, ...progress };
 }
