@@ -24,16 +24,31 @@ describe('registerAppDriftProbes (framework drift-probe wiring)', () => {
   });
 
   it('wires the leaf (reclaim) probes in after the framework probes', () => {
-    // The leaf hook (`lib/app/leaf-db-drift.ts`) is no longer empty — it registers the eight
-    // hand-written `app_reclaim_*` user FKs and the partial-unique index (F4 t-1). Assert the
-    // delegation actually reaches them, so a regression that drops the leaf call is caught.
+    // The leaf hook (`lib/app/leaf-db-drift.ts`) is no longer empty — it registers the hand-written
+    // `app_reclaim_*` user FKs and the partial-unique index (F4 t-1). Assert the delegation actually
+    // reaches them, so a regression that drops the leaf call is caught.
     registerAppDriftProbes();
     const probes = getAppDriftProbes();
     const reclaim = probes.filter((p) => p.table.startsWith('app_reclaim_'));
-    // nine FK constraints + one partial unique index (F8 t-1 added the referral FK on
-    // `app_reclaim_invite.invitedByUserId`, retained on erasure like the rest of that row).
-    expect(reclaim).toHaveLength(10);
-    expect(reclaim.filter((p) => p.kind === 'FK constraint')).toHaveLength(9);
+
+    // The count grows as tables land (F8 t-1 added the referral FK; F9 t-3 the nudge), so pin the
+    // SHAPE rather than a number: every leaf probe is either a user FK or the partial-unique index,
+    // and each named policy below is present. A bare count would be a change-detector that says
+    // nothing about whether the right thing is registered.
+    expect(reclaim.length).toBeGreaterThanOrEqual(10);
+    expect(
+      reclaim.every((p) => p.kind === 'FK constraint' || p.kind === 'partial unique index')
+    ).toBe(true);
+    // Every `app_reclaim_*` FK probe names its ON DELETE action — that is what makes CI, rather than
+    // a reviewer's memory, the check on the erasure policy.
+    expect(
+      reclaim
+        .filter((p) => p.kind === 'FK constraint')
+        .every((p) => /ON DELETE (CASCADE|SET NULL)/.test(p.name))
+    ).toBe(true);
+    // F9 t-3: the nudge preference is CASCADE, unlike consent — a preference about being emailed
+    // evidences nothing once the person is gone.
+    expect(reclaim.some((p) => p.name.includes('nudge') && p.name.includes('CASCADE'))).toBe(true);
     expect(
       reclaim.some((p) => p.name.includes('invitedByUserId') && p.name.includes('SET NULL'))
     ).toBe(true);

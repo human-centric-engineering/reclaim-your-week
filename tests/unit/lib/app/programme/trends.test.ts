@@ -8,8 +8,24 @@
  * continuous line (I7); and no trend at all from a single audit.
  */
 
-import { describe, it, expect } from 'vitest';
-import { buildTrends, type TrendRow, type TrendRun } from '@/lib/app/programme/trends';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+
+const mocks = vi.hoisted(() => ({
+  runFindMany: vi.fn(),
+  slotFindMany: vi.fn(),
+  readBucketLabels: vi.fn(),
+}));
+vi.mock('@/lib/db/client', () => ({
+  prisma: {
+    reclaimAuditRun: { findMany: mocks.runFindMany },
+    slotValue: { findMany: mocks.slotFindMany },
+  },
+}));
+vi.mock('@/lib/app/programme/buckets/labels', () => ({
+  readBucketLabels: mocks.readBucketLabels,
+}));
+
+import { buildTrends, readTrends, type TrendRow, type TrendRun } from '@/lib/app/programme/trends';
 
 const run = (id: string, quarter: string): TrendRun => ({
   runId: id,
@@ -117,5 +133,104 @@ describe('buildTrends', () => {
     const view = buildTrends([run('r1', 'Q1'), run('r2', 'Q2')], []);
     expect(view.enoughData).toBe(false);
     expect(view.buckets).toEqual([]);
+  });
+});
+
+describe('readTrends', () => {
+  const slot = (runId: string, slotSlug: string, hours: number, version = 1) => ({
+    slotSlug,
+    value: String(hours),
+    valueJson: hours,
+    version,
+    provenance: { runId },
+  });
+
+  beforeEach(() => {
+    for (const mock of Object.values(mocks)) mock.mockReset();
+    mocks.readBucketLabels.mockResolvedValue({});
+  });
+
+  it('reads completed audits oldest first and plots them', async () => {
+    mocks.runFindMany.mockResolvedValue([
+      {
+        id: 'r1',
+        quarter: 'Q1',
+        completedAt: new Date('2026-04-01'),
+        startedAt: new Date('2026-03-01'),
+      },
+      {
+        id: 'r2',
+        quarter: 'Q2',
+        completedAt: new Date('2026-07-01'),
+        startedAt: new Date('2026-06-01'),
+      },
+    ]);
+    mocks.slotFindMany.mockResolvedValue([
+      slot('r1', 'reclaim_current_hours__deep_work', 10),
+      slot('r2', 'reclaim_current_hours__deep_work', 4, 2),
+    ]);
+
+    const view = await readTrends('u1');
+
+    expect(view.runs.map((r) => r.quarter)).toEqual(['Q1', 'Q2']);
+    expect(view.buckets.find((b) => b.bucketSlug === 'deep-work')?.hours).toEqual([10, 4]);
+  });
+
+  it('reads EVERY version, not just heads — the superseded rows are the trend', async () => {
+    mocks.runFindMany.mockResolvedValue([
+      { id: 'r1', quarter: 'Q1', completedAt: new Date(), startedAt: new Date() },
+      { id: 'r2', quarter: 'Q2', completedAt: new Date(), startedAt: new Date() },
+    ]);
+    mocks.slotFindMany.mockResolvedValue([]);
+
+    await readTrends('u1');
+
+    // The same lesson `readRunAnswers` carries: a `supersededAt: null` filter here would leave every
+    // audit but the last one invisible, which is to say there would be no trend.
+    const where = mocks.slotFindMany.mock.calls[0]?.[0] as { where: Record<string, unknown> };
+    expect(where.where).not.toHaveProperty('supersededAt');
+    expect(where.where.userId).toBe('u1');
+  });
+
+  it('ignores values belonging to no run, and to a run still in progress', async () => {
+    mocks.runFindMany.mockResolvedValue([
+      { id: 'r1', quarter: 'Q1', completedAt: new Date(), startedAt: new Date() },
+      { id: 'r2', quarter: 'Q2', completedAt: new Date(), startedAt: new Date() },
+    ]);
+    mocks.slotFindMany.mockResolvedValue([
+      slot('r1', 'reclaim_current_hours__deep_work', 10),
+      slot('r2', 'reclaim_current_hours__deep_work', 8),
+      // A coach `fill_slot` write carries no runId at all (daybreak#167).
+      {
+        slotSlug: 'reclaim_current_hours__deep_work',
+        value: '99',
+        valueJson: 99,
+        version: 9,
+        provenance: { conversationId: 'c1' },
+      },
+      // An audit still in progress is not on the timeline.
+      slot('run-in-flight', 'reclaim_current_hours__deep_work', 1, 10),
+    ]);
+
+    const deep = (await readTrends('u1')).buckets.find((b) => b.bucketSlug === 'deep-work');
+    expect(deep?.hours).toEqual([10, 8]);
+  });
+
+  it('returns nothing to plot for a leader with no completed audit', async () => {
+    mocks.runFindMany.mockResolvedValue([]);
+
+    const view = await readTrends('u1');
+    expect(view).toEqual({ runs: [], buckets: [], enoughData: false });
+    // And does not go looking for slot values it has no runs to attribute.
+    expect(mocks.slotFindMany).not.toHaveBeenCalled();
+  });
+
+  it('falls back to startedAt for a run with no completedAt', async () => {
+    mocks.runFindMany.mockResolvedValue([
+      { id: 'r1', quarter: null, completedAt: null, startedAt: new Date('2026-03-01') },
+    ]);
+    mocks.slotFindMany.mockResolvedValue([]);
+
+    expect((await readTrends('u1')).runs[0]?.completedAt).toBe('2026-03-01T00:00:00.000Z');
   });
 });

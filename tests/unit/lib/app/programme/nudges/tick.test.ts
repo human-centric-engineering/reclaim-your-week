@@ -125,6 +125,50 @@ describe('runNudgeTick', () => {
     expect(mocks.nudgeUpsert).toHaveBeenCalledTimes(1);
   });
 
+  it('skips a leader whose account has gone but whose runs linger', async () => {
+    // `user.findMany` is the spine: a run whose user no longer resolves contributes nobody. Erasure
+    // cascades both, so this is defensive — but a nudge addressed to a missing account would be a
+    // crash in a cron job, which is the worst place to have one.
+    mocks.runFindMany.mockImplementation((args: { where: { status: string } }) =>
+      Promise.resolve(
+        args.where.status === 'complete'
+          ? [{ id: 'run-1', userId: 'ghost', completedAt: daysAgo(100), startedAt: daysAgo(120) }]
+          : []
+      )
+    );
+    mocks.userFindMany.mockResolvedValue([]);
+    mocks.nudgeFindMany.mockResolvedValue([]);
+
+    const result = await runNudgeTick(NOW);
+    expect(result).toEqual({ considered: 0, sent: 0, skipped: {} });
+    expect(mocks.sendEmail).not.toHaveBeenCalled();
+  });
+
+  it('greets a leader with no name on file without a blank', async () => {
+    dueLeader();
+    mocks.userFindMany.mockResolvedValue([{ id: 'u1', email: 'ada@example.com', name: null }]);
+
+    await runNudgeTick(NOW);
+    const props = mocks.sendEmail.mock.calls[0]?.[0] as { react: { props: unknown } };
+    // "Hello," rather than "Hello ," or "Hello there," — a greeting with a hole in it is the tell
+    // that an email was assembled by a machine that did not know who it was writing to.
+    expect(JSON.stringify(props.react)).toContain('"Hello,"');
+  });
+
+  it('falls back to the run start when a completed run has no completedAt', async () => {
+    mocks.runFindMany.mockImplementation((args: { where: { status: string } }) =>
+      Promise.resolve(
+        args.where.status === 'complete'
+          ? [{ id: 'run-1', userId: 'u1', completedAt: null, startedAt: daysAgo(200) }]
+          : []
+      )
+    );
+    mocks.userFindMany.mockResolvedValue([{ id: 'u1', email: 'a@b.c', name: 'Ada' }]);
+    mocks.nudgeFindMany.mockResolvedValue([]);
+
+    expect((await runNudgeTick(NOW)).sent).toBe(1);
+  });
+
   it('does nothing at all when nobody has completed an audit', async () => {
     mocks.runFindMany.mockResolvedValue([]);
     const result = await runNudgeTick(NOW);

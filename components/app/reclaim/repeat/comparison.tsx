@@ -31,13 +31,14 @@ export function Comparison({ runId }: { runId: string }) {
 
   useEffect(() => {
     let cancelled = false;
+    // Silent on failure: this is context beside the phase's own work, not the work itself, and an
+    // error box here would land in front of a leader who is mid-audit. `.catch` sits directly on the
+    // call rather than after `.then`, so no intermediate rejected promise is ever created.
     void readComparison(runId)
+      .catch(() => null)
       .then((v) => {
-        if (!cancelled) setView(v);
-      })
-      // Silent: this is context beside the phase's own work, not the work itself. A failure here
-      // must not put an error box in front of a leader who is mid-audit.
-      .catch(() => undefined);
+        if (!cancelled && v !== null) setView(v);
+      });
     return () => {
       cancelled = true;
     };
