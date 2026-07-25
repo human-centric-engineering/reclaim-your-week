@@ -58,10 +58,12 @@ Two stances govern the build:
 
 ## Reconciliation against the live repo
 
-Verified during planning, 2026-07-25. Six findings, four of which change the shape of the tasks; the
-two marked ⚖ want John's ruling before t-1 starts.
+Verified during planning, 2026-07-25. Seven findings, four of which change the shape of the tasks.
+**D2 and D3 were the two genuine forks in the road and John ruled on both at the plan review
+(2026-07-25): the recommended option in each.** They are recorded below as decided, with the
+alternatives kept so a later reader can see what was weighed rather than assumed.
 
-### D1 ⚖ — "extend `lib/utils/invitation-token.ts`" is a tier-boundary violation. Consume instead.
+### D1 — "extend `lib/utils/invitation-token.ts`" is a tier-boundary violation. Consume instead.
 
 `plan.md` F8 t-1 says: _"**Extend** `lib/utils/invitation-token.ts` + `emails/invitation.tsx` +
 `app/admin/users/invite/page.tsx` (don't rebuild)."_ Right instinct, wrong verb — **all three are
@@ -85,14 +87,14 @@ Sunrise's plaintext invitation token there would undo its deliberate "store only
 property. **D6: store the hash**, so the leaf row is matchable to an issued invite without weakening
 the platform's posture; a resend rotates both together.
 
-### D2 ⚖ — redemption has no leaf seam. Resolve the invite lazily, at the gate we already own.
+### D2 ✅ ruled — redemption has no leaf seam. Resolve the invite lazily, at the gate we already own.
 
 The account is created by `app/api/auth/accept-invite/route.ts` (Sunrise), and better-auth's
 `databaseHooks` live in `lib/auth/config.ts` (Sunrise). **There is no leaf hook at account
 creation** — so "wire redemption to grant creation" cannot be done at redemption without editing a
 lower tier.
 
-**Recommended:** _lazy redemption at the leaf's own door._ `assertEntitled` already runs at run
+**Decided:** _lazy redemption at the leaf's own door._ `assertEntitled` already runs at run
 creation, is already leaf-owned, and is already the single gate (I14). It becomes: no live grant →
 look for an unredeemed `ReclaimInvite` matching the caller's email → mark it redeemed and mint the
 **tiered** grant → otherwise refuse (unless open-signup is on, t-4). Nothing moves; the bootstrap
@@ -103,12 +105,12 @@ answer and t-2 should **file it as a [[daybreak-asks]] row** (the "friction is a
 [[planning-retro]] §A) — but it blocks F8 on an upstream change for a gate we can enforce correctly
 today.
 
-### D3 ⚖ — consent has the same problem, and the answer is the programme door.
+### D3 ✅ ruled — consent has the same problem, and the answer is the programme door.
 
 Same shape as D2: the signup form and the accept-invite form are Sunrise-owned, so "explicit
 acceptance at account creation" cannot be captured without forking them.
 
-**Recommended:** a **leaf-owned consent gate at the programme door** — a first-visit step under
+**Decided:** a **leaf-owned consent gate at the programme door** — a first-visit step under
 `app/(protected)/programme/` that records `ReclaimConsent` (`policyVersion`, `acceptedAt`, and a
 **separate, unticked** `marketingOptIn`), **enforced server-side at run creation** alongside
 entitlement. Consent is then recorded before any programme data is processed, which is what Brief
