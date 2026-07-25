@@ -2,7 +2,7 @@
 name: ryw-shell
 feature: F4 · ryw-shell
 epic: RYW v1
-status: in flight
+status: shipped
 owner: John
 depends_on: F3 · ryw-firstlight (shipped #25)
 spec: ../invariants.md (I3, I4, I6, I9, I15) · ../slot-spec.md · CUSTOMIZATION.md §5 (satellite tables) · lib/framework/data-slots/values.ts · lib/framework/facilitation/engine/apply-event.ts (the seams)
@@ -120,12 +120,12 @@ vitest runs on `happy-dom` with **no live DB** ([[building-a-feature]] §1.2). S
 
 ## Promoted tasks
 
-| id  | Intent                                                                                         | Files likely to touch                                                                                                                              | Deps | Status | PR  |
-| --- | ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | ------ | --- |
-| t-1 | Leaf schema + migration with hand-written cascades + drift probes                              | `prisma/schema/app-reclaim.prisma`, `prisma/migrations/<ts>_app_reclaim_shell/`, `lib/app/leaf-db-drift.ts`, `tests/unit/lib/app/db-drift.test.ts` | F3   | todo   | —   |
-| t-2 | `saveAnswer()` — the single slot write-path (I3)                                               | `lib/app/programme/slots/write.ts`, `tests/unit/invariants/write-path.test.ts`, `package.json` (`leaf:checks`)                                     | t-1  | todo   | —   |
-| t-3 | Run lifecycle routes (create/transition/complete/answers) + journey creation + reflection gate | `app/api/v1/app/reclaim/runs/**`, `lib/app/programme/runs/**`, `tests/unit/app/api/**`                                                             | t-2  | todo   | —   |
-| t-4 | First consumer SSE client + seven-node progress shell                                          | `app/(protected)/programme/**`, `components/app/reclaim/**`                                                                                        | t-3  | todo   | —   |
+| id  | Intent                                                                                         | Files likely to touch                                                                                                                              | Deps | Status | PR                      |
+| --- | ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | ------ | ----------------------- |
+| t-1 | Leaf schema + migration with hand-written cascades + drift probes                              | `prisma/schema/app-reclaim.prisma`, `prisma/migrations/<ts>_app_reclaim_shell/`, `lib/app/leaf-db-drift.ts`, `tests/unit/lib/app/db-drift.test.ts` | F3   | done   | #27                     |
+| t-2 | `saveAnswer()` — the single slot write-path (I3)                                               | `lib/app/programme/slots/write.ts`, `tests/unit/invariants/write-path.test.ts`, `package.json` (`leaf:checks`)                                     | t-1  | done   | #28                     |
+| t-3 | Run lifecycle routes (create/transition/complete/answers) + journey creation + reflection gate | `app/api/v1/app/reclaim/runs/**`, `lib/app/programme/runs/**`, `tests/unit/app/api/**`                                                             | t-2  | done   | #29                     |
+| t-4 | First consumer SSE client + seven-node progress shell                                          | `app/(protected)/programme/**`, `components/app/reclaim/**`                                                                                        | t-3  | done   | #30 (re-landed via #32) |
 
 > **Sizing note — resolved (2026-07-24, John): (A) land the whole schema now.** The parent lists
 > **eight** `app_reclaim_*` tables in t-1 (`invite, grant, audit_run, bucket_label, share,
