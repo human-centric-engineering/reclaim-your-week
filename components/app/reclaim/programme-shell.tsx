@@ -12,6 +12,8 @@ import { PhaseRail } from '@/components/app/reclaim/phase-rail';
 import { Signpost } from '@/components/app/reclaim/signpost';
 import { CoachChat } from '@/components/app/reclaim/coach-chat';
 import { BeginAudit } from '@/components/app/reclaim/begin-audit';
+import { SetupPanel } from '@/components/app/reclaim/phase/setup-panel';
+import { Phase1Panel } from '@/components/app/reclaim/phase/phase1-panel';
 
 export function ProgrammeShell() {
   const [state, setState] = useState<CurrentRunState | null>(null);
@@ -90,7 +92,14 @@ export function ProgrammeShell() {
 
         <main className="min-w-0 space-y-9">
           <Signpost phaseKey={currentPhase.key} index={currentIndex} label={currentPhase.label} />
-          <CoachChat />
+          {currentPhase.key === 'phase-0-setup' ? (
+            <SetupPanel runId={state.run.id} onAdvanced={() => void load()} />
+          ) : currentPhase.key === 'phase-1-current' ? (
+            <Phase1Panel runId={state.run.id} onAdvanced={() => void load()} />
+          ) : (
+            // Phases 2–6 are F7; until then the coach conversation holds the space.
+            <CoachChat />
+          )}
         </main>
       </div>
     </div>

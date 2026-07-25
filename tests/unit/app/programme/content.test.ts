@@ -20,6 +20,7 @@ import { join } from 'node:path';
 import { describe, it, expect } from 'vitest';
 import { extractBlockquotes } from '@/scripts/content-source/lib';
 import { reclaimConfigSchema } from '@/lib/app/programme/module';
+import { RECLAIM_PROCESS_OUTLINE } from '@/lib/app/programme/content';
 
 const CONTENT_SOURCE = join(process.cwd(), '.context', 'app', 'content-source.md');
 const markdown = readFileSync(CONTENT_SOURCE, 'utf8');
@@ -84,6 +85,12 @@ describe('I11 hop 2 — config defaults are verbatim from content-source.md', ()
     const headingLine = lineOf(/^## 0\. The governing frame/);
     const sourceFrame = firstQuoteAfter(headingLine);
     expect(config.governingFrame).toBe(sourceFrame);
+  });
+
+  it('process outline is character-identical to the §4a blockquote (F6 t-1)', () => {
+    const headingLine = lineOf(/^### 4a\. The process outline/);
+    const sourceOutline = firstQuoteAfter(headingLine);
+    expect(RECLAIM_PROCESS_OUTLINE).toBe(sourceOutline);
   });
 
   it('deep-work note is character-identical to the §2 blockquote', () => {

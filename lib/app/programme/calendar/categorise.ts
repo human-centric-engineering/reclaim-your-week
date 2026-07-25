@@ -16,12 +16,12 @@ import { getProvider } from '@/lib/orchestration/llm/provider-manager';
 import { resolveAgentProviderAndModel } from '@/lib/orchestration/llm/agent-resolver';
 import { runStructuredCompletion } from '@/lib/orchestration/llm/structured-completion';
 import { tryParseJson } from '@/lib/orchestration/evaluations/parse-structured';
-import { RECLAIM_BUCKETS } from '@/lib/app/programme/content';
+import { RECLAIM_BUCKETS, bucketToken } from '@/lib/app/programme/content';
 import { reclaimCoachAgent } from '@/lib/app/programme/agent';
 import type { CalendarEvent } from '@/lib/app/programme/calendar/parse';
 
-/** Slot-token form of a bucket slug (`delivery-operations` → `delivery_operations`). */
-export const bucketToken = (slug: string): string => slug.replace(/-/g, '_');
+/** Re-exported from `content` (client-safe home) so existing calendar imports keep working. */
+export { bucketToken };
 const BUCKET_SLUGS = RECLAIM_BUCKETS.map((b) => b.slug);
 const CLASSIFY_VALUES = [...BUCKET_SLUGS, 'personal'] as const;
 

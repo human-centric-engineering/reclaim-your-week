@@ -22,8 +22,19 @@
  */
 
 /** The governing frame (§0, the I-frame). The tool's thesis; governs everything downstream. */
+/** Slot-token form of a canonical bucket slug (`delivery-operations` → `delivery_operations`, I7). */
+export const bucketToken = (slug: string): string => slug.replace(/-/g, '_');
+
 export const RECLAIM_GOVERNING_FRAME =
   'This is not a productivity exercise. It is an invitation for the leader to step into their next level of leadership. That may require some letting go, e.g. of doing too much, of being indispensable, of an identity built around individual achievement, effort and output. Hold that possibility with care throughout.';
+
+/**
+ * The Phase 0 process outline (§4a) — the first thing a leader reads, shown before the setup form.
+ * Verbatim (I11), re-pointed to third person so it reads as the tool's process. Contains an em dash —
+ * verbatim descriptive content. Guarded character-identical in hop 2.
+ */
+export const RECLAIM_PROCESS_OUTLINE =
+  'Before we begin, here is what we will cover together. We will start with a little context about you and your role. Then we will explore how you are currently spending your time across up to nine key areas of leadership, with the option to reality-check your estimates against your actual calendar data if you would like. We will look at your energy and when you do your best work. We will identify the gaps between where you are and where you want to be. We will finish by designing your ideal week and building a clear, prioritised action plan — one or two things you can start right away. The whole process takes around 30-60 minutes. Ready to begin?';
 
 /** The cross-cutting deep-work note (§2). Contains an em dash — verbatim descriptive content. */
 export const RECLAIM_DEEP_WORK_NOTE =
