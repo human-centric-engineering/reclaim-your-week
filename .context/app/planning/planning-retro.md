@@ -60,6 +60,43 @@ way the framework retro does.
 
 ## §B — feature-plan authoring
 
+- **Check what the tier below already built before sizing a feature — and then check whether it does
+  the thing your done-when actually claims (F10, both caught at planning).** Two halves of one
+  lesson, and they pull in opposite directions. First half: `plan.md` sized F10 as five build-it-
+  yourself tasks, and Daybreak had already shipped the engine for most of it — per-node drop-off
+  (`getMapHeat`), a journey explorer, module engagement stats, and a generic module-config form with
+  version history and an audit trail. Three of the five tasks shrank. Second half, and the one that
+  matters more: the generic config form **would render Rashmir's nine bucket descriptions as a raw
+  JSON textarea**, because its Zod→descriptor walker is deliberately bounded to flat primitives and
+  falls back to raw JSON for arrays — which is exactly what our content is. "Content editing exists"
+  and "Rashmir can reword a bucket without a deploy" are not the same sentence. **The check: for each
+  task, name the existing surface that covers it, then open that surface and trace your own data
+  through it.** A capability that exists generically may still not reach your specific shape — and the
+  failure mode is asymmetric, because "already built" quietly deletes a task from the plan while
+  "built but not for us" only shows up when someone tries to use it.
+
+- **When a leaf keys access on a user-editable field, the platform's edit rules become part of the
+  leaf's threat model (F8 t-2, found by `/security-review`).** Invite redemption resolved a pending
+  invite by matching `user.email`, which reads as obviously correct: the invite was sent to that
+  address. It is not, because Sunrise's `PATCH /api/v1/users/me` lets any account rewrite its email
+  with **no re-verification and without clearing `emailVerified`** — so a standard-tier account could
+  rename itself onto a pending client invite and take twelve months of unlimited audits, locking the
+  intended recipient out. Nothing in the leaf's own diff looks wrong; the vulnerability lives entirely
+  in the join between "we trust this column" and "core lets it be rewritten". **The check:** for any
+  field a leaf uses as an identity or authorisation key, go and read who can write it and under what
+  verification — do not assume a column that _arrived_ verified _stays_ verified. The leaf fix was two
+  extra conditions (no unconsumed invitation token may remain for the address, and the account must
+  not predate the invitation); the root cause is [sunrise#466](https://github.com/human-centric-engineering/sunrise/issues/466),
+  and it affects any fork keying access on email. This is the third §B entry in a row where the
+  failure was a **join**, not a component — see the two below.
+
+- **"12 months" is a calendar quantity, not 12 × 30 days (F8 t-2, found by `/code-review`).** The
+  client window was implemented in days, which closed a paying client's access five days early — a
+  small number that lands on the one tier with money attached, and that no unit test written against
+  the same assumption would ever catch. Generalises past dates: **when a coach-editable config value
+  is expressed in a human unit (months, weeks, quarters), implement it in that unit and pin it with a
+  test that crosses a boundary the approximation gets wrong** (here, a window opened on the 31st).
+
 - **A gate the plan describes is not a gate the app has — check the running behaviour, not the
   intent (found while planning F8, built in F6).** Every document says Reclaim Your Week is
   invite-gated, and the entitlement gate (I14) genuinely exists and is genuinely enforced at run
