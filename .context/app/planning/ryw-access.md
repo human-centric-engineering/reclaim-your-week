@@ -2,12 +2,13 @@
 name: ryw-access
 feature: F8 · ryw-access
 epic: RYW v1
-status: in flight
+status: shipped
 owner: John
 depends_on: F4 · ryw-shell (shipped #27–#30/#32) · F6 · ryw-current (the gate it layers on, shipped #37)
 spec: ../sources/Reclaim_Your_Week_Brief_for_John.md §1 (list growth, success measures) · §2 (invite-gated, referral, consent for aggregate use) · §8 (access tiers) · ../invariants.md (I14 gate at run creation, I10 tier boundary, I3 write path, I5) · plan.md reconciliation 1 + 7
 parent: plan.md
 opened: 2026-07-25
+shipped: 2026-07-25 (#41; plan #40)
 ---
 
 # ryw-access — invites, grants, referrals, consent
@@ -244,10 +245,10 @@ vitest runs on `happy-dom` with **no live DB** ([[building-a-feature]] §1.2) �
 
 | id  | Intent                                                                                                           | Files likely to touch                                                                                                                                                                                                                                 | Deps | Status | PR  |
 | --- | ---------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | ------ | --- |
-| t-1 | Tiered invites: leaf issue/revoke route + `ReclaimInvite` tier row, the invite email override, the admin surface | `app/api/v1/app/reclaim/invites/**`, `lib/app/programme/access/invites.ts`, `lib/app/emails.ts`, `components/app/emails/invitation.tsx`, `app/admin/programme/access/**`, `lib/app/leaf-admin-nav.ts`, `prisma/schema/app-reclaim.prisma` + migration | F4   | todo   | —   |
-| t-2 | The grant ledger + **the gate becomes real**: lazy invite→grant resolution, client window, client flag           | `lib/app/programme/runs/entitlement.ts`, `lib/app/programme/access/grants.ts`, `app/api/v1/app/reclaim/runs/route.ts`, `lib/app/programme/config.ts`, `scripts/smoke/reclaim-access.ts`, `lib/app/public-nav.ts`                                      | t-1  | todo   | —   |
-| t-3 | Referral unlock: the user-facing "invite someone" flow, attribution, second audit on their **first completion**  | `app/api/v1/app/reclaim/invites/refer/route.ts`, `lib/app/programme/access/referrals.ts`, `app/(protected)/programme/**`, `lib/app/programme/runs/**` (completion)                                                                                    | t-2  | todo   | —   |
-| t-4 | Consent + open-signup readiness + the follow-up seam                                                             | `app/(protected)/programme/**` (consent gate), `lib/app/programme/access/consent.ts`, `lib/app/programme/access/events.ts`, `lib/app/programme/config.ts`, `scripts/smoke/reclaim-erasure.ts`, `.context/app/daybreak-asks.md`                        | t-2  | todo   | —   |
+| t-1 | Tiered invites: leaf issue/revoke route + `ReclaimInvite` tier row, the invite email override, the admin surface | `app/api/v1/app/reclaim/invites/**`, `lib/app/programme/access/invites.ts`, `lib/app/emails.ts`, `components/app/emails/invitation.tsx`, `app/admin/programme/access/**`, `lib/app/leaf-admin-nav.ts`, `prisma/schema/app-reclaim.prisma` + migration | F4   | done   | #41 |
+| t-2 | The grant ledger + **the gate becomes real**: lazy invite→grant resolution, client window, client flag           | `lib/app/programme/runs/entitlement.ts`, `lib/app/programme/access/grants.ts`, `app/api/v1/app/reclaim/runs/route.ts`, `lib/app/programme/config.ts`, `scripts/smoke/reclaim-access.ts`, `lib/app/public-nav.ts`                                      | t-1  | done   | #41 |
+| t-3 | Referral unlock: the user-facing "invite someone" flow, attribution, second audit on their **first completion**  | `app/api/v1/app/reclaim/invites/refer/route.ts`, `lib/app/programme/access/referrals.ts`, `app/(protected)/programme/**`, `lib/app/programme/runs/**` (completion)                                                                                    | t-2  | done   | #41 |
+| t-4 | Consent + open-signup readiness + the follow-up seam                                                             | `app/(protected)/programme/**` (consent gate), `lib/app/programme/access/consent.ts`, `lib/app/programme/access/events.ts`, `lib/app/programme/config.ts`, `scripts/smoke/reclaim-erasure.ts`, `.context/app/daybreak-asks.md`                        | t-2  | done   | #41 |
 
 > **Sizing note.** Four tasks; t-2 is the heavy one (it carries the migration's consequences, the
 > tier semantics, the smoke, and the moment the product actually closes). t-3 depends on t-2 only for

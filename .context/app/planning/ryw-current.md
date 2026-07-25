@@ -63,6 +63,14 @@ found **three things that shape the tasks** — one a genuine sequencing decisio
      Either way the **gate logic + its refusal test live in F6 t-1** (I14 is F6's done-when). Recommend
      (1); note it here so the grant bootstrap reads as a decision, not scope-creep into F8.
 
+  > **Superseded by F8 (#41), 2026-07-25.** John took option (1) and F6 shipped the bootstrap. F8 t-2
+  > **removed it**, exactly as this decision anticipated and without moving the gate: `assertEntitled`
+  > now resolves a live `ReclaimInvite` into a tiered grant and otherwise **refuses**. Read the
+  > bootstrap references below (test strategy, t-1, notes) as history — the gate logic and its refusal
+  > test still live where I14 put them. The thing the decision did _not_ anticipate is that "a
+  > deliberate, documented placeholder" and "self-signup is open" join into a self-serve free tier in
+  > production; that lesson is in [[planning-retro]] §B, and it is the reason F8's plan opened with it.
+
 - **`<ReclaimChart>` does not exist — F6 t-3 creates it.** No chart component under
   `components/app/reclaim/**` today. It reads `RECLAIM_BUCKETS` (`lib/app/programme/content.ts`) for the
   nine `colour` + `benchmark` (`note` / `lowPercent` / `highPercent`) values, plots
