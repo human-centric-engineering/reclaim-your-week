@@ -100,10 +100,10 @@ look for an unredeemed `ReclaimInvite` matching the caller's email → mark it r
 **tiered** grant → otherwise refuse (unless open-signup is on, t-4). Nothing moves; the bootstrap
 branch is replaced rather than added to.
 
-_Rejected for now:_ asking Daybreak/Sunrise for a post-signup leaf hook. It is the tidier long-term
-answer and t-2 should **file it as a [[daybreak-asks]] row** (the "friction is a finding" stance,
-[[planning-retro]] §A) — but it blocks F8 on an upstream change for a gate we can enforce correctly
-today.
+_Rejected for now:_ waiting on a post-signup leaf hook. It is the tidier long-term answer and t-2
+should **file it as a [[daybreak-asks]] row against Sunrise** (`app/api/auth/accept-invite/**` and
+`lib/auth/config.ts` are Sunrise-core — the "friction is a finding" stance, [[planning-retro]] §A) —
+but waiting on it blocks F8 on an upstream release for a gate we can enforce correctly today.
 
 ### D3 ✅ ruled — consent has the same problem, and the answer is the programme door.
 
@@ -129,13 +129,28 @@ Two things this must get right, because they are legal rather than cosmetic:
 _Rejected for now:_ forking `components/forms/signup-form.tsx` + the accept-invite form. Two forked
 core forms, both on better-auth's path, to move the capture point earlier by one screen.
 
-### D4 — self-signup stays open at the platform; the run refuses. Plus a nav tidy.
+### D4 — self-signup stays open at the platform; the run refuses. Plus a nav tidy. **Ledgered.**
 
-We cannot disable Sunrise's `/signup` without editing `lib/auth/config.ts`. We do not need to: an
-account with no invite and no consent simply **cannot start an audit** (t-2/t-4), which is the gate
-that matters (I14, reconciliation 1). Two cheap extras: drop the signup link from the public nav via
-the reserved `lib/app/public-nav.ts` seam (cosmetic, not a gate — say so in the code comment), and
-file a [[daybreak-asks]] row for a platform-level `disableSignUp` seam.
+We cannot disable Sunrise's `/signup` without editing `lib/auth/config.ts`, and **there is no config
+to do it with** — verified while planning: no `disableSignUp` / `ALLOW_PUBLIC_SIGNUP` anywhere in
+`lib/`, and better-auth 1.6.23 carries `disableSignUp` only on its OAuth link-account options, not on
+`emailAndPassword`. So the platform has the whole invitation half (token store, accept-invite route,
+admin invite page) and no way to shut the front door beside it.
+
+We do not need it to be shut: an account with no invite and no consent simply **cannot start an
+audit** (t-2/t-4), which is the gate that matters (I14, reconciliation 1). Two cheap extras: drop the
+signup link from the public nav via the reserved `lib/app/public-nav.ts` seam (**cosmetic, not a
+gate** — say so in the code comment), and the ask itself.
+
+**The ask is a Sunrise ask, not a Daybreak one** — `lib/auth/config.ts`, the `/signup` page and
+`proxy.ts` are all Sunrise-core, and [[daybreak-asks]] step 2 says to file against the tier that owns
+the file (as sunrise#461 and sunrise#462 already were). **The row is already in the ledger**, filed
+here at plan time rather than deferred to t-2, because the finding is what motivated the feature and
+the gap exists whether or not F8 builds. Proposed shape: a `SIGNUP_MODE=open | invite_only` env
+consumed in `lib/auth/config.ts`, gating **both** the better-auth sign-up route (a `hooks.before` on
+`/sign-up/email`) **and** the `/signup` page — a starter template is right to default open; a fork
+whose product is invite-gated should not have to reach into core to close it. **t-2 carries only the
+GitHub filing**, not the analysis.
 
 ### D5 — client tier: the 12-month window is the implemented shape.
 
@@ -178,8 +193,8 @@ name is `app_…`-prefixed (boundary CI keys on the prefix).
 `lib/orchestration/hooks/types.ts` (Sunrise-owned) with no leaf extension point — `reclaim.signup`
 does not type-check. **So:** a small leaf-owned emitter
 (`lib/app/programme/access/events.ts`) that logs the two events and is the single place an ESP is
-wired in later, **plus a [[daybreak-asks]] row** asking for a leaf-extensible event registry. No ESP
-in v1 (the Brief only asks that the seam exist).
+wired in later, **plus a [[daybreak-asks]] row against Sunrise** (the enum is core) asking for a
+leaf-extensible event registry. No ESP in v1 (the Brief only asks that the seam exist).
 
 ## Invariants this feature touches
 
@@ -324,10 +339,13 @@ artifact).
 - **What F8 unblocks:** F10 `ryw-admin` entirely (its client list reads the grant ledger + client
   flag; its referral-conversion success measure reads t-3's attribution; its aggregate analysis needs
   t-4's consent). F9 `ryw-repeat` is already `available` and does not wait on this.
-- **Three [[daybreak-asks]] rows are expected**, all "friction is a finding" rather than defects:
-  no leaf hook at account creation (D2), no platform seam to disable self-signup (D4), and a closed
-  hook-event enum with no leaf extension point (D7). File them with repros; do not carry framework
-  code for any of them.
+- **Three [[daybreak-asks]] rows, and all three are _Sunrise_ asks, not Daybreak ones** — every file
+  involved (`lib/auth/config.ts`, `app/api/auth/accept-invite/**`, `lib/orchestration/hooks/types.ts`)
+  is Sunrise-core, so they file against `human-centric-engineering/sunrise` with the `upstream-gap`
+  label, the way sunrise#461/#462 did. All three are "friction is a finding", not defects: no platform
+  seam to close self-signup (**D4 — row already in the ledger**, filed at plan time), no leaf hook at
+  account creation (D2, t-2), and a closed hook-event enum with no leaf extension point (D7, t-4).
+  **Do not carry core code for any of them** — each has a clean leaf-side answer already in the plan.
 - **What F8 does _not_ do:** payments (parked), the full admin client list (F10 t-1), the follow-up
   email sequence itself (seam only), and the qualification read-out from the setup form (F10 t-1 —
   F6 already captures the answers).
