@@ -33,7 +33,12 @@ export interface ShareResult {
   token: string | null;
 }
 
-/** Apply a leader's share choices for a run. Idempotent-ish: a second public link reuses the first. */
+/**
+ * Apply a leader's share choices for a run. **Idempotent per run** — a leader may re-save (edit the
+ * takeaway, tick a box) any number of times without duplicating records: the public link is reused,
+ * the coach-share is created once, and the feedback line is updated in place. None of these three
+ * tables carries a DB unique constraint, so idempotency is enforced here with a find-then-write.
+ */
 export async function createShare(
   userId: string,
   runId: string,
@@ -50,18 +55,31 @@ export async function createShare(
   }
 
   if (input.withCoach) {
-    await prisma.reclaimReportShare.create({ data: { userId, auditRunId: runId } });
+    const existing = await prisma.reclaimReportShare.findFirst({
+      where: { userId, auditRunId: runId },
+      select: { id: true },
+    });
+    if (!existing) {
+      await prisma.reclaimReportShare.create({ data: { userId, auditRunId: runId } });
+    }
   }
 
   if (input.takeaway && input.takeaway.trim().length > 0) {
-    await prisma.reclaimFeedback.create({
-      data: {
-        userId,
-        auditRunId: runId,
-        text: input.takeaway.trim(),
-        quoteConsent: input.quotable === true,
-      },
+    const data = {
+      userId,
+      auditRunId: runId,
+      text: input.takeaway.trim(),
+      quoteConsent: input.quotable === true,
+    };
+    const existing = await prisma.reclaimFeedback.findFirst({
+      where: { userId, auditRunId: runId },
+      select: { id: true },
     });
+    if (existing) {
+      await prisma.reclaimFeedback.update({ where: { id: existing.id }, data });
+    } else {
+      await prisma.reclaimFeedback.create({ data });
+    }
   }
 
   return { token };

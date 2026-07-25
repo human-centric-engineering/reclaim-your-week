@@ -84,8 +84,6 @@ export interface ShareInput {
   publicLink?: boolean;
   withCoach?: boolean;
   ageBand?: string;
-  demographic1?: string;
-  demographic2?: string;
   takeaway?: string;
   quotable?: boolean;
 }

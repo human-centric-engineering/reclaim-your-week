@@ -7,7 +7,7 @@
  */
 
 import { readRunAnswers, type RunAnswer } from '@/lib/app/programme/runs/answers';
-import { RECLAIM_BUCKETS, bucketToken, RECLAIM_FOOTNOTE } from '@/lib/app/programme/content';
+import { RECLAIM_FOOTNOTE } from '@/lib/app/programme/content';
 import { buildChartData, type Answers, type ChartData } from '@/lib/app/programme/chart/series';
 
 export interface SummaryBucketRow {
@@ -70,6 +70,3 @@ export async function buildSummary(userId: string, runId: string): Promise<Audit
     footnote: RECLAIM_FOOTNOTE,
   };
 }
-
-/** The nine canonical bucket tokens (for a stable render order in the artifact). */
-export const SUMMARY_BUCKET_ORDER = RECLAIM_BUCKETS.map((b) => bucketToken(b.slug));

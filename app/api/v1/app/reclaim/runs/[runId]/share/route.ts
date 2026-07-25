@@ -2,7 +2,7 @@
  * Reclaim audit runs — the Phase 6 share (F7 t-4).
  *
  * POST /api/v1/app/reclaim/runs/:runId/share
- *   body: { publicLink?, withCoach?, ageBand?, demographic1?, demographic2?, takeaway?, quotable? }
+ *   body: { publicLink?, withCoach?, ageBand?, takeaway?, quotable? }
  *
  * Sharing is invited, never required — this only runs when the leader opts in. Saves the optional
  * `reclaim_share_*` capture (run record, I3) and mints the token + coach-share + retained feedback
@@ -25,8 +25,6 @@ const shareSchema = z.object({
   publicLink: z.boolean().optional(),
   withCoach: z.boolean().optional(),
   ageBand: prose.optional(),
-  demographic1: prose.optional(),
-  demographic2: prose.optional(),
   takeaway: prose.optional(),
   quotable: z.boolean().optional(),
 });
@@ -53,8 +51,6 @@ export const POST = withAuth<{ runId: string }>(async (request, session, { param
   };
   flag('reclaim_share_with_coach', body.withCoach);
   text('reclaim_share_age_band', body.ageBand);
-  text('reclaim_share_demographic_1', body.demographic1);
-  text('reclaim_share_demographic_2', body.demographic2);
   text('reclaim_share_takeaway', body.takeaway);
   flag('reclaim_share_quotable', body.quotable);
   if (slots.length > 0) await saveRunAnswers(userId, runId, slots);

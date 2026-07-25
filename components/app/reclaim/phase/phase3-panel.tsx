@@ -26,6 +26,8 @@ const num = (v: string) => {
 
 export function Phase3Panel({ runId, onAdvanced }: { runId: string; onAdvanced: () => void }) {
   const [base, setBase] = useState<RunAnswers>({});
+  const [loaded, setLoaded] = useState(false);
+  const [failed, setFailed] = useState(false);
   const [ideal, setIdeal] = useState<Record<string, string>>({});
   const [total, setTotal] = useState('');
   const [deepWhen, setDeepWhen] = useState('');
@@ -34,8 +36,11 @@ export function Phase3Panel({ runId, onAdvanced }: { runId: string; onAdvanced: 
 
   useEffect(() => {
     void readAnswers(runId)
-      .then(setBase)
-      .catch(() => undefined);
+      .then((a) => {
+        setBase(a);
+        setLoaded(true);
+      })
+      .catch(() => setFailed(true));
   }, [runId]);
 
   const fundraisingRelevant = truthy(base['reclaim_setup_fundraising_relevant']);
@@ -84,6 +89,19 @@ export function Phase3Panel({ runId, onAdvanced }: { runId: string; onAdvanced: 
     out.push({ slotSlug: 'reclaim_reflection_p3', value: reflection.trim() });
     return out;
   };
+
+  // Gate on the load: the "Now" column and the suspiciously-similar heuristic read `base`, so
+  // rendering before it arrives (or after it failed) would show a false 0h picture (I8/§8).
+  if (failed) {
+    return (
+      <p className="text-muted-foreground text-sm">
+        We could not load this phase just now. Please refresh to try again.
+      </p>
+    );
+  }
+  if (!loaded) {
+    return <p className="text-muted-foreground text-sm tracking-wide">Loading your week…</p>;
+  }
 
   return (
     <div className="space-y-8">

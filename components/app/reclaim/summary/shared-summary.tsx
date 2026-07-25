@@ -7,6 +7,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { parseEnvelope } from '@/components/app/reclaim/calendar/types';
 import { auditSummarySchema, type AuditSummary } from '@/components/app/reclaim/summary/types';
 import { SummaryView } from '@/components/app/reclaim/summary/summary-view';
 
@@ -19,11 +20,7 @@ export function SharedSummary({ token }: { token: string }) {
       try {
         const res = await fetch(`/api/v1/app/reclaim/shared/${encodeURIComponent(token)}`);
         if (!res.ok) return setState('missing');
-        const json: unknown = await res.json();
-        const data = json !== null && typeof json === 'object' && 'data' in json ? json.data : null;
-        const parsed = auditSummarySchema.safeParse(data);
-        if (!parsed.success) return setState('missing');
-        setSummary(parsed.data);
+        setSummary(parseEnvelope(await res.json(), auditSummarySchema));
         setState('ok');
       } catch {
         setState('missing');

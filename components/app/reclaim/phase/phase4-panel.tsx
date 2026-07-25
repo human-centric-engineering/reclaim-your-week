@@ -29,6 +29,8 @@ const HOURS_55_NOTE =
 
 export function Phase4Panel({ runId, onAdvanced }: { runId: string; onAdvanced: () => void }) {
   const [base, setBase] = useState<RunAnswers>({});
+  const [loaded, setLoaded] = useState(false);
+  const [failed, setFailed] = useState(false);
   const [strategyMirrorOn, setStrategyMirrorOn] = useState(false);
   const [challengeResponse, setChallengeResponse] = useState('');
   const [strategyMirror, setStrategyMirror] = useState('');
@@ -37,8 +39,11 @@ export function Phase4Panel({ runId, onAdvanced }: { runId: string; onAdvanced: 
 
   useEffect(() => {
     void readAnswers(runId)
-      .then(setBase)
-      .catch(() => undefined);
+      .then((a) => {
+        setBase(a);
+        setLoaded(true);
+      })
+      .catch(() => setFailed(true));
     void fetchUiConfig().then((c) => setStrategyMirrorOn(c.strategyMirror));
   }, [runId]);
 
@@ -66,6 +71,20 @@ export function Phase4Panel({ runId, onAdvanced }: { runId: string; onAdvanced: 
     out.push({ slotSlug: 'reclaim_reflection_p4', value: reflection.trim() });
     return out;
   };
+
+  // Gate on the load: the refer-back, the unallocated list, and the once-per-audit challenge guard
+  // all read `base`. Rendering before it arrives (or after it failed) would show a false picture —
+  // and could re-fire the challenge that was already offered (I16).
+  if (failed) {
+    return (
+      <p className="text-muted-foreground text-sm">
+        We could not load this phase just now. Please refresh to try again.
+      </p>
+    );
+  }
+  if (!loaded) {
+    return <p className="text-muted-foreground text-sm tracking-wide">Loading the gaps…</p>;
+  }
 
   return (
     <div className="space-y-8">

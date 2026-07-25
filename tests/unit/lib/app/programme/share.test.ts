@@ -6,20 +6,34 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-const { shareFindFirst, shareCreate, shareFindUnique, reportCreate, feedbackCreate } = vi.hoisted(
-  () => ({
-    shareFindFirst: vi.fn(),
-    shareCreate: vi.fn(),
-    shareFindUnique: vi.fn(),
-    reportCreate: vi.fn(),
-    feedbackCreate: vi.fn(),
-  })
-);
+const {
+  shareFindFirst,
+  shareCreate,
+  shareFindUnique,
+  reportFindFirst,
+  reportCreate,
+  feedbackFindFirst,
+  feedbackCreate,
+  feedbackUpdate,
+} = vi.hoisted(() => ({
+  shareFindFirst: vi.fn(),
+  shareCreate: vi.fn(),
+  shareFindUnique: vi.fn(),
+  reportFindFirst: vi.fn(),
+  reportCreate: vi.fn(),
+  feedbackFindFirst: vi.fn(),
+  feedbackCreate: vi.fn(),
+  feedbackUpdate: vi.fn(),
+}));
 vi.mock('@/lib/db/client', () => ({
   prisma: {
     reclaimShare: { findFirst: shareFindFirst, create: shareCreate, findUnique: shareFindUnique },
-    reclaimReportShare: { create: reportCreate },
-    reclaimFeedback: { create: feedbackCreate },
+    reclaimReportShare: { findFirst: reportFindFirst, create: reportCreate },
+    reclaimFeedback: {
+      findFirst: feedbackFindFirst,
+      create: feedbackCreate,
+      update: feedbackUpdate,
+    },
   },
 }));
 
@@ -29,8 +43,11 @@ beforeEach(() => {
   shareFindFirst.mockReset().mockResolvedValue(null);
   shareCreate.mockReset().mockResolvedValue(undefined);
   shareFindUnique.mockReset();
+  reportFindFirst.mockReset().mockResolvedValue(null);
   reportCreate.mockReset().mockResolvedValue(undefined);
+  feedbackFindFirst.mockReset().mockResolvedValue(null);
   feedbackCreate.mockReset().mockResolvedValue(undefined);
+  feedbackUpdate.mockReset().mockResolvedValue(undefined);
 });
 
 describe('createShare', () => {
@@ -65,6 +82,27 @@ describe('createShare', () => {
   it('does not record feedback for an empty takeaway', async () => {
     await createShare('u1', 'run-1', { quotable: true });
     expect(feedbackCreate).not.toHaveBeenCalled();
+  });
+
+  it('creates the coach-share only once per run (a re-save does not duplicate)', async () => {
+    reportFindFirst.mockResolvedValue({ id: 'existing-report' });
+    await createShare('u1', 'run-1', { withCoach: true });
+    expect(reportCreate).not.toHaveBeenCalled();
+  });
+
+  it('updates the existing feedback in place rather than appending a second row', async () => {
+    feedbackFindFirst.mockResolvedValue({ id: 'existing-feedback' });
+    await createShare('u1', 'run-1', { takeaway: 'An edited takeaway.', quotable: false });
+    expect(feedbackCreate).not.toHaveBeenCalled();
+    expect(feedbackUpdate).toHaveBeenCalledWith({
+      where: { id: 'existing-feedback' },
+      data: {
+        userId: 'u1',
+        auditRunId: 'run-1',
+        text: 'An edited takeaway.',
+        quoteConsent: false,
+      },
+    });
   });
 });
 
