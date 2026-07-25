@@ -100,10 +100,12 @@ look for an unredeemed `ReclaimInvite` matching the caller's email → mark it r
 **tiered** grant → otherwise refuse (unless open-signup is on, t-4). Nothing moves; the bootstrap
 branch is replaced rather than added to.
 
-_Rejected for now:_ waiting on a post-signup leaf hook. It is the tidier long-term answer and t-2
-should **file it as a [[daybreak-asks]] row against Sunrise** (`app/api/auth/accept-invite/**` and
-`lib/auth/config.ts` are Sunrise-core — the "friction is a finding" stance, [[planning-retro]] §A) —
-but waiting on it blocks F8 on an upstream release for a gate we can enforce correctly today.
+_Rejected for now:_ waiting on a post-signup leaf hook. It is the tidier long-term answer — and it is
+**filed, as [sunrise#464](https://github.com/human-centric-engineering/sunrise/issues/464)** (core
+owns `lib/auth/config.ts` and `app/api/auth/accept-invite/**`; the "friction is a finding" stance,
+[[planning-retro]] §A). But _waiting_ on it would block F8 on an upstream release for a gate we can
+enforce correctly today. When the seam lands, redemption moves there and `assertEntitled` simplifies
+back to a pure entitlement check.
 
 ### D3 ✅ ruled — consent has the same problem, and the answer is the programme door.
 
@@ -193,8 +195,12 @@ name is `app_…`-prefixed (boundary CI keys on the prefix).
 `lib/orchestration/hooks/types.ts` (Sunrise-owned) with no leaf extension point — `reclaim.signup`
 does not type-check. **So:** a small leaf-owned emitter
 (`lib/app/programme/access/events.ts`) that logs the two events and is the single place an ESP is
-wired in later, **plus a [[daybreak-asks]] row against Sunrise** (the enum is core) asking for a
-leaf-extensible event registry. No ESP in v1 (the Brief only asks that the seam exist).
+wired in later. **Filed as [sunrise#465](https://github.com/human-centric-engineering/sunrise/issues/465)**
+— the machinery underneath is already string-keyed (`Hook.eventType` is `VarChar(100)`, the dispatcher
+a `Map<string, …>`); only three `z.enum` sites shut the door, one of which blocks _persisting_ a
+subscription at all. **Daybreak hit the same wall** and runs a parallel local mechanism for map-publish
+events (`lib/framework/facilitation/map/publish-hooks.ts`, decision C), which is the argument the issue
+makes. No ESP in v1 (the Brief only asks that the seam exist).
 
 ## Invariants this feature touches
 
@@ -343,9 +349,10 @@ artifact).
   involved (`lib/auth/config.ts`, `app/api/auth/accept-invite/**`, `lib/orchestration/hooks/types.ts`)
   is Sunrise-core, so they file against `human-centric-engineering/sunrise` with the `upstream-gap`
   label, the way sunrise#461/#462 did. All three are "friction is a finding", not defects: no platform
-  seam to close self-signup (**D4 — filed, sunrise#463**), no leaf hook at
-  account creation (D2, t-2), and a closed hook-event enum with no leaf extension point (D7, t-4).
-  **Do not carry core code for any of them** — each has a clean leaf-side answer already in the plan.
+  seam to close self-signup (**sunrise#463**, D4), no fork seam at account
+  creation (**sunrise#464**, D2), and a closed hook-event enum (**sunrise#465**, D7). **All three were
+  filed at plan time**, so no task carries a filing — and **none carries core code either**: each has a
+  clean leaf-side answer already in the plan, with the delegate-when-it-lands action in the ledger.
 - **What F8 does _not_ do:** payments (parked), the full admin client list (F10 t-1), the follow-up
   email sequence itself (seam only), and the qualification read-out from the setup form (F10 t-1 —
   F6 already captures the answers).
