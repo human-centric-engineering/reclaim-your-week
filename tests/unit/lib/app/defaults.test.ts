@@ -68,11 +68,20 @@ describe('lib/app/ bootstrap defaults are no-ops', () => {
     // section would appear in every admin sidebar.
     initLeafAdminNav();
 
-    // Assert — one section, ours, pointing at the leaf's own admin surface
+    // Assert — ONE section, ours, and every entry under the leaf's own admin surface. The item list
+    // grows as features land (F8 added access; F10 the overview, clients, shared results and
+    // content), so pinning the exact hrefs would make this a change-detector. What must not drift is
+    // the count of sections and the fact that no item points outside `/admin/programme`.
     const sections = getRegisteredNavSections();
     expect(sections).toHaveLength(1);
     expect(sections[0]?.title).toBe('Reclaim Your Week');
-    expect(sections[0]?.items?.map((i) => i.href)).toEqual(['/admin/programme/access']);
+
+    const hrefs = sections[0]?.items?.map((i) => i.href) ?? [];
+    expect(hrefs.length).toBeGreaterThan(0);
+    expect(hrefs.every((href) => href.startsWith('/admin/programme'))).toBe(true);
+    expect(hrefs).toContain('/admin/programme/access');
+    // No duplicates — two entries on one href is a copy-paste slip that reads as a broken sidebar.
+    expect(new Set(hrefs).size).toBe(hrefs.length);
   });
 
   it('public-nav overrides are all null by default (= use platform defaults)', () => {

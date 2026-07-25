@@ -7,28 +7,24 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 const {
-  shareFindFirst,
-  shareCreate,
+  shareUpsert,
   shareFindUnique,
-  reportFindFirst,
-  reportCreate,
+  reportUpsert,
   feedbackFindFirst,
   feedbackCreate,
   feedbackUpdate,
 } = vi.hoisted(() => ({
-  shareFindFirst: vi.fn(),
-  shareCreate: vi.fn(),
+  shareUpsert: vi.fn(),
   shareFindUnique: vi.fn(),
-  reportFindFirst: vi.fn(),
-  reportCreate: vi.fn(),
+  reportUpsert: vi.fn(),
   feedbackFindFirst: vi.fn(),
   feedbackCreate: vi.fn(),
   feedbackUpdate: vi.fn(),
 }));
 vi.mock('@/lib/db/client', () => ({
   prisma: {
-    reclaimShare: { findFirst: shareFindFirst, create: shareCreate, findUnique: shareFindUnique },
-    reclaimReportShare: { findFirst: reportFindFirst, create: reportCreate },
+    reclaimShare: { upsert: shareUpsert, findUnique: shareFindUnique },
+    reclaimReportShare: { upsert: reportUpsert },
     reclaimFeedback: {
       findFirst: feedbackFindFirst,
       create: feedbackCreate,
@@ -40,11 +36,15 @@ vi.mock('@/lib/db/client', () => ({
 import { createShare, resolveShareToken } from '@/lib/app/programme/share';
 
 beforeEach(() => {
-  shareFindFirst.mockReset().mockResolvedValue(null);
-  shareCreate.mockReset().mockResolvedValue(undefined);
+  // The upsert returns whatever row ends up in the table — either the one it created or the one that
+  // was already there. Default: it created a fresh row carrying the token it was handed.
+  shareUpsert
+    .mockReset()
+    .mockImplementation((args: { create: { token: string } }) =>
+      Promise.resolve({ token: args.create.token })
+    );
   shareFindUnique.mockReset();
-  reportFindFirst.mockReset().mockResolvedValue(null);
-  reportCreate.mockReset().mockResolvedValue(undefined);
+  reportUpsert.mockReset().mockResolvedValue(undefined);
   feedbackFindFirst.mockReset().mockResolvedValue(null);
   feedbackCreate.mockReset().mockResolvedValue(undefined);
   feedbackUpdate.mockReset().mockResolvedValue(undefined);
@@ -54,22 +54,27 @@ describe('createShare', () => {
   it('mints a new unguessable public token when a link is requested', async () => {
     const { token } = await createShare('u1', 'run-1', { publicLink: true });
     expect(token).toMatch(/^[a-f0-9]{64}$/);
-    expect(shareCreate).toHaveBeenCalledWith({
-      data: { userId: 'u1', auditRunId: 'run-1', token },
+    // F10 t-1 gave both share tables a unique constraint, so idempotency is the database's job now
+    // rather than a findFirst that races itself (plan D8). `update: {}` is what keeps an already-sent
+    // link alive: touching the row must not rotate its token.
+    expect(shareUpsert).toHaveBeenCalledWith({
+      where: { userId_auditRunId: { userId: 'u1', auditRunId: 'run-1' } },
+      create: { userId: 'u1', auditRunId: 'run-1', token },
+      update: {},
+      select: { token: true },
     });
   });
 
   it('reuses an existing token rather than minting a second link', async () => {
-    shareFindFirst.mockResolvedValue({ token: 'existing-token' });
+    shareUpsert.mockResolvedValue({ token: 'existing-token' });
     const { token } = await createShare('u1', 'run-1', { publicLink: true });
     expect(token).toBe('existing-token');
-    expect(shareCreate).not.toHaveBeenCalled();
   });
 
   it('does not mint a token when no public link was requested', async () => {
     const { token } = await createShare('u1', 'run-1', { withCoach: true });
     expect(token).toBeNull();
-    expect(reportCreate).toHaveBeenCalled();
+    expect(reportUpsert).toHaveBeenCalled();
   });
 
   it('records feedback with the SEPARATE quote consent (not implied by sharing)', async () => {
@@ -84,10 +89,13 @@ describe('createShare', () => {
     expect(feedbackCreate).not.toHaveBeenCalled();
   });
 
-  it('creates the coach-share only once per run (a re-save does not duplicate)', async () => {
-    reportFindFirst.mockResolvedValue({ id: 'existing-report' });
+  it('creates the coach-share at most once per run — the inbox counts these rows', async () => {
     await createShare('u1', 'run-1', { withCoach: true });
-    expect(reportCreate).not.toHaveBeenCalled();
+    expect(reportUpsert).toHaveBeenCalledWith({
+      where: { userId_auditRunId: { userId: 'u1', auditRunId: 'run-1' } },
+      create: { userId: 'u1', auditRunId: 'run-1' },
+      update: {},
+    });
   });
 
   it('updates the existing feedback in place rather than appending a second row', async () => {

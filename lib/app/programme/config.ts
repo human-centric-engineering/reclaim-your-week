@@ -31,6 +31,12 @@ export interface ReclaimAccessConfig {
   policyVersion: string;
 }
 
+/** The subset the admin surfaces need (F10): the stall rule and the anonymity floor. */
+export interface ReclaimAdminConfig {
+  abandonedAfterDays: number;
+  aggregateMinimumCohort: number;
+}
+
 /** Read + parse the stored module config, falling back to the schema defaults. */
 async function readReclaimConfig(): Promise<ReclaimConfig> {
   const row = await prisma.module.findUnique({
@@ -58,5 +64,14 @@ export async function readReclaimAccessConfig(): Promise<ReclaimAccessConfig> {
     clientMustStartWithinDays: config.clientMustStartWithinDays,
     openSignup: config.openSignup,
     policyVersion: config.policyVersion,
+  };
+}
+
+/** Read the admin policy (F10): when an unfinished audit reads as stalled, and the anonymity floor. */
+export async function readReclaimAdminConfig(): Promise<ReclaimAdminConfig> {
+  const config = await readReclaimConfig();
+  return {
+    abandonedAfterDays: config.abandonedAfterDays,
+    aggregateMinimumCohort: config.aggregateMinimumCohort,
   };
 }

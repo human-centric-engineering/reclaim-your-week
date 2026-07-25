@@ -15,6 +15,8 @@ import { prisma } from '@/lib/db/client';
 import { eraseUser } from '@/lib/privacy/erase-user';
 import { createRun } from '@/app/api/v1/app/reclaim/runs/service';
 import { analyseCalendarUpload } from '@/lib/app/programme/calendar/analyse';
+import { recordConsent } from '@/lib/app/programme/access/consent';
+import { readReclaimAccessConfig } from '@/lib/app/programme/config';
 
 const PREFIX = 'smoke-reclaim-calendar';
 
@@ -68,6 +70,17 @@ async function main(): Promise<void> {
   console.log(`[1] throwaway subject ${uid}`);
 
   try {
+    // F8 closed the entitlement and consent gates in front of run creation, and this smoke was not
+    // updated with them — it has been red on `main` since #41, which #41 did not notice because it
+    // ran the other three reclaim smokes and not this one. Both are recorded directly here for the
+    // same reason `smoke:reclaim-run` does it: this smoke is about the CALENDAR path (I4), and
+    // `smoke:reclaim-access` is what exercises the gates themselves.
+    await prisma.reclaimGrant.create({
+      data: { id: `standard_${uid}`, userId: uid, tier: 'standard', auditsGranted: 1 },
+    });
+    const { policyVersion } = await readReclaimAccessConfig();
+    await recordConsent(uid, policyVersion, false);
+
     const run = await createRun(uid, '2026 Q1');
     console.log(`[2] run ${run.id} created`);
 

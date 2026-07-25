@@ -278,11 +278,11 @@ with one addition F10 makes unavoidable.
 
 | id  | Intent                                                                                                                                      | Files likely to touch                                                                                                                                                                                                                                                                                                             | Deps | Status | PR  |
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | ------ | --- |
-| t-1 | The client list: one enriched endpoint joining access + progress + qualification + cost, and the migration D2/D8 need                       | `prisma/schema/app-reclaim.prisma` + migration, `lib/app/leaf-db-drift.ts`, `lib/app/programme/admin/clients.ts`, `app/api/v1/app/reclaim/admin/clients/**`, `app/admin/programme/clients/**`, `components/app/admin/clients/**`, `lib/app/leaf-admin-nav.ts`, `app/api/v1/app/reclaim/runs/service.ts` (record `conversationId`) | —    | todo   | —   |
-| t-2 | The two success measures — return rate and referral conversion — on a programme dashboard                                                   | `lib/app/programme/admin/measures.ts`, `app/api/v1/app/reclaim/admin/measures/route.ts`, `app/admin/programme/page.tsx`, `components/app/admin/measures/**`                                                                                                                                                                       | t-1  | todo   | —   |
-| t-3 | Shared-results inbox + the anonymised cross-client aggregate                                                                                | `lib/app/programme/admin/inbox.ts`, `lib/app/programme/admin/aggregate.ts`, `app/api/v1/app/reclaim/admin/shared/**`, `app/admin/programme/shared/**`, `components/app/admin/shared/**`, `lib/app/programme/share.ts` (upsert)                                                                                                    | t-1  | todo   | —   |
-| t-4 | Content editing: a leaf form over the nine buckets + three bands, saving through the framework config endpoint, with the divergence markers | `app/admin/programme/content/**`, `components/app/admin/content/**`, `lib/app/programme/admin/content-diff.ts`, `.context/app/invariants.md` (I11 note), `.context/app/daybreak-asks.md`                                                                                                                                          | —    | todo   | —   |
-| t-5 | Data export + the GDPR erasure proof that actually covers the answers                                                                       | `scripts/smoke/reclaim-erasure.ts`, `lib/app/programme/admin/export.ts`, `app/api/v1/app/reclaim/admin/clients/[userId]/export/route.ts`, `.context/app/daybreak-asks.md`                                                                                                                                                         | t-1  | todo   | —   |
+| t-1 | The client list: one enriched endpoint joining access + progress + qualification + cost, and the migration D2/D8 need                       | `prisma/schema/app-reclaim.prisma` + migration, `lib/app/leaf-db-drift.ts`, `lib/app/programme/admin/clients.ts`, `app/api/v1/app/reclaim/admin/clients/**`, `app/admin/programme/clients/**`, `components/app/admin/clients/**`, `lib/app/leaf-admin-nav.ts`, `app/api/v1/app/reclaim/runs/service.ts` (record `conversationId`) | —    | done   | #43 |
+| t-2 | The two success measures — return rate and referral conversion — on a programme dashboard                                                   | `lib/app/programme/admin/measures.ts`, `app/api/v1/app/reclaim/admin/measures/route.ts`, `app/admin/programme/page.tsx`, `components/app/admin/measures/**`                                                                                                                                                                       | t-1  | done   | #43 |
+| t-3 | Shared-results inbox + the anonymised cross-client aggregate                                                                                | `lib/app/programme/admin/inbox.ts`, `lib/app/programme/admin/aggregate.ts`, `app/api/v1/app/reclaim/admin/shared/**`, `app/admin/programme/shared/**`, `components/app/admin/shared/**`, `lib/app/programme/share.ts` (upsert)                                                                                                    | t-1  | done   | #43 |
+| t-4 | Content editing: a leaf form over the nine buckets + three bands, saving through the framework config endpoint, with the divergence markers | `app/admin/programme/content/**`, `components/app/admin/content/**`, `lib/app/programme/admin/content-diff.ts`, `.context/app/invariants.md` (I11 note), `.context/app/daybreak-asks.md`                                                                                                                                          | —    | done   | #43 |
+| t-5 | Data export + the GDPR erasure proof that actually covers the answers                                                                       | `scripts/smoke/reclaim-erasure.ts`, `lib/app/programme/admin/export.ts`, `app/api/v1/app/reclaim/admin/clients/[userId]/export/route.ts`, `.context/app/daybreak-asks.md`                                                                                                                                                         | t-1  | done   | #43 |
 
 > **Sizing note.** t-1 is the heavy one and deliberately so: it carries the migration (D2's
 > `conversationId`, D8's two unique constraints), the one enriched read every later task extends, and
@@ -413,6 +413,88 @@ _Done when:_ `smoke:reclaim-erasure` proves no `framework_slot_value` rows survi
 real Postgres; the export returns one leader's complete record and is admin-guarded with a test; the
 [[daybreak-asks]] row exists. _Gates:_ full loop (`/security-review` — an admin route that emits
 somebody's entire personal record in one response).
+
+## What the build changed about this plan
+
+Recorded here rather than silently edited above, because a plan that quietly rewrites itself to match
+the code stops being a check on the code.
+
+- **D1 held.** The framework surfaces are generic over our map: `listJourneys(viewer, { graphSlug })`
+  returns the leaf's journeys, and the client list reads phase position through it rather than
+  reproducing the traversal. The ten-minute pre-check the plan asked for was worth doing and found
+  nothing. No [[daybreak-asks]] row needed.
+- **The priority-gap aggregate could not be built as specified, and was replaced rather than
+  approximated.** t-3's plan said the aggregate would show "the common priority gaps" (§8). There is
+  no machine-readable priority-per-bucket slot: the gap is captured as
+  `reclaim_gap_unfunded_priorities`, which is **`sensitive` free text**, and rule 3 of the aggregate
+  forbids pooling free text. Approximating it — inferring "priority" from something else and calling
+  the result a priority gap — would have put a claim on Rashmir's dashboard that the data does not
+  support (I12). The aggregate instead reports **which buckets are most often left at zero**, which is
+  true, is derived from the hours it already reads, and is named for what it is.
+- **`grantExpiresAt` was extracted rather than reimplemented.** The client list needs the date a
+  client's access ends, and F8 t-2's calendar-month arithmetic was private to `entitlement.ts`.
+  Recomputing "12 months" on the admin side is exactly the shape that produced the 12 × 30 bug, so
+  the gate's own helper is now exported and the admin surface shows the date the gate enforces.
+- **The `isAdminSupport` guard needed the source scan to ignore comments.** The first version failed
+  on the routes that _explain_ why the override lives in one module. A guard that punishes documenting
+  its own rule teaches people to stop documenting it, so the scan strips comments and checks code.
+- **`ReclaimAuditRun.conversationId` is written at two points, not one.** On the first answer saved to
+  an active run (conditional `updateMany` on a null, so concurrent saves cannot race) and again at
+  completion, before I15 closes the conversation — after which "the run's conversation" is no longer
+  identifiable. A leader who only ever talks to the coach and never fills a card gets their
+  attribution at completion or not at all.
+- **The `ReclaimFeedback` erasure question is settled: CASCADE stays** (D8's open item). A quote
+  consent is given by a person, and someone who has exercised their right to erasure has withdrawn the
+  standing it rested on; keeping the sentence de-attributed would leave the product able to publish
+  the words of someone who asked to be forgotten. Recorded in the schema, where the next person to
+  wonder will be.
+
+## What the gates found
+
+`/security-review` returned **no High or Medium findings** — every new endpoint admin-guarded, the
+sensitive slots kept off the list in code, the aggregate's three privacy rules holding,
+`applyContentEdits` unreachable from `openSignup` (including via `__proto__`), and
+`linkRunConversation` unable to cross users. Its three sub-threshold notes were all worth fixing, and
+two of them were places a comment claimed more than the code did.
+
+`/code-review` earned its keep, again on the shape [[planning-retro]] predicts: derived numbers.
+
+- **"Stalled" was computed from a timestamp that never moves.** `ReclaimAuditRun.updatedAt` looks
+  like the column for "last touched" and is not: answers go to `framework_slot_value` and phase moves
+  to `UserNodeState`, so nothing writes the run row between creation and completion. A leader working
+  steadily for six weeks read as **Stalled, last active 1 June** — the most engaged person in the
+  cohort flagged as the one to chase, on the screen whose entire job is telling Rashmir who to ring.
+  Now derived from `max(SlotValue.capturedAt)`, one batched `groupBy`.
+- **The aggregate's headline finding was an artefact of a question most people never saw.**
+  Fundraising is a conditional bucket, shown only to leaders Phase 0 marks it relevant to. Every
+  leader who was never asked counted as having "left it at zero", so it ranked first. An answered
+  zero is a fact about a week; an unasked question is not.
+- **The aggregate read slot heads per _user_, not per completed audit.** Heads are the live value
+  across all runs, so a leader part-way through audit 2 contributed two fresh buckets spliced onto
+  seven from audit 1 — and an old composite silently outranked today's self-reported hours, because
+  "prefer composite" has no notion of recency. Leaders with an open run are now excluded until they
+  finish.
+- **The client list showed the newest grant, not the live one.** Grants stack (a client invite, then
+  a referral unlock), so a paying client displayed as tier _Referral_ with no expiry — their
+  twelve-month contract gone from the one screen that reports it. Now uses the gate's own
+  `grantIsLive`.
+- **The content editor did not contain the fields the UI sent the operator to it for.** The client
+  list's help text said "you can change how long that is in Content" and the stall rule was not there,
+  nor the anonymity floor, nor `consultationEmail` (which t-4's own plan text lists). All three added.
+- **The content save was a read-modify-write over the whole config with the framework's concurrency
+  guard declined.** Two tabs would clobber each other silently. Worse, a `safeParse` failure fell back
+  to schema defaults and then _wrote_ them — so rewording a bucket could have reset `openSignup`.
+  The write path now refuses on a parse failure and carries `expectedBaseVersion`.
+- **The migration created unique indexes with no dedupe**, on the two tables whose justification is
+  that a duplicate was once observed. It would abort on any environment still holding one, taking
+  `conversationId` down with it.
+- Plus: cost summed per run rather than per conversation (double-counting if a completion ever fails
+  between marking the run complete and closing the conversation), and `getClientDetail` built the
+  entire cohort — a `getSlotHeads` per leader in the programme — to render one person's page.
+
+`framework:boundary` also caught framework vocabulary (`moduleId`) leaking into the `app/**` surface,
+which moved the config read into `lib/app/programme/admin/content-config.ts` where `runs/journey.ts`
+already lives for the same reason.
 
 ## Notes / deferrals
 

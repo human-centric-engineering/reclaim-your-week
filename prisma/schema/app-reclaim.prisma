@@ -38,6 +38,18 @@ model ReclaimAuditRun {
   /// The audit period label the user set at Phase 0 (e.g. "2026 Q3"). Free text; not an FK.
   quarter String?
 
+  /// The module-surface `AiConversation` this run's coaching happened in (F10 t-1, plan D2).
+  ///
+  /// Cost is logged per **conversation** (`ai_cost_log.conversationId`) and never per run, and the
+  /// surface opens one conversation per `(user, agent, module)` that stays live until the run
+  /// completes (I15) — so in practice each run has exactly one, and nothing recorded which. Written
+  /// once, lazily, the first time the leaf can observe it; never overwritten. Null means "not
+  /// recorded", NOT "cost nothing" — the admin surface must render those distinctly.
+  ///
+  /// Not an FK: the conversation is core's, it is `SetNull`-erased on its own schedule, and a hard
+  /// reference from a leaf table to an orchestration row would couple two unrelated lifecycles.
+  conversationId String?
+
   startedAt   DateTime  @default(now())
   completedAt DateTime?
   updatedAt   DateTime  @updatedAt
@@ -163,14 +175,20 @@ model ReclaimBucketLabel {
 
 /// A tokenised link to a user's own summary artifact (F7 t-4). Sharing is invited, never required.
 /// Personal → CASCADE (erasing the user revokes their share links).
+///
+/// `@@unique([userId, auditRunId])` (F10 t-1, plan D8) is what makes "one share link per run" true in
+/// the database rather than in a `findFirst` that races itself. F7's gate round fixed an observed
+/// duplicate with a read-then-create, which [[planning-retro]] §B says is always a TOCTOU; F10 t-3
+/// counts these rows, so a duplicate stops being cosmetic.
 model ReclaimShare {
-  id          String @id @default(cuid())
-  userId      String // ON DELETE CASCADE
-  auditRunId  String
-  token       String @unique
+  id         String @id @default(cuid())
+  userId     String // ON DELETE CASCADE
+  auditRunId String
+  token      String @unique
 
   createdAt DateTime @default(now())
 
+  @@unique([userId, auditRunId])
   @@index([userId])
   @@map("app_reclaim_share")
 }
@@ -184,14 +202,26 @@ model ReclaimReportShare {
 
   createdAt DateTime @default(now())
 
+  /// One coach-share per run (F10 t-1, plan D8) — see `ReclaimShare`. The inbox counts these.
+  @@unique([userId, auditRunId])
   @@index([userId])
   @@map("app_reclaim_report_share")
 }
 
 /// One-line feedback + demographics captured only after a user chooses to share (F7 t-4). The
-/// quote-consent flag governs republication and is its own fact, separate from sharing. Personal →
-/// CASCADE by default; F7 t-4 decides whether an anonymised, quote-consented line is split to a
-/// retained store (a genuine GDPR nuance deferred to that feature).
+/// quote-consent flag governs republication and is its own fact, separate from sharing.
+///
+/// **Personal → CASCADE, and that is now a decision rather than a default (F10 t-3).** F4 t-1 left
+/// open "whether an anonymised, quote-consented line is split to a retained store"; F7 shipped
+/// without splitting it, and F10 read this table for the inbox, which is the point at which somebody
+/// had to actually choose. The choice is to keep CASCADE: a quote consent is given *by a person*, and
+/// a person who has since exercised their right to erasure has withdrawn the standing their consent
+/// rested on. Retaining the sentence de-attributed would leave the product able to publish the words
+/// of someone who asked to be forgotten — which is the specific outcome erasure exists to prevent,
+/// and no amount of "it is anonymised" changes whose sentence it is.
+///
+/// The operational answer for Rashmir is out of band and better anyway: if she wants to use a quote,
+/// she asks that leader at the time. Losing a testimonial is a cheaper failure than keeping one.
 model ReclaimFeedback {
   id         String  @id @default(cuid())
   userId     String // ON DELETE CASCADE

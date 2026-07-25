@@ -15,6 +15,7 @@
 
 import { prisma } from '@/lib/db/client';
 import { eraseUser } from '@/lib/privacy/erase-user';
+import { saveAnswer } from '@/lib/app/programme/slots/write';
 
 const PREFIX = 'smoke-reclaim-erasure';
 
@@ -60,7 +61,34 @@ async function main(): Promise<void> {
       invitedByUserId: uid,
     },
   });
-  console.log('[2] seeded one row in each of the eight app_reclaim_* tables');
+  // F10 t-5: the audit ANSWERS. Everything above is bookkeeping about a leader; `framework_slot_value`
+  // is what they actually said — every hour, every reflection, the prose about what keeps them up at
+  // night. Its `ON DELETE CASCADE` is hand-written too (`framework-data-slots.prisma`), and until now
+  // no smoke had ever proven it fires, so the largest store of personal data in the product was the
+  // one store nothing checked. Written through `saveAnswer` on purpose (I3) — the smoke should
+  // exercise the real write path, not insert rows the app would never have created that way.
+  await saveAnswer({
+    userId: uid,
+    runId: run.id,
+    slotSlug: 'reclaim_setup_keeping_me_up',
+    value: 'Smoke subject: a sensitive answer that must not survive erasure.',
+    sourceType: 'direct',
+  });
+  await saveAnswer({
+    userId: uid,
+    runId: run.id,
+    slotSlug: 'reclaim_current_hours__deep_work',
+    value: '6',
+    valueJson: 6,
+    sourceType: 'direct',
+  });
+  const slotsBefore = await prisma.slotValue.count({ where: { userId: uid } });
+  if (slotsBefore === 0)
+    fail('setup failed: no slot values were written, so erasure proves nothing');
+
+  console.log(
+    `[2] seeded one row in each of the eight app_reclaim_* tables + ${slotsBefore} slot values`
+  );
 
   let receiptId: string | undefined;
   try {
@@ -87,6 +115,15 @@ async function main(): Promise<void> {
         fail(`CASCADE failed: ${count} app_reclaim_${table} row(s) survived erasure`);
     }
     console.log('[3] all six CASCADE tables emptied');
+
+    // ── 4b. The answers themselves (F10 t-5) ─────────────────────────────
+    const slotsAfter = await prisma.slotValue.count({ where: { userId: uid } });
+    if (slotsAfter !== 0) {
+      fail(
+        `CASCADE failed: ${slotsAfter} framework_slot_value row(s) survived erasure — the audit answers are still there`
+      );
+    }
+    console.log(`[3b] all ${slotsBefore} slot values erased (framework_slot_value)`);
 
     // ── 5. Retained tables survive with a nulled user reference (SET NULL) ─
     const consentAfter = await prisma.reclaimConsent.findUnique({ where: { id: consent.id } });
@@ -119,7 +156,9 @@ async function main(): Promise<void> {
     await prisma.$disconnect();
   }
 
-  console.log('\n✓ smoke:reclaim-erasure passed — every app_reclaim_* cascade verified');
+  console.log(
+    '\n✓ smoke:reclaim-erasure passed — every app_reclaim_* cascade AND the audit answers verified'
+  );
 }
 
 main().catch(async (err) => {

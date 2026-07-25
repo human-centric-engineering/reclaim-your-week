@@ -214,6 +214,30 @@ senior leader. Above this is often a signal of under-delegation or difficulty le
 earlier identity as a practitioner" is a diagnostic in her voice. A cleaner version is a different
 product.
 
+### The third hop is Rashmir's own, and it is not a violation (F10 t-4)
+
+Both hops above stop at the **code**. From F10 t-4, the words a leader actually reads come from
+`Module.config` **in the database**, which Rashmir edits herself through
+`/admin/programme/content`. So production content can differ from `sources/` with every guard green,
+and a future session finding that difference must not read it as a breach.
+
+**The distinction I11 actually draws is authorship, not immutability.** It exists so that _we_ never
+paraphrase her — not so that _she_ cannot revise herself. Her rewording her own diagnostic is the
+feature working; the same edit made by a developer in a config row would be the thing this invariant
+forbids, and the two are told apart by three properties the editor guarantees:
+
+1. **Every field is marked** as matching the source document or edited (`content-diff.ts`), so a
+   difference is always visible rather than discovered.
+2. **Every save is versioned and attributed** — the framework's `saveModuleConfig` snapshots a
+   `ModuleVersion` with the author, and the leaf requires a change summary the framework treats as
+   optional. "Who changed this, when, and why" is always answerable.
+3. **The code defaults are never touched by an edit.** Hop 2 keeps testing the constants against the
+   extract, so the chain of custody from `sources/` to what we shipped stays provable no matter what
+   the stored config says.
+
+So: a diverged field with a version history behind it is Rashmir's revision. A diverged **default**,
+or a diverged field with no version behind it, is a breach — that is what to check.
+
 Anything Rashmir might want to reword must be editable through `Module.config` without a deploy.
 
 ---
