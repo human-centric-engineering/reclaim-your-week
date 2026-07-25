@@ -64,6 +64,21 @@ export const RECLAIM_STRATEGY_MIRROR =
 export const RECLAIM_PHASE2_COACHING_SIGNAL =
   'Note: this is a rich topic worth exploring more deeply. Where useful, signal that a dedicated coaching conversation with Rashmir can go much further here.';
 
+/**
+ * The recent-audit shortcut's confirm line (§4, F9 t-2). Verbatim, and **interpolated, not rewritten**:
+ * the bracketed placeholders are filled from the leader's own previous answers.
+ *
+ * The surrounding source instruction is written for the Claude-Project era ("either in the project
+ * files or pasted in") and is retired by the product having a database. What carries is the sentence
+ * itself — a confirmation that ASKS rather than assumes, which is the §4 register and the reason not
+ * to paraphrase it into "Is this still right?".
+ *
+ * Guarded in hop 2 as a substring of the §4 blockquote rather than as a whole-quote identity, because
+ * only this sentence is user-facing. See `tests/unit/app/programme/content.test.ts`.
+ */
+export const RECLAIM_RECENT_AUDIT_CONFIRM =
+  '"I can see from your recent audit that you are [role] at [organisation], working around [hours] per week, with [priorities]. Is all of that still accurate, or has anything changed?"';
+
 /** The cross-cutting deep-work note (§2). Contains an em dash — verbatim descriptive content. */
 export const RECLAIM_DEEP_WORK_NOTE =
   'Deep work cuts across all buckets — it is the quality of focused, uninterrupted attention brought to the most important work. The research-informed recommendation for leaders is at least one protected block of 60-90 minutes per day, ideally during their peak energy window for high performance. Even one hour of genuine deep work daily is a significant win for most leaders. Four hours a day would be absolutely phenomenal, but is unlikely for most leaders.';

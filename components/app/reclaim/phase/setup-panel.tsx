@@ -9,10 +9,11 @@
  * gate, so the transition passes).
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { RECLAIM_PROCESS_OUTLINE } from '@/lib/app/programme/content';
 import { parseHours, isHours } from '@/components/app/reclaim/phase/hours';
 import { saveBatch, advancePhase, type AnswerInput } from '@/components/app/reclaim/phase/actions';
+import { readShortcut } from '@/components/app/reclaim/repeat/actions';
 import {
   TextField,
   TextAreaField,
@@ -57,6 +58,53 @@ const EMPTY: SetupState = {
   auditPeriod: 'last quarter',
 };
 
+/**
+ * F9 t-2 — map a previous audit's answers onto the form (§4's recent-audit shortcut).
+ *
+ * **Pre-fill, never carry forward.** The fields arrive filled and fully editable; confirming still
+ * writes every value again through `saveAnswer` under the NEW run's id (I3), which is what keeps each
+ * audit its own picture. Copying values at the database level would make the previous audit mutate
+ * when this one confirms something.
+ */
+function prefillFrom(answers: Record<string, string>): Partial<SetupState> {
+  const flag = (v: string | undefined): boolean | null =>
+    v === undefined ? null : /^(yes|true)$/i.test(v.trim());
+
+  return {
+    ...(answers['reclaim_profile_first_name'] !== undefined && {
+      firstName: answers['reclaim_profile_first_name'],
+    }),
+    ...(answers['reclaim_profile_role'] !== undefined && {
+      role: answers['reclaim_profile_role'],
+    }),
+    ...(answers['reclaim_profile_org_type'] !== undefined && {
+      orgType: answers['reclaim_profile_org_type'],
+    }),
+    ...(answers['reclaim_profile_direct_reports'] !== undefined && {
+      directReports: answers['reclaim_profile_direct_reports'],
+    }),
+    ...(answers['reclaim_profile_distributed_team'] !== undefined && {
+      distributedTeam: flag(answers['reclaim_profile_distributed_team']),
+    }),
+    ...(answers['reclaim_setup_in_transition'] !== undefined && {
+      inTransition: flag(answers['reclaim_setup_in_transition']),
+    }),
+    ...(answers['reclaim_setup_fundraising_relevant'] !== undefined && {
+      fundraisingRelevant: flag(answers['reclaim_setup_fundraising_relevant']),
+    }),
+    ...(answers['reclaim_setup_weekly_hours'] !== undefined && {
+      weeklyHours: answers['reclaim_setup_weekly_hours'],
+    }),
+    ...(answers['reclaim_setup_priorities'] !== undefined && {
+      priorities: answers['reclaim_setup_priorities'],
+    }),
+    // Deliberately NOT carried: `keepingMeUp` and `whyNow`. They are the two `sensitive` prose slots,
+    // they are the most likely things to have changed since last time, and F7's refer-back returns
+    // them verbatim later in this audit — pre-filling them would put last quarter's worry in this
+    // quarter's mouth.
+  };
+}
+
 const ROLES = ['CEO', 'Founder', 'Programme Officer', 'Philanthropist', 'Director', 'Other'];
 const ORG_TYPES = ['Nonprofit', 'Startup', 'Established business', 'Other'];
 const PERIODS = ['last week', 'last month', 'last quarter', 'last year'];
@@ -97,10 +145,28 @@ function toAnswers(s: SetupState): AnswerInput[] {
 export function SetupPanel({ runId, onAdvanced }: { runId: string; onAdvanced: () => void }) {
   const [s, setS] = useState<SetupState>(EMPTY);
   const [stage, setStage] = useState<'form' | 'review'>('form');
+  /** F9 t-2: §4's confirm line, filled with their own context, when the last audit was recent. */
+  const [confirmLine, setConfirmLine] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const set = <K extends keyof SetupState>(k: K, v: SetupState[K]) =>
     setS((p) => ({ ...p, [k]: v }));
+
+  // F9 t-2. Best-effort and silent: if this fails, Phase 0 simply asks in full, which is the
+  // behaviour every leader had before the shortcut existed.
+  useEffect(() => {
+    let cancelled = false;
+    void readShortcut()
+      .then((shortcut) => {
+        if (cancelled || shortcut.previous === null) return;
+        setS((p) => ({ ...p, ...prefillFrom(shortcut.answers) }));
+        setConfirmLine(shortcut.confirmLine);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const canReview = s.firstName.trim().length > 0 && s.weeklyHours.trim().length > 0;
 
@@ -163,9 +229,24 @@ export function SetupPanel({ runId, onAdvanced }: { runId: string; onAdvanced: (
 
   return (
     <div className="space-y-8">
-      <p className="text-foreground text-[1.02rem] leading-relaxed text-balance">
-        {RECLAIM_PROCESS_OUTLINE}
-      </p>
+      {confirmLine === null ? (
+        <p className="text-foreground text-[1.02rem] leading-relaxed text-balance">
+          {RECLAIM_PROCESS_OUTLINE}
+        </p>
+      ) : (
+        // F9 t-2 — §4's recent-audit shortcut, in Rashmir's own words (I11, guarded verbatim in
+        // hop 2). It CONFIRMS rather than assumes: everything below is filled in and every field is
+        // still editable, and the question invites them to say what has changed.
+        <div className="border-border/70 bg-muted/20 space-y-3 rounded-lg border p-5">
+          <p className="text-foreground text-[1.02rem] leading-relaxed text-balance">
+            {confirmLine}
+          </p>
+          <p className="text-muted-foreground text-sm">
+            Everything below is filled in from last time. Change anything that has moved, and leave
+            the rest.
+          </p>
+        </div>
+      )}
 
       <div className="border-border/70 space-y-6 border-t pt-8">
         <TextField

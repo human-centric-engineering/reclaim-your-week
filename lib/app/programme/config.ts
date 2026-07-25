@@ -31,6 +31,12 @@ export interface ReclaimAccessConfig {
   policyVersion: string;
 }
 
+/** The subset the recent-audit shortcut needs (F9 t-2): the confirm line and its window. */
+export interface ReclaimShortcutConfig {
+  recentAuditConfirm: string;
+  recentAuditWithinDays: number;
+}
+
 /** The subset the admin surfaces need (F10): the stall rule and the anonymity floor. */
 export interface ReclaimAdminConfig {
   abandonedAfterDays: number;
@@ -64,6 +70,15 @@ export async function readReclaimAccessConfig(): Promise<ReclaimAccessConfig> {
     clientMustStartWithinDays: config.clientMustStartWithinDays,
     openSignup: config.openSignup,
     policyVersion: config.policyVersion,
+  };
+}
+
+/** Read the shortcut policy (F9 t-2): the §4 confirm line and how recent "recent" is. */
+export async function readReclaimShortcutConfig(): Promise<ReclaimShortcutConfig> {
+  const config = await readReclaimConfig();
+  return {
+    recentAuditConfirm: config.recentAuditConfirm,
+    recentAuditWithinDays: config.recentAuditWithinDays,
   };
 }
 
