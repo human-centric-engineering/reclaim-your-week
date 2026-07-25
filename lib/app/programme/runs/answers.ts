@@ -41,6 +41,23 @@
  * The calendar reads (`calendar/store.ts`, `calendar/analyse.ts`) and the F10 admin reads use heads
  * on purpose: the former only ever run inside the live run (whose values *are* the heads), and the
  * latter want the leader's data as it currently stands. Neither is run-scoped.
+ *
+ * ## The one writer that does not stamp a run, and what that means here
+ *
+ * "A run's answers are the values stamped with that run's id" excludes exactly one write path in this
+ * app: the **coach agent's `fill_slot`**. The agent holds it scoped to the `reclaim_profile` group
+ * (I6), and the framework builds that provenance from `conversationId` / `moduleSlug` / `nodeKey`
+ * with **no `runId`** — the leaf's `saveAnswer` is what stamps runs, and a capability write does not
+ * go through it.
+ *
+ * So if a leader fills the Phase 0 form with role "CEO" and later tells the coach in chat that they
+ * are actually COO, the correction lands as a version belonging to no run. This function returns the
+ * form's "CEO" for that audit. That is **defensible and is the intended reading** — a run summary is a
+ * snapshot of what that audit captured, and the later correction genuinely belongs to no audit — but
+ * it is worth knowing rather than discovering: it is not that the correction is lost (it is the head,
+ * so every heads-based read has it), only that it does not join a run's picture. Filed as
+ * [[daybreak-asks]] daybreak#167; the fix belongs upstream, where a capability write could carry the
+ * caller's run context.
  */
 
 import { z } from 'zod';
@@ -72,8 +89,13 @@ export async function readRunAnswers(
   // On cost: the JSON path is not indexed, so this scans the user's own slot rows — which is a few
   // hundred at v1 scale (105 slugs × a handful of audits) and bounded by `userId`, not by the table.
   // If a leader ever accumulates enough audits for that to matter, the fix is an expression index on
-  // `(provenance->>'runId')`, not a different query shape. Verified against real Postgres by
-  // `smoke:reclaim-run` step 8, which is also what proves the JSON path operator behaves as expected.
+  // `(provenance->>'runId')`, not a different query shape.
+  //
+  // On what proves this works: `smoke:reclaim-run` step 8 runs it against real Postgres, and catches
+  // the filter returning **too little** (an over-narrowed query, or the head filter creeping back).
+  // It cannot catch the filter returning too much, because the Zod re-check below would discard the
+  // extra rows and every assertion would still pass — so the narrowing is a performance property
+  // here, not a correctness one. Correctness rests on the re-check.
   const rows = await prisma.slotValue.findMany({
     where: {
       userId,
@@ -86,9 +108,13 @@ export async function readRunAnswers(
 
   const out: Record<string, RunAnswer> = {};
   for (const row of rows) {
-    // Re-check the id in code as well as in the query. The JSON path filter is the fast narrowing;
-    // this is the assertion, and it keeps the guarantee readable for anyone auditing the run-scoping
-    // rule without having to trust a Prisma JSON operator's exact semantics.
+    // Re-check the id in code as well as in the query — and note the division of labour, because it
+    // is what makes this safe: the JSON path filter is the **narrowing** (it keeps the row count
+    // down) and this is the **guarantee** (it decides what counts). Prisma emits the path filter as
+    // a bound parameter against `provenance #> ARRAY[...]`, where a missing key or a type mismatch
+    // yields NULL or false and is therefore excluded rather than included — so the filter can only
+    // ever under-include, and the re-check is a sufficient backstop for the case where it does not
+    // behave as expected at all.
     const parsed = provenanceRunIdSchema.safeParse(row.provenance);
     if (!parsed.success || parsed.data.runId !== runId) continue;
     // Ascending version, so a later write for the same run overwrites an earlier one — last wins.

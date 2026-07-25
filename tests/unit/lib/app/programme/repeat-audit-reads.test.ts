@@ -70,10 +70,11 @@ function completeAuditIn(runId: string, deepWorkHours: number, period: string) {
 beforeEach(() => {
   store.rows = [];
   findMany.mockReset();
-  findMany.mockImplementation((args: { where: Record<string, unknown> }) => {
+  findMany.mockImplementation((args: { where: Record<string, unknown>; orderBy?: unknown }) => {
     const where = args.where;
     const slugFilter = where.slotSlug as { in: string[] } | undefined;
     const provenance = where.provenance as { path: string[]; equals: string } | undefined;
+    const direction = (args.orderBy as { version?: string } | undefined)?.version ?? 'asc';
 
     // The fake honours `supersededAt` **if the query asks for it**, which is what makes this a real
     // regression test rather than a description of the fix: re-introduce that filter in
@@ -89,7 +90,7 @@ beforeEach(() => {
           const key = provenance.path[0];
           return key !== undefined && p[key] === provenance.equals;
         })
-        .sort((a, b) => a.version - b.version)
+        .sort((a, b) => (direction === 'desc' ? b.version - a.version : a.version - b.version))
     );
   });
 });

@@ -72,6 +72,7 @@ beforeEach(() => {
     const where = args.where;
     const slugFilter = where.slotSlug as { in: string[] } | undefined;
     const provenance = where.provenance as { path: string[]; equals: string } | undefined;
+    const direction = (args.orderBy as { version?: string } | undefined)?.version ?? 'asc';
 
     const matched = rows()
       .filter((r) => r.userId === where.userId)
@@ -83,7 +84,11 @@ beforeEach(() => {
         const key = provenance.path[0];
         return p !== null && key !== undefined && p[key] === provenance.equals;
       })
-      .sort((a, b) => a.version - b.version);
+      // Honour `orderBy` rather than always sorting ascending. A fake that sorts for the code under
+      // test would make "the run's last write wins" hold because of the FAKE, and flipping the real
+      // query to `desc` would keep every assertion green while returning a leader's corrected hours
+      // as their original ones.
+      .sort((a, b) => (direction === 'desc' ? b.version - a.version : a.version - b.version));
 
     return Promise.resolve(matched);
   });
@@ -156,11 +161,18 @@ describe('readRunAnswers — within one run', () => {
     const answers = await readRunAnswers('u1', 'run-1', ['reclaim_setup_weekly_hours']);
     expect(Object.keys(answers)).toEqual(['reclaim_setup_weekly_hours']);
 
-    const args = findMany.mock.calls[0]?.[0] as { where: Record<string, unknown> };
+    const args = findMany.mock.calls[0]?.[0] as {
+      where: Record<string, unknown>;
+      orderBy: unknown;
+    };
     expect(args.where.userId).toBe('u1');
     expect(args.where.provenance).toEqual({ path: ['runId'], equals: 'run-1' });
     // And crucially: no `supersededAt` narrowing, which is what caused the bug.
     expect(args.where).not.toHaveProperty('supersededAt');
+    // Ascending order is load-bearing, not incidental: the loop overwrites per slug, so `desc` would
+    // return a leader's FIRST answer where they had corrected themselves. Asserted on the query
+    // rather than only through the fake, so the guarantee does not depend on how the fake sorts.
+    expect(args.orderBy).toEqual({ version: 'asc' });
   });
 
   it('scopes by user — one leader’s run id never reads another leader’s values', async () => {
