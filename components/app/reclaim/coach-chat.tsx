@@ -9,21 +9,21 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { z } from 'zod';
+import { parseSseBlock } from '@/lib/api/sse-parser';
+import { parseChatStreamEvent } from '@/components/admin/orchestration/chat/chat-events';
 
 const STREAM_URL = '/api/v1/framework/modules/reclaim-audit/chat/stream';
-
-/** The stream events this client acts on (the handler emits more; we ignore the rest). */
-const eventSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('start'), conversationId: z.string() }),
-  z.object({ type: z.literal('content'), delta: z.string() }),
-  z.object({ type: z.literal('done') }),
-  z.object({ type: z.literal('error'), message: z.string().optional() }),
-]);
 
 interface Turn {
   role: 'leader' | 'coach';
   text: string;
+}
+
+/** Set the (in-flight) coach turn — always the last turn — to `text`, immutably. */
+function setCoachText(turns: Turn[], text: string): Turn[] {
+  const next = [...turns];
+  next[next.length - 1] = { role: 'coach', text };
+  return next;
 }
 
 export function CoachChat() {
@@ -32,10 +32,15 @@ export function CoachChat() {
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [turns, streaming]);
+
+  // Cancel any in-flight stream on unmount — otherwise the reader keeps running,
+  // sets state after unmount, and holds the server generation open (chat-interface.tsx pattern).
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   const send = useCallback(async () => {
     const message = draft.trim();
@@ -45,11 +50,14 @@ export function CoachChat() {
     setTurns((t) => [...t, { role: 'leader', text: message }, { role: 'coach', text: '' }]);
     setStreaming(true);
 
+    const controller = new AbortController();
+    abortRef.current = controller;
     try {
       const res = await fetch(STREAM_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message }),
+        signal: controller.signal,
       });
       if (!res.ok || res.body === null)
         throw new Error(`The coach could not be reached (${res.status}).`);
@@ -64,32 +72,36 @@ export function CoachChat() {
         const blocks = buffer.split('\n\n');
         buffer = blocks.pop() ?? '';
         for (const block of blocks) {
-          const dataLine = block.split('\n').find((l) => l.startsWith('data:'));
-          if (dataLine === undefined) continue;
-          let json: unknown;
-          try {
-            json = JSON.parse(dataLine.slice(5).trim());
-          } catch {
+          const event = parseChatStreamEvent(block);
+          if (event === null) {
+            // Not in the shared client union. A per-turn budget abort can be the *sole* terminal
+            // frame (no trailing `done`/`error`), so surface it from the raw frame rather than
+            // dropping it — otherwise the coach turn is left silently empty.
+            const raw = parseSseBlock(block);
+            if (raw?.type === 'budget_exceeded_per_turn') {
+              const msg = typeof raw.data.message === 'string' ? raw.data.message : undefined;
+              throw new Error(msg ?? 'This turn reached its limit. You can try again.');
+            }
             continue;
           }
-          const parsed = eventSchema.safeParse(json);
-          if (!parsed.success) continue;
-          if (parsed.data.type === 'content') {
-            const { delta } = parsed.data;
-            setTurns((t) => {
-              const next = [...t];
-              next[next.length - 1] = { role: 'coach', text: next[next.length - 1].text + delta };
-              return next;
-            });
-          } else if (parsed.data.type === 'error') {
-            throw new Error(parsed.data.message ?? 'The coach ran into a problem.');
+          if (event.type === 'content') {
+            const { delta } = event;
+            setTurns((t) => setCoachText(t, t[t.length - 1].text + delta));
+          } else if (event.type === 'content_reset') {
+            // A fallback provider restarts generation from scratch — discard the partial so the
+            // retried answer doesn't concatenate onto the abandoned one.
+            setTurns((t) => setCoachText(t, ''));
+          } else if (event.type === 'error') {
+            throw new Error(event.message);
           }
         }
       }
     } catch (e) {
+      if (controller.signal.aborted) return; // unmounted / superseded — leave state untouched
       setError(e instanceof Error ? e.message : 'Something interrupted the conversation.');
     } finally {
-      setStreaming(false);
+      if (!controller.signal.aborted) setStreaming(false);
+      if (abortRef.current === controller) abortRef.current = null;
     }
   }, [draft, streaming]);
 
