@@ -46,6 +46,7 @@
     "smoke:reclaim": "tsx --env-file=.env.local scripts/smoke/reclaim.ts",
     "smoke:reclaim-run": "tsx --env-file=.env.local scripts/smoke/reclaim-run.ts",
     "smoke:reclaim-erasure": "tsx --env-file=.env.local scripts/smoke/reclaim-erasure.ts",
+    "smoke:reclaim-calendar": "tsx --env-file=.env.local scripts/smoke/reclaim-calendar.ts",
     "postinstall": "prisma generate",
     "prepare": "husky",
     "leaf:content-diff": "tsx scripts/content-source/check.ts"
@@ -109,6 +110,7 @@
     "echarts-for-react": "^3.0.6",
     "epub2": "^3.0.2",
     "gpt-tokenizer": "^3.4.0",
+    "ical.js": "^2.2.1",
     "jmespath": "^0.16.0",
     "jsdom": "^26.1.0",
     "libphonenumber-js": "^1.13.8",
