@@ -58,17 +58,21 @@ describe('lib/app/ bootstrap defaults are no-ops', () => {
     expect(initAppContextContributors()).toBeUndefined();
   });
 
-  it('initLeafAdminNav registers no admin nav sections by default', () => {
+  it('initLeafAdminNav registers exactly the leaf’s own admin section', () => {
     // Arrange — clean registry
     __resetNavRegistryForTests();
 
-    // Act — run the real (empty) leaf hook. `initAppNav` itself is Daybreak-filled
-    // (it registers the framework section); the reserved-empty leaf seam it
-    // delegates to must stay a no-op so a leaf fork inherits an empty nav.
+    // Act — run the real leaf hook. It is no longer empty: F8 t-1 registers this app's own admin
+    // section here, which is exactly what the reserved seam is for (Daybreak keeps it empty; the
+    // LEAF fills it). What still matters is that it registers *this* and nothing else — a stray
+    // section would appear in every admin sidebar.
     initLeafAdminNav();
 
-    // Assert — nothing registered
-    expect(getRegisteredNavSections()).toHaveLength(0);
+    // Assert — one section, ours, pointing at the leaf's own admin surface
+    const sections = getRegisteredNavSections();
+    expect(sections).toHaveLength(1);
+    expect(sections[0]?.title).toBe('Reclaim Your Week');
+    expect(sections[0]?.items?.map((i) => i.href)).toEqual(['/admin/programme/access']);
   });
 
   it('public-nav overrides are all null by default (= use platform defaults)', () => {
@@ -79,9 +83,13 @@ describe('lib/app/ bootstrap defaults are no-ops', () => {
     expect(footerLegalItems).toBeNull();
   });
 
-  it('email overrides are empty by default (= use platform templates)', () => {
-    // A stray override here would silently swap an auth email for every install.
-    expect(emailOverrides).toEqual({});
+  it('overrides only the invitation email, leaving every other kind on the platform template', () => {
+    // F8 t-1 overrides `invitation` deliberately: the platform copy is written for a SaaS team invite
+    // and this is the first thing an invited leader reads from the product. The assertion that still
+    // earns its keep is the *scope* — a stray override would silently swap an auth email (welcome,
+    // verification, password reset) for every install, which is not something this feature intends.
+    expect(Object.keys(emailOverrides)).toEqual(['invitation']);
+    expect(emailOverrides.invitation).toBeTypeOf('function');
   });
 
   it('initApp does no boot work by default (resolves to undefined)', async () => {

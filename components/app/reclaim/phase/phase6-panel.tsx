@@ -14,6 +14,7 @@ import {
   RECLAIM_CONSULTATION_EMAIL,
 } from '@/lib/app/programme/content';
 import { SummaryView } from '@/components/app/reclaim/summary/summary-view';
+import { ReferralInvite } from '@/components/app/reclaim/referral-invite';
 import { TextAreaField, SelectField } from '@/components/app/reclaim/phase/fields';
 import {
   fetchSummary,
@@ -210,6 +211,10 @@ export function Phase6Panel({ runId, onAdvanced }: { runId: string; onAdvanced: 
           {error} You can try again.
         </p>
       )}
+
+      {/* F8 t-3. Placed after the sharing choice and before finishing: the one moment the leader has
+          just seen what the audit gave them. Collapsed by default — an invitation, not a nag (I16). */}
+      <ReferralInvite />
 
       <div className="print:hidden">
         <button

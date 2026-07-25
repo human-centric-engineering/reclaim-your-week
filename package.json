@@ -49,7 +49,8 @@
     "smoke:reclaim-calendar": "tsx --env-file=.env.local scripts/smoke/reclaim-calendar.ts",
     "postinstall": "prisma generate",
     "prepare": "husky",
-    "leaf:content-diff": "tsx scripts/content-source/check.ts"
+    "leaf:content-diff": "tsx scripts/content-source/check.ts",
+    "smoke:reclaim-access": "tsx --env-file=.env.local scripts/smoke/reclaim-access.ts"
   },
   "repository": {
     "type": "git",

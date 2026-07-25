@@ -99,6 +99,32 @@ export const reclaimConfigSchema = z.object({
    */
   phase2CoachingSignal: z.boolean().default(false),
   strategyMirror: z.boolean().default(false),
+
+  /**
+   * F8 access policy (Brief §8). Coach-editable for the same reason as the toggles above — she wrote
+   * "a 12 month usage option … initiation must happen within a month of being given access (**or
+   * something like that**)", and "or something like that" is a policy she should be able to change
+   * without a deploy.
+   */
+  clientWindowMonths: z.number().int().min(1).max(60).default(12),
+  clientMustStartWithinDays: z.number().int().min(1).max(365).default(30),
+
+  /**
+   * F8 t-4 — **open-signup readiness** (reconciliation 7). v1 ships invite-only, so this is `false`:
+   * an account with no invite cannot start an audit. Turning it on mints a standard-tier grant for
+   * any account instead, which is how the door opens **without a code change** when Rashmir is ready.
+   * Brief §1 names list growth as the tool's first job; Brief §2 says "we open the doors deliberately
+   * rather than by default".
+   */
+  openSignup: z.boolean().default(false),
+
+  /**
+   * F8 t-4 — the version of terms + privacy a leader must have accepted before starting an audit.
+   * Bumping this string requires everyone to accept again, which is the point: consent is to a
+   * *version*. The clauses themselves are Rashmir's to supply (plan.md open item 7); this default is a
+   * placeholder so the mechanism is testable before the text exists.
+   */
+  policyVersion: z.string().min(1).default('draft-1'),
 });
 
 /** The parsed shape of `reclaimConfigSchema` — the coach-editable config the app reads. */

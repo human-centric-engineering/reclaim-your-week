@@ -16,6 +16,8 @@ import { getSlotHeads } from '@/lib/framework/data-slots';
 import { MODULE_SURFACE_CONTEXT_TYPE } from '@/lib/framework/guidance/surface';
 import { RECLAIM_MODULE_SLUG } from '@/lib/app/programme/module';
 import { missingReflectionSlug } from '@/lib/app/programme/runs/reflection';
+import { recordConsent } from '@/lib/app/programme/access/consent';
+import { readReclaimAccessConfig } from '@/lib/app/programme/config';
 import {
   createRun,
   transitionRun,
@@ -53,6 +55,16 @@ async function main(): Promise<void> {
 
   try {
     // ── 2. Create a run (journey + row + enter Phase 0); refuse a second ──
+    // F8 t-2: the gate no longer bootstraps a grant for any account (that was F6's placeholder, and in
+    // production it meant self-serve access). This smoke is about the run *lifecycle*, so it grants the
+    // entitlement directly; `smoke:reclaim-access` is what exercises the invite → grant path itself.
+    await prisma.reclaimGrant.create({
+      data: { id: `standard_${uid}`, userId: uid, tier: 'standard', auditsGranted: 1 },
+    });
+    // F8 t-4: consent stands in front of entitlement, so a run cannot start without it. Recorded here
+    // for the same reason as the grant — `smoke:reclaim-access` is what tests the gates themselves.
+    const { policyVersion } = await readReclaimAccessConfig();
+    await recordConsent(uid, policyVersion, false);
     const run = await createRun(uid, '2026 Q3');
     if (run.status !== 'in_progress')
       fail(`new run status is "${run.status}", expected in_progress`);
@@ -125,9 +137,9 @@ async function main(): Promise<void> {
       fail('I15: surface conversation was not closed on completion');
     console.log('[6] run completed; surface conversation closed (isActive:false)');
 
-    // ── 7. Entitlement (I14, F6 t-1): free tier = one complete audit ──────
-    // The first run bootstrapped a free grant; completing it consumed the allowance, so a second
-    // audit is refused until the grant is topped up (as F8's client/referral tiers will).
+    // ── 7. Entitlement (I14, F6 t-1 / F8 t-2): one complete audit ────────
+    // Completing the run consumed the standard-tier allowance granted in step 2, so a second audit is
+    // refused until the grant is topped up (which is what F8's client tier and referral unlock do).
     let refusedAfterExhaustion = false;
     await createRun(uid).catch(() => (refusedAfterExhaustion = true));
     if (!refusedAfterExhaustion) fail('free tier allowed a second audit after one was completed');

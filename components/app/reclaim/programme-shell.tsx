@@ -12,6 +12,7 @@ import { PhaseRail } from '@/components/app/reclaim/phase-rail';
 import { Signpost } from '@/components/app/reclaim/signpost';
 import { CoachChat } from '@/components/app/reclaim/coach-chat';
 import { BeginAudit } from '@/components/app/reclaim/begin-audit';
+import { ConsentGate } from '@/components/app/reclaim/consent-gate';
 import { SetupPanel } from '@/components/app/reclaim/phase/setup-panel';
 import { Phase1Panel } from '@/components/app/reclaim/phase/phase1-panel';
 import { Phase2Panel } from '@/components/app/reclaim/phase/phase2-panel';
@@ -24,6 +25,10 @@ export function ProgrammeShell() {
   const [state, setState] = useState<CurrentRunState | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
+  /** F8 t-4: set once the leader has accepted the current policy version (or already had). */
+  const [consented, setConsented] = useState(false);
+  // Stable identity on purpose — `ConsentGate` takes this as an effect dependency (see the note there).
+  const handleConsented = useCallback(() => setConsented(true), []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -70,6 +75,13 @@ export function ProgrammeShell() {
   }
 
   if (state.run === null) {
+    // F8 t-4: the consent gate stands at the programme door, before the invitation to begin. The
+    // server refuses run creation without a recorded acceptance of the current policy version — this
+    // is the UI half, so a leader meets the terms as a step rather than as a 403. Once accepted (or
+    // already on file), it hands straight through to the entry.
+    if (!consented) {
+      return <ConsentGate onAccepted={handleConsented} />;
+    }
     return <BeginAudit onStarted={() => void load()} />;
   }
 

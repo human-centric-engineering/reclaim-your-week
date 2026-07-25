@@ -1,11 +1,21 @@
 /**
- * Read the coach-editable Reclaim config (F7). The Phase 2 coaching signal and the strategy mirror are
- * open items Rashmir owes (plan.md 10 & 11); they live in `Module.config` (default off) so she can flip
- * them without a deploy. The phase UIs fetch these toggles to decide whether to render that copy.
+ * Read the coach-editable Reclaim config (F7, extended F8).
+ *
+ * Two readers over one `Module.config` row: the **UI** toggles the phase screens fetch (F7's two open
+ * items), and the **access policy** the server-side gate reads (F8 — the client window, the open-signup
+ * door, the policy version). Both fall back to the schema defaults, so a module row that has never been
+ * edited behaves exactly as `reclaimConfigSchema.parse({})` says it should.
+ *
+ * Everything here is config rather than feature-flag machinery, deliberately: these are decisions
+ * Rashmir makes and changes, not release toggles an engineer flips.
  */
 
 import { prisma } from '@/lib/db/client';
-import { reclaimConfigSchema, RECLAIM_MODULE_SLUG } from '@/lib/app/programme/module';
+import {
+  reclaimConfigSchema,
+  RECLAIM_MODULE_SLUG,
+  type ReclaimConfig,
+} from '@/lib/app/programme/module';
 
 /** The subset of config the client UIs need — the two open-item toggles. */
 export interface ReclaimUiConfig {
@@ -13,16 +23,40 @@ export interface ReclaimUiConfig {
   strategyMirror: boolean;
 }
 
-/** Read the stored module config, falling back to the schema defaults (both toggles off). */
-export async function readReclaimUiConfig(): Promise<ReclaimUiConfig> {
+/** The subset the entitlement gate and consent gate need (F8). */
+export interface ReclaimAccessConfig {
+  clientWindowMonths: number;
+  clientMustStartWithinDays: number;
+  openSignup: boolean;
+  policyVersion: string;
+}
+
+/** Read + parse the stored module config, falling back to the schema defaults. */
+async function readReclaimConfig(): Promise<ReclaimConfig> {
   const row = await prisma.module.findUnique({
     where: { slug: RECLAIM_MODULE_SLUG },
     select: { config: true },
   });
   const parsed = reclaimConfigSchema.safeParse(row?.config ?? {});
-  const config = parsed.success ? parsed.data : reclaimConfigSchema.parse({});
+  return parsed.success ? parsed.data : reclaimConfigSchema.parse({});
+}
+
+/** Read the stored module config, falling back to the schema defaults (both toggles off). */
+export async function readReclaimUiConfig(): Promise<ReclaimUiConfig> {
+  const config = await readReclaimConfig();
   return {
     phase2CoachingSignal: config.phase2CoachingSignal,
     strategyMirror: config.strategyMirror,
+  };
+}
+
+/** Read the access policy (F8): client-window durations, the open-signup door, the policy version. */
+export async function readReclaimAccessConfig(): Promise<ReclaimAccessConfig> {
+  const config = await readReclaimConfig();
+  return {
+    clientWindowMonths: config.clientWindowMonths,
+    clientMustStartWithinDays: config.clientMustStartWithinDays,
+    openSignup: config.openSignup,
+    policyVersion: config.policyVersion,
   };
 }

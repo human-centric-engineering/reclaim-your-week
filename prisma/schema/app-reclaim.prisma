@@ -63,6 +63,9 @@ model ReclaimConsent {
 
   acceptedAt DateTime @default(now())
 
+  /// One acceptance per user per policy version — a double-submit updates rather than writing a second
+  /// row. (Postgres treats NULLs as distinct, so de-attributed rows after erasure never collide.)
+  @@unique([userId, policyVersion])
   @@index([userId])
   @@map("app_reclaim_consent")
 }
@@ -84,15 +87,31 @@ model ReclaimGrant {
   windowStartsAt DateTime?
   mustStartBy    DateTime?
 
+  /// Which invite minted this grant (provenance; null for the open-signup/standard path). Not an FK
+  /// with a cascade — the invite is retained on erasure and this grant is not, so the link is one-way.
+  sourceInviteId String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([userId])
+  @@index([sourceInviteId])
   @@map("app_reclaim_grant")
 }
 
 /// A tiered invite (F8 t-1). Issued to an email, redeemed by a user. The record is RETAINED and only
 /// *references* a user once redeemed → `redeemedByUserId` nullable + `SET NULL`.
+///
+/// **Two token stores, deliberately.** Account creation still runs through Sunrise's invitation flow
+/// (`lib/utils/invitation-token.ts` → `/accept-invite`), which stores only a SHA-256 hash in
+/// `verification`. This table is the leaf's **tier ledger** beside it: `token` holds the SAME hash
+/// (never the plaintext), so a row is matchable to an issued invite without weakening the platform's
+/// posture. Consume Sunrise's helpers; never edit them (I10).
+///
+/// **No `@@unique([email])`** — an email can hold more than one invite over time (a referral, then a
+/// client invite from Rashmir), and collapsing them would overwrite `invitedByUserId` and silently
+/// destroy a referrer's unlock (F8 t-3). Resolution takes the earliest live invite; re-issue rotates
+/// the token on the existing row.
 model ReclaimInvite {
   id    String @id @default(cuid())
   email String
@@ -101,12 +120,23 @@ model ReclaimInvite {
   /// `client | standard | referral` (F8 t-1).
   tier String @default("standard")
 
+  /// Who sent it. Null for an admin-issued invite; set for a referral, where it is the ONLY link back
+  /// to the referrer whose second audit unlocks on this invitee's first completion (F8 t-3).
+  /// FK to User.id — ON DELETE SET NULL (the invite outlives the inviter, like `redeemedByUserId`).
+  invitedByUserId String?
+
   redeemedByUserId String? // FK to User.id — ON DELETE SET NULL (the invite outlives the user)
   redeemedAt       DateTime?
+
+  /// Set when Rashmir withdraws an unredeemed invite. The row is retained (audit), and a revoked
+  /// invite resolves to nothing at the entitlement gate.
+  revokedAt DateTime?
 
   createdAt DateTime @default(now())
 
   @@index([redeemedByUserId])
+  @@index([invitedByUserId])
+  @@index([email])
   @@map("app_reclaim_invite")
 }
 

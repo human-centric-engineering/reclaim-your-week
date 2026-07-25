@@ -30,9 +30,13 @@ describe('registerAppDriftProbes (framework drift-probe wiring)', () => {
     registerAppDriftProbes();
     const probes = getAppDriftProbes();
     const reclaim = probes.filter((p) => p.table.startsWith('app_reclaim_'));
-    // eight FK constraints + one partial unique index
-    expect(reclaim).toHaveLength(9);
-    expect(reclaim.filter((p) => p.kind === 'FK constraint')).toHaveLength(8);
+    // nine FK constraints + one partial unique index (F8 t-1 added the referral FK on
+    // `app_reclaim_invite.invitedByUserId`, retained on erasure like the rest of that row).
+    expect(reclaim).toHaveLength(10);
+    expect(reclaim.filter((p) => p.kind === 'FK constraint')).toHaveLength(9);
+    expect(
+      reclaim.some((p) => p.name.includes('invitedByUserId') && p.name.includes('SET NULL'))
+    ).toBe(true);
     expect(reclaim.some((p) => p.name.includes('active_user_key'))).toBe(true);
     // The SET NULL retention policy is named in the probe, not just CASCADE.
     expect(reclaim.some((p) => p.name.includes('consent') && p.name.includes('SET NULL'))).toBe(
