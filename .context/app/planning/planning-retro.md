@@ -60,6 +60,21 @@ way the framework retro does.
 
 ## §B — feature-plan authoring
 
+- **Check what the tier below already built before sizing a feature — and then check whether it does
+  the thing your done-when actually claims (F10, both caught at planning).** Two halves of one
+  lesson, and they pull in opposite directions. First half: `plan.md` sized F10 as five build-it-
+  yourself tasks, and Daybreak had already shipped the engine for most of it — per-node drop-off
+  (`getMapHeat`), a journey explorer, module engagement stats, and a generic module-config form with
+  version history and an audit trail. Three of the five tasks shrank. Second half, and the one that
+  matters more: the generic config form **would render Rashmir's nine bucket descriptions as a raw
+  JSON textarea**, because its Zod→descriptor walker is deliberately bounded to flat primitives and
+  falls back to raw JSON for arrays — which is exactly what our content is. "Content editing exists"
+  and "Rashmir can reword a bucket without a deploy" are not the same sentence. **The check: for each
+  task, name the existing surface that covers it, then open that surface and trace your own data
+  through it.** A capability that exists generically may still not reach your specific shape — and the
+  failure mode is asymmetric, because "already built" quietly deletes a task from the plan while
+  "built but not for us" only shows up when someone tries to use it.
+
 - **When a leaf keys access on a user-editable field, the platform's edit rules become part of the
   leaf's threat model (F8 t-2, found by `/security-review`).** Invite redemption resolved a pending
   invite by matching `user.email`, which reads as obviously correct: the invite was sent to that
