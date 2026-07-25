@@ -125,10 +125,19 @@ async function main(): Promise<void> {
       fail('I15: surface conversation was not closed on completion');
     console.log('[6] run completed; surface conversation closed (isActive:false)');
 
-    // ── 7. A fresh run is allowed after completion (resume/repeat) ────────
+    // ── 7. Entitlement (I14, F6 t-1): free tier = one complete audit ──────
+    // The first run bootstrapped a free grant; completing it consumed the allowance, so a second
+    // audit is refused until the grant is topped up (as F8's client/referral tiers will).
+    let refusedAfterExhaustion = false;
+    await createRun(uid).catch(() => (refusedAfterExhaustion = true));
+    if (!refusedAfterExhaustion) fail('free tier allowed a second audit after one was completed');
+    await prisma.reclaimGrant.updateMany({
+      where: { userId: uid },
+      data: { auditsGranted: { increment: 1 } },
+    });
     const run2 = await createRun(uid);
     if (run2.id === run.id) fail('second run reused the first run id');
-    console.log(`[7] fresh run ${run2.id} allowed after completion`);
+    console.log(`[7] free tier refused a 2nd audit; after a top-up, fresh run ${run2.id} allowed`);
   } finally {
     // Erase the throwaway user — cascades the runs, journey, slot values, and conversation.
     await eraseUser({

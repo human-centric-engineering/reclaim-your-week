@@ -13,6 +13,7 @@ import { prisma } from '@/lib/db/client';
 import { NotFoundError, ValidationError } from '@/lib/api/errors';
 import { MODULE_SURFACE_CONTEXT_TYPE } from '@/lib/framework/guidance/surface';
 import { saveAnswer } from '@/lib/app/programme/slots/write';
+import { assertEntitled, consumeAudit } from '@/lib/app/programme/runs/entitlement';
 import { RECLAIM_MAP_SLUG } from '@/lib/app/programme/map';
 import { RECLAIM_MODULE_SLUG } from '@/lib/app/programme/module';
 import {
@@ -45,8 +46,10 @@ export async function loadOwnedRun(runId: string, userId: string): Promise<Recla
  * phase so "you are here" is right on resume.
  */
 export async function createRun(userId: string, quarter?: string): Promise<ReclaimAuditRun> {
-  // TODO(F6/F8): entitlement gate — check `app_reclaim_grant` here and refuse when exhausted/expired
-  // (I14). Not enforced yet; F6 wires this route to the grant table.
+  // Entitlement gate (I14, F6 t-1): refuse when the user's grant is exhausted/expired; bootstraps a
+  // free-tier grant on first run. F8 later issues client/referral grants over the same gate.
+  await assertEntitled(userId);
+
   const existing = await prisma.reclaimAuditRun.findFirst({
     where: { userId, status: RUN_STATUS.inProgress },
   });
@@ -96,6 +99,9 @@ export async function completeRun(userId: string, runId: string): Promise<Reclai
     data: { status: RUN_STATUS.complete, completedAt: new Date() },
   });
 
+  // Free tier = one *complete* audit (I14): consume the entitlement now, not at creation.
+  await consumeAudit(userId);
+
   // I15: close the surface conversation so audit 2 does not resume audit 1's transcript.
   await prisma.aiConversation.updateMany({
     where: {
@@ -110,11 +116,25 @@ export async function completeRun(userId: string, runId: string): Promise<Reclai
   return updated;
 }
 
+type SlotValueJson = Parameters<typeof saveAnswer>[0]['valueJson'];
+
 /** One captured answer, saved through the single write path (I3), stamped with this run's id. */
 export interface RunAnswerInput {
   slotSlug: string;
   value: string;
+  /** Typed form for `number`/`boolean`/`json` slots (Phase 0/1 forms). Omitted ⇒ prose only. */
+  valueJson?: unknown;
   conversationId?: string;
+}
+
+/** Assert the run is the caller's and still in progress (answers can only be saved to an active run). */
+async function assertActiveOwnedRun(userId: string, runId: string): Promise<void> {
+  const run = await loadOwnedRun(runId, userId);
+  if (run.status !== RUN_STATUS.inProgress) {
+    throw new ValidationError('This audit is not in progress', {
+      run: ['Answers can only be saved to an active run.'],
+    });
+  }
 }
 
 export async function saveRunAnswer(
@@ -122,19 +142,40 @@ export async function saveRunAnswer(
   runId: string,
   input: RunAnswerInput
 ): ReturnType<typeof saveAnswer> {
-  const run = await loadOwnedRun(runId, userId);
-  if (run.status !== RUN_STATUS.inProgress) {
-    throw new ValidationError('This audit is not in progress', {
-      run: ['Answers can only be saved to an active run.'],
-    });
-  }
+  await assertActiveOwnedRun(userId, runId);
   return saveAnswer({
     userId,
     runId,
     slotSlug: input.slotSlug,
     value: input.value,
+    valueJson: input.valueJson as SlotValueJson,
+    sourceType: 'direct',
     conversationId: input.conversationId,
   });
+}
+
+/**
+ * Save several answers for one run — the Phase 0 setup form and the Phase 1 cards each write many
+ * slots at once. Ownership + active-run are checked once; every write still routes through
+ * `saveAnswer` (I3). Sequential (insert-only slot versions; order is stable and volumes are small).
+ */
+export async function saveRunAnswers(
+  userId: string,
+  runId: string,
+  answers: RunAnswerInput[]
+): Promise<void> {
+  await assertActiveOwnedRun(userId, runId);
+  for (const input of answers) {
+    await saveAnswer({
+      userId,
+      runId,
+      slotSlug: input.slotSlug,
+      value: input.value,
+      valueJson: input.valueJson as SlotValueJson,
+      sourceType: 'direct',
+      conversationId: input.conversationId,
+    });
+  }
 }
 
 /** The progress shell's data (F4 t-4): the active run (if any) and each phase's status, so the client
