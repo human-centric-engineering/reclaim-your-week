@@ -25,7 +25,16 @@ import { readReclaimAccessConfig, type ReclaimAccessConfig } from '@/lib/app/pro
 
 type Grant = Awaited<ReturnType<typeof prisma.reclaimGrant.findFirst>>;
 
-const MONTH_MS = 30 * 24 * 60 * 60 * 1000;
+/**
+ * Add whole calendar months, not 30-day blocks. Brief §8 says "12 months", and 12 × 30 days is 360 —
+ * it would close a client's window five days early, every time, on an entitlement they paid attention
+ * to. `setMonth` clamps a short month correctly (31 Jan + 1 month → 28 Feb).
+ */
+function addMonths(from: Date, months: number): Date {
+  const to = new Date(from.getTime());
+  to.setMonth(to.getMonth() + months);
+  return to;
+}
 
 /** Raised (→ 403) when a leader has no remaining entitlement to start a new audit. */
 export class EntitlementError extends ForbiddenError {
@@ -50,8 +59,7 @@ export function grantIsLive(
   if (!isWindowBounded(grant.tier) && grant.auditsUsed >= grant.auditsGranted) return false;
 
   if (grant.windowStartsAt !== null) {
-    const windowEnds = grant.windowStartsAt.getTime() + config.clientWindowMonths * MONTH_MS;
-    if (now.getTime() > windowEnds) return false;
+    if (now > addMonths(grant.windowStartsAt, config.clientWindowMonths)) return false;
   } else if (grant.mustStartBy !== null && now > grant.mustStartBy) {
     // Issued but never started, and the start-by deadline has passed (Brief §8).
     return false;
@@ -140,9 +148,11 @@ export async function assertEntitled(userId: string): Promise<void> {
 }
 
 /**
- * Consume one audit on completion — increment `auditsUsed` on the live grant with the earliest expiry
- * (free grants first). Best-effort and idempotent-ish: if no live grant exists (already consumed), it
- * is a no-op rather than an error, so completing a run never fails on entitlement bookkeeping.
+ * Consume one audit on completion — increment `auditsUsed` on the OLDEST live grant, so an entitlement
+ * that has been sitting unused is spent before a newer one (a referral unlock earned later should not
+ * be burned while the original invitation still has an audit on it). Best-effort and idempotent-ish: if
+ * no live grant exists (already consumed) it is a no-op, so completing a run never fails on
+ * entitlement bookkeeping.
  */
 export async function consumeAudit(userId: string): Promise<void> {
   const [grants, config] = await Promise.all([

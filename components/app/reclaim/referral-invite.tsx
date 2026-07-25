@@ -14,6 +14,7 @@
  */
 
 import { useState } from 'react';
+import { referSomeone } from '@/components/app/reclaim/access/actions';
 
 export function ReferralInvite() {
   const [open, setOpen] = useState(false);
@@ -28,30 +29,13 @@ export function ReferralInvite() {
     setError(null);
     setSent(null);
     try {
-      const res = await fetch('/api/v1/app/reclaim/invites/refer', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email }),
-      });
-      const body: unknown = await res.json().catch(() => null);
-      const message =
-        typeof body === 'object' && body !== null && 'data' in body
-          ? (body as { data?: { message?: string } }).data?.message
-          : undefined;
-      const apiError =
-        typeof body === 'object' && body !== null && 'error' in body
-          ? (body as { error?: { message?: string } }).error?.message
-          : undefined;
-
-      if (!res.ok) {
-        setError(apiError ?? 'That invitation could not be sent.');
-        return;
-      }
-      setSent(message ?? 'Your invitation is on its way.');
+      setSent(await referSomeone({ name, email }));
       setName('');
       setEmail('');
-    } catch {
-      setError('That invitation could not be sent.');
+    } catch (e) {
+      // The server's refusals are deliberately vague about whether an address is registered — show
+      // them as-is rather than inventing a friendlier message that would leak the distinction.
+      setError(e instanceof Error ? e.message : 'That invitation could not be sent.');
     } finally {
       setBusy(false);
     }

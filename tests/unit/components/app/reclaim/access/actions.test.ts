@@ -1,0 +1,167 @@
+/**
+ * Access client actions (F8). `fetch` is stubbed; no network.
+ *
+ * These exist because of the F4 t-4 lesson ([[planning-retro]] §B): the leaf's hand-rolled wire parsing
+ * drifted from the shared shape and silently dropped events. So the assertions are about the
+ * **contract**, not the happy path — an unexpected envelope must fail loudly rather than yield
+ * undefined, and a server refusal must reach the leader **verbatim**, because entitlement and consent
+ * refusals are product copy written once on the server (I16/I17).
+ */
+
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+import {
+  listInvites,
+  issueInvite,
+  revokeInvite,
+  referSomeone,
+  readConsentState,
+  acceptConsent,
+} from '@/components/app/reclaim/access/actions';
+
+const fetchMock = vi.fn();
+
+const ok = (data: unknown) => ({ ok: true, json: () => Promise.resolve({ success: true, data }) });
+const fail = (message: string) => ({
+  ok: false,
+  json: () => Promise.resolve({ success: false, error: { code: 'FORBIDDEN', message } }),
+});
+
+beforeEach(() => {
+  fetchMock.mockReset();
+  vi.stubGlobal('fetch', fetchMock);
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+const inviteRow = {
+  id: 'inv1',
+  email: 'leader@example.org',
+  tier: 'client',
+  status: 'pending' as const,
+  invitedByName: null,
+  redeemedByName: null,
+  redeemedAt: null,
+  createdAt: '2026-07-01T00:00:00.000Z',
+};
+
+describe('listInvites', () => {
+  it('unwraps the envelope', async () => {
+    fetchMock.mockResolvedValue(ok({ invites: [inviteRow] }));
+
+    expect(await listInvites()).toEqual([inviteRow]);
+  });
+
+  it('throws on an unexpected shape rather than returning undefined rows', async () => {
+    fetchMock.mockResolvedValue(ok({ invites: [{ id: 'inv1' }] }));
+
+    await expect(listInvites()).rejects.toThrow(/Unexpected response/);
+  });
+
+  it('surfaces the server’s message on failure', async () => {
+    fetchMock.mockResolvedValue(fail('Admins only'));
+
+    await expect(listInvites()).rejects.toThrow('Admins only');
+  });
+});
+
+describe('issueInvite', () => {
+  it('posts the tier and returns the server’s own message', async () => {
+    fetchMock.mockResolvedValue(ok({ emailStatus: 'sent', message: 'Invitation sent.' }));
+
+    expect(
+      await issueInvite({ name: 'Priya', email: 'p@example.org', tier: 'client', resend: false })
+    ).toBe('Invitation sent.');
+    const [url, init] = fetchMock.mock.calls[0] as [string, { body: string }];
+    expect(url).toBe('/api/v1/app/reclaim/invites');
+    expect(JSON.parse(init.body)).toEqual({
+      name: 'Priya',
+      email: 'p@example.org',
+      tier: 'client',
+    });
+  });
+
+  it('asks for a re-send explicitly rather than by accident', async () => {
+    fetchMock.mockResolvedValue(ok({ emailStatus: 'sent', message: 'Invitation sent.' }));
+
+    await issueInvite({ name: 'Priya', email: 'p@example.org', tier: 'standard', resend: true });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/v1/app/reclaim/invites?resend=true');
+  });
+
+  it('reports a conflict in the server’s words', async () => {
+    fetchMock.mockResolvedValue(fail('An account already exists for this email'));
+
+    await expect(
+      issueInvite({ name: 'Priya', email: 'p@example.org', tier: 'standard', resend: false })
+    ).rejects.toThrow('An account already exists for this email');
+  });
+});
+
+describe('revokeInvite', () => {
+  it('DELETEs the invite', async () => {
+    fetchMock.mockResolvedValue(ok({ id: 'inv1', revokedAt: '2026-07-05T00:00:00.000Z' }));
+
+    await revokeInvite('inv1');
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/v1/app/reclaim/invites/inv1');
+    expect(init.method).toBe('DELETE');
+  });
+});
+
+describe('referSomeone', () => {
+  it('passes the deliberately vague refusal through unchanged', async () => {
+    // The route will not say whether an address is already registered. The client must not "improve"
+    // that into something more helpful, which would leak exactly what the vagueness protects.
+    fetchMock.mockResolvedValue(fail('That invitation could not be sent'));
+
+    await expect(referSomeone({ name: 'Sam', email: 's@example.org' })).rejects.toThrow(
+      'That invitation could not be sent'
+    );
+  });
+
+  it('returns the confirmation line on success', async () => {
+    fetchMock.mockResolvedValue(
+      ok({ emailStatus: 'sent', message: 'Your invitation is on its way.' })
+    );
+
+    expect(await referSomeone({ name: 'Sam', email: 's@example.org' })).toBe(
+      'Your invitation is on its way.'
+    );
+  });
+});
+
+describe('consent', () => {
+  it('reads the version and the standing marketing preference', async () => {
+    fetchMock.mockResolvedValue(
+      ok({ accepted: false, policyVersion: 'draft-1', marketingOptIn: true })
+    );
+
+    expect(await readConsentState()).toEqual({
+      accepted: false,
+      policyVersion: 'draft-1',
+      marketingOptIn: true,
+    });
+  });
+
+  it('echoes the server’s version back and sends the affirmative act explicitly', async () => {
+    fetchMock.mockResolvedValue(ok({ accepted: true, policyVersion: 'draft-1' }));
+
+    await acceptConsent('draft-1', false);
+
+    const [, init] = fetchMock.mock.calls[0] as [string, { body: string }];
+    expect(JSON.parse(init.body)).toEqual({
+      policyVersion: 'draft-1',
+      marketingOptIn: false,
+      acceptTerms: true,
+    });
+  });
+
+  it('surfaces a stale-policy refusal instead of silently succeeding', async () => {
+    fetchMock.mockResolvedValue(fail('These terms have been updated'));
+
+    await expect(acceptConsent('draft-0', false)).rejects.toThrow('These terms have been updated');
+  });
+});

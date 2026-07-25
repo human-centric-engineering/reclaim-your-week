@@ -71,11 +71,15 @@ async function main(): Promise<void> {
     console.log('[1] uninvited account refused at the gate (I14)');
 
     // ── 2. A client invite resolves once, even under a concurrent race ────
+    // `createdAt` is backdated to just before the account: a genuine acceptance creates the account at
+    // accept time, so the invite always predates the user. The guard added after `/security-review`
+    // enforces that ordering (an account that predates the invite cannot be its recipient).
     const clientInvite = await prisma.reclaimInvite.create({
       data: {
         email: invitee.email,
         token: hashInviteToken(`${PREFIX}-client-${process.pid}`),
         tier: 'client',
+        createdAt: new Date(Date.now() - 60_000),
       },
     });
     createdInviteIds.push(clientInvite.id);
@@ -103,6 +107,28 @@ async function main(): Promise<void> {
     if ((await redeemInviteForUser(invitee.id, invitee.email, config)) !== null)
       fail('a redeemed invite was resolved a second time');
 
+    // ── 2b. An account that PREDATES an invite cannot claim it ────────────
+    // The email-change hijack: `PATCH /users/me` lets any account take an unused address, so matching
+    // an invite on email alone would hand a client tier to whoever asked first.
+    const hijackInvite = await prisma.reclaimInvite.create({
+      data: {
+        email: referrer.email,
+        token: hashInviteToken(`${PREFIX}-hijack-${process.pid}`),
+        tier: 'client',
+        createdAt: new Date(Date.now() + 60_000), // issued AFTER the account existed
+      },
+    });
+    createdInviteIds.push(hijackInvite.id);
+    if ((await redeemInviteForUser(referrer.id, referrer.email, config)) !== null)
+      fail('an account that predates an invite was allowed to claim it');
+    if ((await prisma.reclaimGrant.count({ where: { userId: referrer.id } })) !== 0)
+      fail('the predating-account guard minted a grant anyway');
+    await prisma.reclaimInvite.update({
+      where: { id: hijackInvite.id },
+      data: { revokedAt: new Date() },
+    });
+    console.log('[2b] an account older than the invite cannot claim it');
+
     // ── 3. Client tier is window-bounded, not count-bounded ───────────────
     await consumeAudit(invitee.id);
     const afterOne = await prisma.reclaimGrant.findFirstOrThrow({ where: { userId: invitee.id } });
@@ -117,6 +143,7 @@ async function main(): Promise<void> {
         token: hashInviteToken(`${PREFIX}-referral-${process.pid}`),
         tier: 'referral',
         invitedByUserId: referrer.id,
+        createdAt: new Date(Date.now() - 60_000),
       },
     });
     createdInviteIds.push(referralInvite.id);

@@ -14,17 +14,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { FieldHelp } from '@/components/ui/field-help';
 import { RECLAIM_INVITE_TIERS } from '@/lib/app/programme/access/tiers';
-
-interface InviteRow {
-  id: string;
-  email: string;
-  tier: string;
-  status: 'pending' | 'redeemed' | 'revoked';
-  invitedByName: string | null;
-  redeemedByName: string | null;
-  redeemedAt: string | null;
-  createdAt: string;
-}
+import {
+  listInvites,
+  issueInvite,
+  revokeInvite,
+  grantAnotherAudit,
+  type InviteRow,
+} from '@/components/app/reclaim/access/actions';
 
 const TIER_LABEL: Record<string, string> = {
   standard: 'Standard — one complete audit',
@@ -51,14 +47,7 @@ export function InviteManager() {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch('/api/v1/app/reclaim/invites');
-      if (!res.ok) throw new Error('load failed');
-      const body: unknown = await res.json();
-      const rows =
-        typeof body === 'object' && body !== null && 'data' in body
-          ? ((body as { data?: { invites?: InviteRow[] } }).data?.invites ?? [])
-          : [];
-      setInvites(rows);
+      setInvites(await listInvites());
       setLoadFailed(false);
     } catch {
       // Gate the render on the load (F7's lesson): an empty table after a failed fetch reads as
@@ -77,33 +66,17 @@ export function InviteManager() {
     setError(null);
     setNotice(null);
     try {
-      const res = await fetch(`/api/v1/app/reclaim/invites${resend ? '?resend=true' : ''}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, name, tier }),
-      });
-      const body: unknown = await res.json();
-      const message =
-        typeof body === 'object' && body !== null && 'data' in body
-          ? (body as { data?: { message?: string } }).data?.message
-          : undefined;
-      const apiError =
-        typeof body === 'object' && body !== null && 'error' in body
-          ? (body as { error?: { message?: string } }).error?.message
-          : undefined;
-
-      if (!res.ok) {
-        setError(apiError ?? 'The invitation could not be issued.');
-        return;
-      }
-      setNotice(message ?? 'Invitation issued.');
-      if (message?.startsWith('An invitation is already pending') !== true) {
+      const message = await issueInvite({ name, email, tier, resend });
+      setNotice(message);
+      // Keep the fields when nothing was actually sent, so the operator can hit re-send without
+      // retyping the address they just entered.
+      if (!message.startsWith('An invitation is already pending')) {
         setEmail('');
         setName('');
       }
       await load();
-    } catch {
-      setError('The invitation could not be issued.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'The invitation could not be issued.');
     } finally {
       setBusy(false);
     }
@@ -114,25 +87,43 @@ export function InviteManager() {
     setError(null);
     setNotice(null);
     try {
-      const res = await fetch(`/api/v1/app/reclaim/invites/${id}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('revoke failed');
+      await revokeInvite(id);
       setNotice('Invitation withdrawn.');
       await load();
-    } catch {
-      setError('That invitation could not be withdrawn.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'That invitation could not be withdrawn.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const regrant = async () => {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      setNotice(await grantAnotherAudit({ email: email.trim().toLowerCase(), tier }));
+      setEmail('');
+      setName('');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'That audit could not be granted.');
     } finally {
       setBusy(false);
     }
   };
 
   const canSubmit = email.trim().length > 3 && name.trim().length > 0 && !busy;
+  // A re-grant needs no name — it acts on an account that already exists.
+  const canRegrant = email.trim().length > 3 && !busy;
 
   return (
     <div className="space-y-8">
       <header>
         <h1 className="text-2xl font-semibold">Access</h1>
         <p className="text-muted-foreground mt-1 text-sm">
-          Reclaim Your Week is invite-only. An account with no invitation cannot start an audit.
+          Reclaim Your Week is invite-only: an account with no invitation cannot start an audit. Use{' '}
+          <strong>Give another audit</strong> for someone who already has an account and has used
+          the one their invitation included.
         </p>
       </header>
 
@@ -215,6 +206,15 @@ export function InviteManager() {
             className="border-input rounded-md border px-4 py-2 text-sm font-medium disabled:opacity-50"
           >
             Re-send with a new link
+          </button>
+          <button
+            type="button"
+            disabled={!canRegrant}
+            onClick={() => void regrant()}
+            title="For someone who already has an account and has used the audit their invitation included"
+            className="border-input rounded-md border px-4 py-2 text-sm font-medium disabled:opacity-50"
+          >
+            Give another audit
           </button>
           {notice !== null && <p className="text-muted-foreground text-sm">{notice}</p>}
           {error !== null && <p className="text-destructive text-sm">{error}</p>}

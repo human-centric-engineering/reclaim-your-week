@@ -19,12 +19,11 @@
  */
 
 import { useEffect, useState } from 'react';
-
-interface ConsentState {
-  accepted: boolean;
-  policyVersion: string;
-  marketingOptIn: boolean;
-}
+import {
+  readConsentState,
+  acceptConsent,
+  type ConsentState,
+} from '@/components/app/reclaim/access/actions';
 
 export function ConsentGate({ onAccepted }: { onAccepted: () => void }) {
   const [state, setState] = useState<ConsentState | null>(null);
@@ -33,21 +32,19 @@ export function ConsentGate({ onAccepted }: { onAccepted: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // NOTE: `onAccepted` MUST be a stable reference (the shell memoises it with `useCallback`). It is a
+  // dependency of the load effect, so an inline arrow would change identity on every render — and the
+  // effect's own `setState` re-renders — turning this into a GET /consent loop for as long as the gate
+  // was on screen.
   useEffect(() => {
     const load = async () => {
       try {
-        const res = await fetch('/api/v1/app/reclaim/consent');
-        if (!res.ok) throw new Error('load failed');
-        const body: unknown = await res.json();
-        const data =
-          typeof body === 'object' && body !== null && 'data' in body
-            ? ((body as { data?: ConsentState }).data ?? null)
-            : null;
+        const data = await readConsentState();
         setState(data);
-        setMarketing(data?.marketingOptIn ?? false);
-        if (data?.accepted === true) onAccepted();
-      } catch {
-        setError('We could not load the terms just now.');
+        setMarketing(data.marketingOptIn);
+        if (data.accepted) onAccepted();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'We could not load the terms just now.');
       }
     };
     void load();
@@ -58,19 +55,10 @@ export function ConsentGate({ onAccepted }: { onAccepted: () => void }) {
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch('/api/v1/app/reclaim/consent', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          policyVersion: state.policyVersion,
-          marketingOptIn: marketing,
-          acceptTerms: true,
-        }),
-      });
-      if (!res.ok) throw new Error('save failed');
+      await acceptConsent(state.policyVersion, marketing);
       onAccepted();
-    } catch {
-      setError('We could not record that just now. Please try again.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'We could not record that just now.');
       setBusy(false);
     }
   };

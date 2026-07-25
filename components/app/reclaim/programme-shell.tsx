@@ -27,6 +27,8 @@ export function ProgrammeShell() {
   const [failed, setFailed] = useState(false);
   /** F8 t-4: set once the leader has accepted the current policy version (or already had). */
   const [consented, setConsented] = useState(false);
+  // Stable identity on purpose — `ConsentGate` takes this as an effect dependency (see the note there).
+  const handleConsented = useCallback(() => setConsented(true), []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -78,7 +80,7 @@ export function ProgrammeShell() {
     // is the UI half, so a leader meets the terms as a step rather than as a 403. Once accepted (or
     // already on file), it hands straight through to the entry.
     if (!consented) {
-      return <ConsentGate onAccepted={() => setConsented(true)} />;
+      return <ConsentGate onAccepted={handleConsented} />;
     }
     return <BeginAudit onStarted={() => void load()} />;
   }

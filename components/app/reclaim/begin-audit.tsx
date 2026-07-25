@@ -6,6 +6,7 @@
  */
 
 import { useState } from 'react';
+import { errorMessageFrom } from '@/components/app/reclaim/calendar/types';
 
 export function BeginAudit({ onStarted }: { onStarted: () => void }) {
   const [starting, setStarting] = useState(false);
@@ -25,11 +26,7 @@ export function BeginAudit({ onStarted }: { onStarted: () => void }) {
         // which tier the leader is on and what happens next, without a pitch and without implying they
         // did something wrong (I16/I17). Surface it verbatim; fall back only when there is no message.
         const body: unknown = await res.json().catch(() => null);
-        const message =
-          typeof body === 'object' && body !== null && 'error' in body
-            ? (body as { error?: { message?: string } }).error?.message
-            : undefined;
-        throw new Error(message ?? 'We could not start your audit just now.');
+        throw new Error(errorMessageFrom(body) ?? 'We could not start your audit just now.');
       }
       onStarted();
     } catch (e) {
