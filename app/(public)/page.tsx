@@ -157,8 +157,8 @@ export default function LandingPage() {
           <ul className="space-y-4">
             {[
               'It is okay if you are not using your time well yet.',
-              'It is fine to do this during an atypical week.',
-              'This is not about achieving a perfect calendar.',
+              'It is fine to do this during an atypical week. Most weeks are atypical.',
+              'This is not about achieving a perfect calendar. There is no such thing.',
               'No one is judging how you spend your time. It is better to know.',
             ].map((line) => (
               <li key={line} className="text-secondary-foreground/90 leading-relaxed font-light">
