@@ -41,15 +41,17 @@ Editing a bridge conflicts on every Daybreak upgrade. Always edit the `leaf-*` f
 
 ## What is in this folder
 
-| Doc                                        | Is                                                                                                                                               |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [`sources/`](./sources/README.md)          | **The authority.** Rashmir's five originals, byte-identical and **read-only**                                                                    |
-| [`invariants.md`](./invariants.md)         | **Read before writing any code.** I1–I18 + I-frame + I-composite                                                                                 |
-| [`content-source.md`](./content-source.md) | Working extract of `sources/`, verbatim. Loads into `Module.config` (I11)                                                                        |
-| [`slot-spec.md`](./slot-spec.md)           | The 105 slot definitions — exact slugs, dataType, sensitivity                                                                                    |
-| [`coverage-audit.md`](./coverage-audit.md) | The source-instruction audit: carries / becomes UI / retired / gap                                                                               |
-| [`daybreak-asks.md`](./daybreak-asks.md)   | Framework changes we carry + defects we find, so a sync knows what to delegate                                                                   |
-| [`planning/`](./planning/README.md)        | The feature board, the execution rhythm, the retro — and **[`post-v1.md`](./planning/post-v1.md), the board of what is left now v1 has shipped** |
+| Doc                                        | Is                                                                                                                                                  |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`sources/`](./sources/README.md)          | **The authority.** Rashmir's five originals, byte-identical and **read-only**                                                                       |
+| [`invariants.md`](./invariants.md)         | **Read before writing any code.** I1–I18 + I-frame + I-composite                                                                                    |
+| [`content-source.md`](./content-source.md) | Working extract of `sources/`, verbatim. Loads into `Module.config` (I11)                                                                           |
+| [`slot-spec.md`](./slot-spec.md)           | The 105 slot definitions — exact slugs, dataType, sensitivity                                                                                       |
+| [`coverage-audit.md`](./coverage-audit.md) | The source-instruction audit: carries / becomes UI / retired / gap                                                                                  |
+| [`daybreak-asks.md`](./daybreak-asks.md)   | Framework changes we carry + defects we find, so a sync knows what to delegate                                                                      |
+| [`upstream-sync.md`](./upstream-sync.md)   | **The ordered procedure for a sync** — the four files we have modified inside upstream's tree, and what fails quietly if you resolve them by reflex |
+| [`operations.md`](./operations.md)         | What has to be **running**: the nudge schedule, the two smokes CI cannot run, the before-launch list                                                |
+| [`planning/`](./planning/README.md)        | The feature board, the execution rhythm, the retro — and **[`post-v1.md`](./planning/post-v1.md), the board of what is left now v1 has shipped**    |
 
 The first four are the **system of record** for content, data shape, and rules. `planning/plan.md` is
 the build breakdown that consumes them. Start a feature at
@@ -104,10 +106,16 @@ where we currently sit: `git merge-base HEAD upstream/main`.
 | 2026-07-21 | `3846f4c0`      | 0.7.0           | Forked from Daybreak main                             |
 | 2026-07-21 | `c9e9fa26`      | 0.7.0           | daybreak#154 — cold-lint fix, needed for our first CI |
 
-On every sync, also check [`daybreak-asks.md`](./daybreak-asks.md) — if Daybreak has landed
-something we carry, delete our copy and delegate — and re-verify the `lib/framework/**` file:line
-citations in [`invariants.md`](./invariants.md) (I5, I6, I14, I15), which were exact on 2026-07-23
-and drift silently.
+**Do not sync from memory — follow [`upstream-sync.md`](./upstream-sync.md).** It is the ordered
+procedure, and it exists because four open ledger rows mean we carry **modified copies of upstream
+files**: those are edits inside core's tree, not workarounds beside it, and two of them fail
+_silently_ if you resolve the conflict by reflex (the coach keeps answering and quietly loses its
+tools). The playbook names each one and what to verify.
+
+It also covers the two steps easiest to skip: walking [`daybreak-asks.md`](./daybreak-asks.md) row by
+row — if Daybreak has landed something we carry, delete our copy and delegate — and re-verifying the
+`lib/framework/**` file:line citations in [`invariants.md`](./invariants.md) (I5, I6, I14, I15), which
+were exact on 2026-07-23 and drift silently.
 
 To sync: `git fetch upstream && git merge upstream/main`, then
 `npm run db:migrate:status` → `db:migrate:dev`. Resolve conflicts by keeping our
