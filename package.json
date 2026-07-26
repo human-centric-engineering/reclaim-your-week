@@ -50,7 +50,8 @@
     "postinstall": "prisma generate",
     "prepare": "husky",
     "leaf:content-diff": "tsx scripts/content-source/check.ts",
-    "smoke:reclaim-access": "tsx --env-file=.env.local scripts/smoke/reclaim-access.ts"
+    "smoke:reclaim-access": "tsx --env-file=.env.local scripts/smoke/reclaim-access.ts",
+    "nudges:tick": "tsx --env-file=.env.local scripts/nudges/tick.ts"
   },
   "repository": {
     "type": "git",
