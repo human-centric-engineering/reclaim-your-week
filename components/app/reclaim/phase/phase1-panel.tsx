@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { RECLAIM_BUCKETS, bucketToken, RECLAIM_DEEP_WORK_NOTE } from '@/lib/app/programme/content';
 import { buildChartData, truthy, type Answers } from '@/lib/app/programme/chart/series';
 import { ReclaimChart } from '@/components/app/reclaim/chart/reclaim-chart';
+import { Comparison } from '@/components/app/reclaim/repeat/comparison';
 import { Reflection } from '@/components/app/reclaim/phase/reflection';
 import { NumberField, TextAreaField, BooleanField } from '@/components/app/reclaim/phase/fields';
 import { parseHours, isHours } from '@/components/app/reclaim/phase/hours';
@@ -67,6 +68,16 @@ export function Phase1Panel({ runId, onAdvanced }: { runId: string; onAdvanced: 
   }, [base, hours, labels]);
 
   const anyHours = Object.values(hours).some((v) => v.trim().length > 0);
+
+  /** The live hours keyed by canonical bucket slug, for the comparison beside the cards (F9 t-2). */
+  const liveHours = useMemo(() => {
+    const out: Record<string, number | null> = {};
+    for (const bucket of RECLAIM_BUCKETS) {
+      const typed = hours[bucketToken(bucket.slug)];
+      out[bucket.slug] = typed !== undefined && isHours(typed) ? parseHours(typed) : null;
+    }
+    return out;
+  }, [hours]);
 
   const relabel = useCallback(async (slug: string, token: string, label: string) => {
     setLabels((p) => ({ ...p, [token]: label }));
@@ -154,6 +165,10 @@ export function Phase1Panel({ runId, onAdvanced }: { runId: string; onAdvanced: 
 
   return (
     <div className="space-y-10">
+      {/* F9 t-2: on a repeat audit, the previous one sits above the cards being filled in. Renders
+          nothing on a first audit — absent rather than empty. */}
+      <Comparison runId={runId} liveHours={liveHours} />
+
       <div className="space-y-8">
         {visible.map((b) => {
           const token = bucketToken(b.slug);

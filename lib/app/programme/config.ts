@@ -31,6 +31,18 @@ export interface ReclaimAccessConfig {
   policyVersion: string;
 }
 
+/** The subset the recent-audit shortcut needs (F9 t-2): the confirm line and its window. */
+export interface ReclaimShortcutConfig {
+  recentAuditConfirm: string;
+  recentAuditWithinDays: number;
+}
+
+/** The subset the quarterly nudge needs (F9 t-3): both ends of its window. */
+export interface ReclaimNudgeConfig {
+  nudgeAfterDays: number;
+  nudgeUntilDays: number;
+}
+
 /** The subset the admin surfaces need (F10): the stall rule and the anonymity floor. */
 export interface ReclaimAdminConfig {
   abandonedAfterDays: number;
@@ -65,6 +77,21 @@ export async function readReclaimAccessConfig(): Promise<ReclaimAccessConfig> {
     openSignup: config.openSignup,
     policyVersion: config.policyVersion,
   };
+}
+
+/** Read the shortcut policy (F9 t-2): the §4 confirm line and how recent "recent" is. */
+export async function readReclaimShortcutConfig(): Promise<ReclaimShortcutConfig> {
+  const config = await readReclaimConfig();
+  return {
+    recentAuditConfirm: config.recentAuditConfirm,
+    recentAuditWithinDays: config.recentAuditWithinDays,
+  };
+}
+
+/** Read the nudge window (F9 t-3) — both ends coach-editable, per Brief §2. */
+export async function readReclaimNudgeConfig(): Promise<ReclaimNudgeConfig> {
+  const config = await readReclaimConfig();
+  return { nudgeAfterDays: config.nudgeAfterDays, nudgeUntilDays: config.nudgeUntilDays };
 }
 
 /** Read the admin policy (F10): when an unfinished audit reads as stalled, and the anonymity floor. */

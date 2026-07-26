@@ -34,6 +34,7 @@ export const EXPORTED_SOURCES = [
   'app_reclaim_share',
   'app_reclaim_report_share',
   'app_reclaim_feedback',
+  'app_reclaim_nudge',
   'framework_slot_value',
 ] as const;
 
@@ -49,6 +50,8 @@ export interface ClientExport {
   shares: unknown[];
   coachShares: unknown[];
   feedback: unknown[];
+  /** Their reminder preference — opt-out state and when they were last nudged (F9 t-3). */
+  nudge: unknown;
   /** Every current slot value — the audit answers, including the sensitive prose. */
   answers: Array<{
     slotSlug: string;
@@ -76,6 +79,7 @@ export async function buildClientExport(userId: string): Promise<ClientExport | 
     shares,
     coachShares,
     feedback,
+    nudge,
     heads,
   ] = await Promise.all([
     prisma.reclaimAuditRun.findMany({ where: { userId }, orderBy: { startedAt: 'asc' } }),
@@ -87,6 +91,14 @@ export async function buildClientExport(userId: string): Promise<ClientExport | 
     prisma.reclaimShare.findMany({ where: { userId } }),
     prisma.reclaimReportShare.findMany({ where: { userId } }),
     prisma.reclaimFeedback.findMany({ where: { userId } }),
+    // Redact the unsubscribe token. The export is admin-guarded and the token's only capability
+    // (stop that person's reminders) is strictly less than what an admin already has — but an export
+    // is a file that leaves the system, and a live capability token has no business travelling in
+    // one. The leader's actual preference is what the subject-access request is for.
+    prisma.reclaimNudge.findUnique({
+      where: { userId },
+      select: { optedOutAt: true, lastNudgedAt: true, lastNudgedForRunId: true, createdAt: true },
+    }),
     // Heads, not history: the subject's data as it stands. Superseded versions are an artefact of
     // how the store works rather than something the leader ever said twice on purpose.
     getSlotHeads(userId),
@@ -106,6 +118,7 @@ export async function buildClientExport(userId: string): Promise<ClientExport | 
     shares,
     coachShares,
     feedback,
+    nudge,
     answers: heads.map((h) => ({
       slotSlug: h.slotSlug,
       value: h.value,

@@ -26,6 +26,7 @@ import {
   RECLAIM_GOVERNING_FRAME,
   RECLAIM_DEEP_WORK_NOTE,
   RECLAIM_FOOTNOTE,
+  RECLAIM_RECENT_AUDIT_CONFIRM,
   RECLAIM_BUCKETS,
   RECLAIM_HOUR_BANDS,
   RECLAIM_CONSULTATION_EMAIL,
@@ -91,6 +92,32 @@ export const reclaimConfigSchema = z.object({
   hourBands: z.array(hourBandSchema).default(RECLAIM_HOUR_BANDS),
   /** The summary footnote (§9) — must not be reworded (I11 hop-2 guarded). Verbatim. */
   footnote: z.string().default(RECLAIM_FOOTNOTE),
+
+  /**
+   * F9 t-2 — the recent-audit shortcut's confirm line (§4). Verbatim, interpolated at render.
+   * Coach-editable like the rest of her words, and guarded against paraphrase in hop 2.
+   */
+  recentAuditConfirm: z.string().default(RECLAIM_RECENT_AUDIT_CONFIRM),
+
+  /**
+   * F9 t-2 — how recently an audit must have finished for the shortcut to apply, in days.
+   *
+   * §4 says "within the last month". That is a policy rather than a constant, and F8 established the
+   * pattern for Rashmir's "or something like that" numbers: they live in `Module.config` so she can
+   * change them without a deploy.
+   */
+  recentAuditWithinDays: z.number().int().min(1).max(365).default(31),
+
+  /**
+   * F9 t-3 — the quarterly nudge's window, in days after a completed audit.
+   *
+   * Brief §2: "the natural cadence is quarterly … gentle and quarterly rather than frequent". Both
+   * ends are Rashmir's to move, and the upper one matters as much as the lower: past it the product
+   * says nothing, rather than mailing a dormant cohort a note claiming their audit was "about three
+   * months ago".
+   */
+  nudgeAfterDays: z.number().int().min(7).max(365).default(90),
+  nudgeUntilDays: z.number().int().min(14).max(730).default(200),
   /** Where the once-at-the-end consultation invitation points. Operator-set; seeded from §10. */
   consultationEmail: z.string().default(RECLAIM_CONSULTATION_EMAIL),
   /**

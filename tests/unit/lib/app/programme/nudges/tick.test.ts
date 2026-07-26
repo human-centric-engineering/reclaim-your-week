@@ -1,0 +1,269 @@
+/**
+ * The nudge tick and the opt-out (F9 t-3). Prisma and `sendEmail` are mocked.
+ *
+ * `select.test.ts` pins *who* qualifies; this pins the things only the shell can get wrong — that a
+ * re-run sends nothing (the promise is "at most one", and an operator must be able to re-run a cron
+ * without thinking), that the send is claimed before it is attempted, and that the opt-out is
+ * idempotent for a leader whose mail client pre-fetched the link.
+ */
+
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+
+const mocks = vi.hoisted(() => ({
+  runFindMany: vi.fn(),
+  userFindMany: vi.fn(),
+  nudgeFindMany: vi.fn(),
+  nudgeCreate: vi.fn(),
+  nudgeUpdateMany: vi.fn(),
+  nudgeFindUnique: vi.fn(),
+  sendEmail: vi.fn(),
+}));
+
+vi.mock('@/lib/db/client', () => ({
+  prisma: {
+    reclaimAuditRun: { findMany: mocks.runFindMany },
+    user: { findMany: mocks.userFindMany },
+    reclaimNudge: {
+      findMany: mocks.nudgeFindMany,
+      create: mocks.nudgeCreate,
+      updateMany: mocks.nudgeUpdateMany,
+      findUnique: mocks.nudgeFindUnique,
+    },
+  },
+}));
+vi.mock('@/lib/email/send', () => ({ sendEmail: mocks.sendEmail }));
+vi.mock('@/lib/app/programme/config', () => ({
+  readReclaimNudgeConfig: () => Promise.resolve({ nudgeAfterDays: 90, nudgeUntilDays: 200 }),
+}));
+
+import { runNudgeTick, optOutByToken } from '@/lib/app/programme/nudges/tick';
+
+const NOW = new Date('2026-07-01T12:00:00.000Z');
+const daysAgo = (n: number) => new Date(NOW.getTime() - n * 86_400_000);
+
+/** One leader, one completed audit 100 days ago, never nudged. */
+function dueLeader() {
+  mocks.runFindMany.mockImplementation((args: { where: { status: string } }) =>
+    Promise.resolve(
+      args.where.status === 'complete'
+        ? [{ id: 'run-1', userId: 'u1', completedAt: daysAgo(100), startedAt: daysAgo(120) }]
+        : []
+    )
+  );
+  mocks.userFindMany.mockResolvedValue([
+    { id: 'u1', email: 'ada@example.com', name: 'Ada Lovelace' },
+  ]);
+  mocks.nudgeFindMany.mockResolvedValue([]);
+}
+
+beforeEach(() => {
+  for (const mock of Object.values(mocks)) mock.mockReset();
+  mocks.nudgeCreate.mockResolvedValue({ token: 'a'.repeat(64) });
+  mocks.nudgeFindUnique.mockResolvedValue(null);
+  mocks.nudgeUpdateMany.mockResolvedValue({ count: 1 });
+  mocks.sendEmail.mockResolvedValue({ success: true, status: 'sent' });
+});
+
+describe('runNudgeTick', () => {
+  it('sends to a due leader and claims the send against the audit it is about', async () => {
+    dueLeader();
+
+    const result = await runNudgeTick(NOW);
+
+    expect(result.sent).toBe(1);
+    expect(mocks.sendEmail).toHaveBeenCalledTimes(1);
+    // The claim is keyed on the RUN, not on a date — which is what makes a re-run a no-op.
+    expect(mocks.nudgeCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ userId: 'u1', lastNudgedForRunId: 'run-1' }),
+      })
+    );
+  });
+
+  it('sends nothing on a re-run — the promise is at most one per audit', async () => {
+    dueLeader();
+    // Second run of the tick: the row now records the nudge for this audit.
+    mocks.nudgeFindMany.mockResolvedValue([
+      { userId: 'u1', optedOutAt: null, lastNudgedForRunId: 'run-1', token: 'x' },
+    ]);
+
+    const result = await runNudgeTick(NOW);
+
+    expect(result.sent).toBe(0);
+    expect(mocks.sendEmail).not.toHaveBeenCalled();
+    expect(result.skipped['already_nudged_for_this_audit']).toBe(1);
+  });
+
+  it('does not email an opted-out leader', async () => {
+    dueLeader();
+    mocks.nudgeFindMany.mockResolvedValue([
+      { userId: 'u1', optedOutAt: daysAgo(5), lastNudgedForRunId: null, token: 'x' },
+    ]);
+
+    const result = await runNudgeTick(NOW);
+    expect(mocks.sendEmail).not.toHaveBeenCalled();
+    expect(result.skipped['opted_out']).toBe(1);
+  });
+
+  it('addresses the leader by first name only, and sends an unsubscribe link', async () => {
+    dueLeader();
+    await runNudgeTick(NOW);
+
+    const props = mocks.sendEmail.mock.calls[0]?.[0] as { react: { props: unknown } };
+    const rendered = JSON.stringify(props.react);
+    expect(rendered).toContain('Ada');
+    // Not their full name — the product collects a first name on purpose (Brief §3).
+    expect(rendered).not.toContain('Lovelace');
+    expect(rendered).toContain('/nudges/off/');
+  });
+
+  it('counts a failed send as not sent, and does not throw', async () => {
+    dueLeader();
+    mocks.sendEmail.mockRejectedValue(new Error('provider down'));
+
+    const result = await runNudgeTick(NOW);
+
+    expect(result.sent).toBe(0);
+    // But the claim stands: a provider outage must not become four emails on the next tick. "At
+    // most one" is the promise; "at least one" is not.
+    expect(mocks.nudgeCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses to send when a concurrent tick already claimed the cycle', async () => {
+    dueLeader();
+    mocks.nudgeFindMany.mockResolvedValue([
+      { userId: 'u1', optedOutAt: null, lastNudgedForRunId: 'run-0', token: 'tok' },
+    ]);
+    mocks.nudgeFindUnique.mockResolvedValue({ token: 'tok' });
+    // The conditional claim finds the row already naming this run — the other tick won.
+    mocks.nudgeUpdateMany.mockResolvedValue({ count: 0 });
+
+    const result = await runNudgeTick(NOW);
+
+    expect(result.sent).toBe(0);
+    expect(mocks.sendEmail).not.toHaveBeenCalled();
+    expect(result.skipped['already_nudged_for_this_audit']).toBe(1);
+  });
+
+  it('carries on with the cohort when one leader’s claim throws', async () => {
+    // A DB blip on one leader must not abandon everyone after them in the loop and take the summary
+    // log with it — an operator running a cron would get a 500 and no diagnostics.
+    mocks.runFindMany.mockImplementation((args: { where: { status: string } }) =>
+      Promise.resolve(
+        args.where.status === 'complete'
+          ? [
+              { id: 'r1', userId: 'u1', completedAt: daysAgo(100), startedAt: daysAgo(120) },
+              { id: 'r2', userId: 'u2', completedAt: daysAgo(100), startedAt: daysAgo(120) },
+            ]
+          : []
+      )
+    );
+    mocks.userFindMany.mockResolvedValue([
+      { id: 'u1', email: 'a@example.com', name: 'Ada' },
+      { id: 'u2', email: 'g@example.com', name: 'Grace' },
+    ]);
+    mocks.nudgeFindMany.mockResolvedValue([]);
+    mocks.nudgeCreate
+      .mockRejectedValueOnce(new Error('connection reset'))
+      .mockResolvedValue({ token: 'b'.repeat(64) });
+
+    const result = await runNudgeTick(NOW);
+
+    expect(result.considered).toBe(2);
+    expect(result.failed).toBe(1);
+    // The second leader still got theirs.
+    expect(result.sent).toBe(1);
+  });
+
+  it('skips a leader whose account has gone but whose runs linger', async () => {
+    // `user.findMany` is the spine: a run whose user no longer resolves contributes nobody. Erasure
+    // cascades both, so this is defensive — but a nudge addressed to a missing account would be a
+    // crash in a cron job, which is the worst place to have one.
+    mocks.runFindMany.mockImplementation((args: { where: { status: string } }) =>
+      Promise.resolve(
+        args.where.status === 'complete'
+          ? [{ id: 'run-1', userId: 'ghost', completedAt: daysAgo(100), startedAt: daysAgo(120) }]
+          : []
+      )
+    );
+    mocks.userFindMany.mockResolvedValue([]);
+    mocks.nudgeFindMany.mockResolvedValue([]);
+
+    const result = await runNudgeTick(NOW);
+    expect(result).toEqual({ considered: 0, sent: 0, failed: 0, skipped: {} });
+    expect(mocks.sendEmail).not.toHaveBeenCalled();
+  });
+
+  it('greets a leader with no name on file without a blank', async () => {
+    dueLeader();
+    mocks.userFindMany.mockResolvedValue([{ id: 'u1', email: 'ada@example.com', name: null }]);
+
+    await runNudgeTick(NOW);
+    const props = mocks.sendEmail.mock.calls[0]?.[0] as { react: { props: unknown } };
+    // "Hello," rather than "Hello ," or "Hello there," — a greeting with a hole in it is the tell
+    // that an email was assembled by a machine that did not know who it was writing to.
+    expect(JSON.stringify(props.react)).toContain('"Hello,"');
+  });
+
+  it('falls back to the run start when a completed run has no completedAt', async () => {
+    mocks.runFindMany.mockImplementation((args: { where: { status: string } }) =>
+      Promise.resolve(
+        args.where.status === 'complete'
+          ? [{ id: 'run-1', userId: 'u1', completedAt: null, startedAt: daysAgo(200) }]
+          : []
+      )
+    );
+    mocks.userFindMany.mockResolvedValue([{ id: 'u1', email: 'a@b.c', name: 'Ada' }]);
+    mocks.nudgeFindMany.mockResolvedValue([]);
+
+    expect((await runNudgeTick(NOW)).sent).toBe(1);
+  });
+
+  it('counts a provider that reports failure without throwing as not sent', async () => {
+    dueLeader();
+    mocks.sendEmail.mockResolvedValue({ success: false, status: 'failed', error: 'bounced' });
+
+    expect((await runNudgeTick(NOW)).sent).toBe(0);
+  });
+
+  it('treats a lost create race as "someone else claimed it", not as a failure', async () => {
+    dueLeader();
+    // Two ticks raced to create the row; the unique constraint on `userId` decided it. That is the
+    // guarantee working, so it must not be logged as an error — but anything OTHER than a unique
+    // violation must, which is why the catch is narrow.
+    const conflict = Object.assign(new Error('Unique constraint failed'), { code: 'P2002' });
+    mocks.nudgeCreate.mockRejectedValue(conflict);
+
+    const result = await runNudgeTick(NOW);
+    expect(result.sent).toBe(0);
+    expect(result.failed).toBe(0);
+    expect(result.skipped['already_nudged_for_this_audit']).toBe(1);
+  });
+
+  it('does nothing at all when nobody has completed an audit', async () => {
+    mocks.runFindMany.mockResolvedValue([]);
+    const result = await runNudgeTick(NOW);
+    expect(result).toEqual({ considered: 0, sent: 0, failed: 0, skipped: {} });
+  });
+});
+
+describe('optOutByToken', () => {
+  it('turns nudges off for a known token', async () => {
+    mocks.nudgeUpdateMany.mockResolvedValue({ count: 1 });
+    expect(await optOutByToken('tok')).toBe(true);
+  });
+
+  it('is idempotent — a second click, or a mail client prefetch, still succeeds', async () => {
+    mocks.nudgeUpdateMany.mockResolvedValue({ count: 0 });
+    mocks.nudgeFindUnique.mockResolvedValue({ id: 'n1' });
+
+    // Already opted out. The leader's intent is satisfied, so this is a success, not an error page.
+    expect(await optOutByToken('tok')).toBe(true);
+  });
+
+  it('reports false for a token nobody holds', async () => {
+    mocks.nudgeUpdateMany.mockResolvedValue({ count: 0 });
+    mocks.nudgeFindUnique.mockResolvedValue(null);
+    expect(await optOutByToken('nope')).toBe(false);
+  });
+});

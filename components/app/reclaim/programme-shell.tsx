@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { currentRunStateSchema, type CurrentRunState } from '@/components/app/reclaim/types';
 import { PhaseRail } from '@/components/app/reclaim/phase-rail';
+import { TrendLines } from '@/components/app/reclaim/repeat/trend-lines';
 import { Signpost } from '@/components/app/reclaim/signpost';
 import { CoachChat } from '@/components/app/reclaim/coach-chat';
 import { BeginAudit } from '@/components/app/reclaim/begin-audit';
@@ -82,7 +83,17 @@ export function ProgrammeShell() {
     if (!consented) {
       return <ConsentGate onAccepted={handleConsented} />;
     }
-    return <BeginAudit onStarted={() => void load()} />;
+    // F9 t-1: a returning leader sees where they have been before being invited to begin again.
+    // `TrendLines` renders nothing until there are two completed audits to compare, so a first-time
+    // leader's page is unchanged.
+    // `TrendLines` returns null until there are two audits with something to plot, and it carries its
+    // own wrapper so a first-time leader's page has no empty container in it either.
+    return (
+      <>
+        <TrendLines />
+        <BeginAudit onStarted={() => void load()} />
+      </>
+    );
   }
 
   const currentIndex = Math.max(

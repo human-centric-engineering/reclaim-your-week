@@ -28,6 +28,7 @@ import {
   RECLAIM_CLOSING_AFFIRMATION,
   RECLAIM_STRATEGY_MIRROR,
   RECLAIM_PHASE2_COACHING_SIGNAL,
+  RECLAIM_RECENT_AUDIT_CONFIRM,
 } from '@/lib/app/programme/content';
 
 const CONTENT_SOURCE = join(process.cwd(), '.context', 'app', 'content-source.md');
@@ -81,6 +82,24 @@ describe('I11 hop 2 — config defaults are verbatim from content-source.md', ()
     const bucket = config.buckets.find((b) => b.slug === slug);
     expect(bucket, `config has no bucket ${slug}`).toBeDefined();
     expect(bucket?.description).toBe(sourceDescription);
+  });
+
+  it('the recent-audit confirm line appears verbatim inside the §4 shortcut blockquote (F9 t-2)', () => {
+    // A **substring** check, not whole-quote identity, and deliberately so: the §4 blockquote is a
+    // system-prompt-era instruction whose surrounding sentences ("either in the project files or
+    // pasted in") the product retires by having a database. Only the quoted sentence is user-facing.
+    // What I11 requires is that the sentence is not paraphrased on its way into the app — which is
+    // exactly what containment proves.
+    const headingLine = lineOf(/^\*\*The recent-audit shortcut\*\*/);
+    const sourceQuote = firstQuoteAfter(headingLine);
+
+    expect(sourceQuote).toContain(RECLAIM_RECENT_AUDIT_CONFIRM);
+    expect(config.recentAuditConfirm).toBe(RECLAIM_RECENT_AUDIT_CONFIRM);
+    // And the placeholders survive: they are what makes it a confirmation of THEIR context rather
+    // than a generic question.
+    for (const token of ['[role]', '[organisation]', '[hours]', '[priorities]']) {
+      expect(config.recentAuditConfirm).toContain(token);
+    }
   });
 
   it('footnote is character-identical to the §9 blockquote', () => {

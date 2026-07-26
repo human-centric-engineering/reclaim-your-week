@@ -238,3 +238,39 @@ model ReclaimFeedback {
   @@index([userId])
   @@map("app_reclaim_feedback")
 }
+
+/// The quarterly nudge (F9 t-3, Brief §2: "gentle and quarterly rather than frequent").
+///
+/// One row per leader, holding the three facts a nudge needs and nothing else: whether they have
+/// opted out, which audit cycle they were last nudged for, and the token that lets them opt out
+/// **without logging in**.
+///
+/// **Why the opt-out lives here and not on `ReclaimConsent`.** `marketingOptIn` means "on Rashmir's
+/// list" — F8 t-4 was explicit that list membership is a separate fact from having an account — and
+/// `ReclaimConsent` is the retained lawful-basis record with a deliberate `SET NULL`. Conflating the
+/// two would let unsubscribing from a product nudge silently change a marketing consent, or survive
+/// erasure. This is programme state: personal data → CASCADE.
+///
+/// **`lastNudgedForRunId` is what makes "at most one per cycle" true.** It records the completed
+/// audit the last nudge was sent about, so re-running the tick cannot send a second — the check is a
+/// comparison, not a count, which is the deterministic-key lesson F6 and F8 both paid for.
+model ReclaimNudge {
+  id     String @id @default(cuid())
+  userId String @unique // ON DELETE CASCADE — one row per leader
+
+  /// Set when the leader turns nudges off. Null = still willing to hear from us.
+  optedOutAt DateTime?
+
+  /// The completed audit the most recent nudge was sent about — the per-cycle idempotence key.
+  lastNudgedForRunId String?
+  lastNudgedAt       DateTime?
+
+  /// The unsubscribe token. Unguessable, and the ONLY thing the opt-out route needs — a leader who
+  /// has stopped using the product must not have to log in to make the email stop.
+  token String @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("app_reclaim_nudge")
+}

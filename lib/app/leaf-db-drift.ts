@@ -60,6 +60,9 @@ const RECLAIM_USER_FKS: ReadonlyArray<{ table: string; constraint: string; onDel
     constraint: 'app_reclaim_invite_invitedByUserId_fkey',
     onDelete: 'SET NULL',
   },
+  // F9 t-3: the nudge preference. CASCADE — a preference about being emailed evidences nothing once
+  // the person is gone, and a retained row keyed by an unsubscribe token could be matched back.
+  { table: 'app_reclaim_nudge', constraint: 'app_reclaim_nudge_userId_fkey', onDelete: 'CASCADE' },
 ];
 
 export function registerLeafDriftProbes(): void {
