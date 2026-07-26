@@ -37,6 +37,12 @@ afterEach(() => {
 describe('resolveEmailTemplate', () => {
   it('falls back to the platform default when no override is registered', async () => {
     vi.resetModules();
+    // The seam is stubbed empty rather than left to the real `lib/app/emails.ts`, which this app
+    // fills: it overrides `welcome` (and `invitation`), so reading the live module would make this
+    // assert the leaf's copy instead of the fallback it is named for. Stubbing keeps it a test of
+    // the *mechanism*, which is what it was always meant to be, and independent of what any fork
+    // happens to register.
+    vi.doMock('@/lib/app/emails', () => ({ emailOverrides: {} }));
     const { resolveEmailTemplate } = await import('@/lib/email/registry');
     const { default: WelcomeEmail } = await import('@/emails/welcome');
 

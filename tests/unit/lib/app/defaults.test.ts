@@ -122,13 +122,20 @@ describe('lib/app/ bootstrap defaults are no-ops', () => {
     expect(publicNavItems?.map((i) => i.href)).toContain('/privacy');
   });
 
-  it('overrides only the invitation email, leaving every other kind on the platform template', () => {
-    // F8 t-1 overrides `invitation` deliberately: the platform copy is written for a SaaS team invite
-    // and this is the first thing an invited leader reads from the product. The assertion that still
-    // earns its keep is the *scope* — a stray override would silently swap an auth email (welcome,
-    // verification, password reset) for every install, which is not something this feature intends.
-    expect(Object.keys(emailOverrides)).toEqual(['invitation']);
+  it('overrides the two emails a leader reads, leaving the credential emails on the platform template', () => {
+    // F8 t-1 overrides `invitation`: the platform copy is written for a SaaS team invite, and this is
+    // the first thing an invited leader reads from the product. `welcome` joined it post-v1 for a
+    // worse reason — the platform default was still describing this app as "your production-ready
+    // Next.js starter template", and it had gone to every account since the first.
+    //
+    // **The scope is the assertion**, and it now cuts both ways. A stray override still swaps an auth
+    // email for every install. But the failure this list actually had was the opposite one: `welcome`
+    // sat on a platform default nobody had read, because an override is only ever added by someone
+    // who went looking. `verifyEmail` and `resetPassword` are deliberately left — both are pure
+    // credential mechanics, and neither carries a claim about what this product is.
+    expect(Object.keys(emailOverrides).sort()).toEqual(['invitation', 'welcome']);
     expect(emailOverrides.invitation).toBeTypeOf('function');
+    expect(emailOverrides.welcome).toBeTypeOf('function');
   });
 
   it('initApp does no boot work by default (resolves to undefined)', async () => {

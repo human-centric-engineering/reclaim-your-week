@@ -38,6 +38,23 @@ import { EM_DASH, FIRST_PERSON_RASHMIR, stripComments } from '@/tests/helpers/vo
 const RECLAIM_COMPONENTS = 'components/app/reclaim';
 
 /**
+ * The app's own email templates, added post-v1.
+ *
+ * They were outside this guard for ten features, and the cost was found rather than reasoned about:
+ * the platform's stock `welcome` email went to every account ever created, telling leaders that
+ * Reclaim Your Week "is your production-ready Next.js starter template designed for rapid application
+ * development". Nothing caught it, because an email is the one surface nobody on the build ever reads.
+ *
+ * An email is coach voice by any reading of I1 — it is the product speaking to a leader, in prose, at
+ * a moment they are paying attention. The only reason it was not covered is that the original list
+ * was drawn by directory.
+ */
+const RECLAIM_EMAILS = 'components/app/emails';
+
+/** Both trees the completeness assertion below holds to account. */
+const GUARDED_DIRS = [RECLAIM_COMPONENTS, RECLAIM_EMAILS];
+
+/**
  * Copy a leader reads in the coach's voice. Everything the audit says to them, in other words,
  * wherever it happens to live.
  */
@@ -77,6 +94,11 @@ const COACH_VOICED = [
   'lib/app/programme/runs/signposts.ts',
   // The categoriser's prompt, whose `reasoning` output renders to the leader in `calendar-review`.
   'lib/app/programme/calendar/categorise.ts',
+  // The three emails the app authors. `welcome.tsx` is here because its absence had a cost; the other
+  // two were already clean, which is luck rather than enforcement, and this is what ends the luck.
+  'components/app/emails/invitation.tsx',
+  'components/app/emails/quarterly-nudge.tsx',
+  'components/app/emails/welcome.tsx',
 ];
 
 /** Plumbing: fetchers, types, palettes, pure arithmetic. Nothing here reaches a leader as prose. */
@@ -104,9 +126,9 @@ const read = (path: string): string => stripComments(readFileSync(path, 'utf8'))
 
 describe('every reclaim component is classified', () => {
   it('leaves no file unclassified, so a new screen cannot join the product unguarded', () => {
-    const onDisk = walk(RECLAIM_COMPONENTS).sort();
+    const onDisk = GUARDED_DIRS.flatMap((dir) => walk(dir)).sort();
     const classified = [...COACH_VOICED, ...NOT_COACH_VOICED]
-      .filter((p) => p.startsWith(RECLAIM_COMPONENTS))
+      .filter((p) => GUARDED_DIRS.some((dir) => p.startsWith(dir)))
       .sort();
     // If this fails, add the new file to COACH_VOICED if a leader reads prose from it, or to
     // NOT_COACH_VOICED if it is plumbing. Do not delete the assertion.

@@ -143,6 +143,16 @@ vi.mock('@/emails/welcome', () => ({
   default: vi.fn(() => React.createElement('div', {}, 'Welcome Email')),
 }));
 
+// The email seam, stubbed empty so `resolveEmailTemplate` reaches the platform templates mocked
+// above. This app fills `lib/app/emails.ts` (it overrides `welcome` and `invitation`), and without
+// this stub the override renders instead, so the spies below are never called and the assertions
+// read as "the hook did not send" when the hook sent perfectly well. What these tests are about is
+// the hook's own logic — the `user.name || 'User'` fallback, the verification-gated skip — which is
+// the platform's regardless of which template a fork registers.
+vi.mock('@/lib/app/emails', () => ({
+  emailOverrides: {},
+}));
+
 vi.mock('@/emails/verify-email', () => ({
   default: vi.fn(() => React.createElement('div', {}, 'Verify Email')),
 }));
