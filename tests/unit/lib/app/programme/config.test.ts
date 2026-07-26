@@ -8,46 +8,86 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-const { moduleFindUnique } = vi.hoisted(() => ({ moduleFindUnique: vi.fn() }));
-vi.mock('@/lib/db/client', () => ({ prisma: { module: { findUnique: moduleFindUnique } } }));
+const { moduleFindUnique, runFindFirst } = vi.hoisted(() => ({
+  moduleFindUnique: vi.fn(),
+  runFindFirst: vi.fn(),
+}));
+vi.mock('@/lib/db/client', () => ({
+  prisma: {
+    module: { findUnique: moduleFindUnique },
+    reclaimAuditRun: { findFirst: runFindFirst },
+  },
+}));
 
 import { readReclaimUiConfig, readReclaimAccessConfig } from '@/lib/app/programme/config';
 
-beforeEach(() => moduleFindUnique.mockReset());
+beforeEach(() => {
+  moduleFindUnique.mockReset();
+  runFindFirst.mockReset();
+});
 
-describe('readReclaimUiConfig', () => {
-  it('defaults both toggles off when the module has no stored overrides', async () => {
+const USER = 'user-1';
+
+describe('readReclaimUiConfig — the strategy mirror (open item 10)', () => {
+  it('shows the mirror on an unedited module row, because the default is `always`', async () => {
     moduleFindUnique.mockResolvedValue({ config: {} });
-    expect(await readReclaimUiConfig()).toEqual({
-      phase2CoachingSignal: false,
-      strategyMirror: false,
-    });
+    expect(await readReclaimUiConfig(USER)).toEqual({ strategyMirror: true });
   });
 
-  it('reflects a stored override', async () => {
-    moduleFindUnique.mockResolvedValue({
-      config: { phase2CoachingSignal: true, strategyMirror: false },
-    });
-    expect(await readReclaimUiConfig()).toEqual({
-      phase2CoachingSignal: true,
-      strategyMirror: false,
-    });
+  it('does not query runs for `always` — the mode alone settles it', async () => {
+    moduleFindUnique.mockResolvedValue({ config: { strategyMirrorMode: 'always' } });
+    expect(await readReclaimUiConfig(USER)).toEqual({ strategyMirror: true });
+    expect(runFindFirst).not.toHaveBeenCalled();
+  });
+
+  it('hides the mirror on `off`, without querying runs', async () => {
+    moduleFindUnique.mockResolvedValue({ config: { strategyMirrorMode: 'off' } });
+    expect(await readReclaimUiConfig(USER)).toEqual({ strategyMirror: false });
+    expect(runFindFirst).not.toHaveBeenCalled();
+  });
+
+  it("hides the mirror on `repeat_only` during a leader's first audit", async () => {
+    moduleFindUnique.mockResolvedValue({ config: { strategyMirrorMode: 'repeat_only' } });
+    runFindFirst.mockResolvedValue(null);
+    expect(await readReclaimUiConfig(USER)).toEqual({ strategyMirror: false });
+  });
+
+  it('shows the mirror on `repeat_only` once an audit has been completed', async () => {
+    moduleFindUnique.mockResolvedValue({ config: { strategyMirrorMode: 'repeat_only' } });
+    runFindFirst.mockResolvedValue({ id: 'run-earlier' });
+    expect(await readReclaimUiConfig(USER)).toEqual({ strategyMirror: true });
+    // Scoped to this leader and to finished audits: another leader's history must not unlock it, and
+    // neither must the audit currently in progress.
+    expect(runFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { userId: USER, status: 'complete' } })
+    );
   });
 
   it('falls back to defaults when the module row is missing', async () => {
     moduleFindUnique.mockResolvedValue(null);
-    expect(await readReclaimUiConfig()).toEqual({
-      phase2CoachingSignal: false,
-      strategyMirror: false,
-    });
+    expect(await readReclaimUiConfig(USER)).toEqual({ strategyMirror: true });
   });
 
   it('falls back to defaults when the stored config is malformed', async () => {
-    moduleFindUnique.mockResolvedValue({ config: { phase2CoachingSignal: 'not-a-boolean' } });
-    expect(await readReclaimUiConfig()).toEqual({
-      phase2CoachingSignal: false,
-      strategyMirror: false,
+    moduleFindUnique.mockResolvedValue({ config: { strategyMirrorMode: 'sometimes' } });
+    expect(await readReclaimUiConfig(USER)).toEqual({ strategyMirror: true });
+  });
+
+  /**
+   * The reason `strategyMirrorMode` is a NEW key rather than the old `strategyMirror` retyped.
+   *
+   * Any row saved through the content editor carries the retired booleans, because `saveModuleConfig`
+   * replaces the whole config object. `readReclaimConfig` parses all-or-nothing and falls back to
+   * `parse({})`, so had the key been retyped in place this row would fail to parse and silently
+   * revert every value Rashmir had edited — her content strings included. Unknown keys are stripped
+   * instead, which is what makes that impossible.
+   */
+  it('ignores the retired booleans on a row saved before the decision, keeping the rest intact', async () => {
+    moduleFindUnique.mockResolvedValue({
+      config: { strategyMirror: false, phase2CoachingSignal: true, policyVersion: 'draft-7' },
     });
+    expect(await readReclaimUiConfig(USER)).toEqual({ strategyMirror: true });
+    expect((await readReclaimAccessConfig()).policyVersion).toBe('draft-7');
   });
 });
 

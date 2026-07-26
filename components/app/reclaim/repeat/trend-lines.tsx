@@ -23,6 +23,7 @@
 
 import { useEffect, useState } from 'react';
 import { readTrends, type TrendView } from '@/components/app/reclaim/repeat/actions';
+import { NO_VALUE } from '@/components/app/reclaim/format';
 
 /** The label for one audit on the x-axis: the period they audited, else when they finished. */
 function runLabel(run: TrendView['runs'][number]): string {
@@ -81,7 +82,7 @@ function Sparkline({ hours }: { hours: Array<number | null> }) {
 /** A signed change in hours, rendered identically whichever direction it went. */
 function Change({ hours }: { hours: Array<number | null> }) {
   const known = hours.filter((h): h is number => h !== null);
-  if (known.length < 2) return <span className="text-muted-foreground">—</span>;
+  if (known.length < 2) return <span className="text-muted-foreground">{NO_VALUE}</span>;
 
   const first = known[0] ?? 0;
   const last = known[known.length - 1] ?? 0;
@@ -124,7 +125,7 @@ export function TrendLines() {
       <h2 className="text-foreground text-lg font-light">Across your audits</h2>
       <p className="text-muted-foreground mt-2 text-sm leading-relaxed">
         Hours a week in each area, {view.runs.map(runLabel).join(' then ')}. What the movement means
-        is yours to say — some of it will have been deliberate.
+        is yours to say. Some of it will have been deliberate.
       </p>
 
       <ul className="mt-6 grid gap-x-10 gap-y-5 sm:grid-cols-2">

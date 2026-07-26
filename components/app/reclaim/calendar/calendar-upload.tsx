@@ -119,7 +119,7 @@ export function CalendarUpload({
             · Your calendar file is read in memory to work out the totals, and is never stored.
           </li>
           <li>
-            · Only per-bucket hour totals are saved — never a meeting title, attendee, or any event
+            · Only per-bucket hour totals are saved, never a meeting title, attendee, or any event
             detail.
           </li>
         </ul>

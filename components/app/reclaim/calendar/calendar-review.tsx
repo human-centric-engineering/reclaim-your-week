@@ -115,7 +115,7 @@ export function CalendarReviewPanel({
             (calendarMeetsOrExceeds ? (
               <>
                 {' '}
-                That is close to — or a little above — the{' '}
+                That is close to, or a little above, the{' '}
                 <strong className="font-medium">{selfReportedWeeklyHours}</strong> you estimated, so
                 most of your week is on the calendar.
               </>
@@ -145,7 +145,7 @@ export function CalendarReviewPanel({
       {/* By-bucket, with correction + off-calendar attribution. */}
       <section>
         <h3 className="text-foreground flex items-center gap-1.5 text-base font-medium">
-          By area — does this look right?
+          By area. Does this look right?
           <FieldHelp title="Adjust anything that looks off">
             The calendar column is what your calendar showed. Move hours between areas if something
             was categorised wrongly. Use the off-calendar column for work that never reaches your
@@ -205,13 +205,13 @@ export function CalendarReviewPanel({
         <section>
           <h3 className="text-foreground text-base font-medium">A few to check</h3>
           <p className="text-muted-foreground mt-1 text-sm">
-            These had generic titles, so this is a best guess — adjust the hours above if any belong
+            These had generic titles, so this is a best guess. Adjust the hours above if any belong
             elsewhere.
           </p>
           <ul className="mt-3 space-y-2">
             {review.ambiguous.map((a, i) => (
               <li key={i} className="text-muted-foreground border-border/60 border-b pb-2 text-sm">
-                <span className="text-foreground">~{a.hours}h</span> — {a.reasoning}
+                <span className="text-foreground">~{a.hours}h</span> {a.reasoning}
               </li>
             ))}
           </ul>
@@ -259,7 +259,7 @@ export function CalendarReviewPanel({
           label="What typically fills the time that never reaches your calendar?"
           value={offCalWork}
           onChange={setOffCalWork}
-          help="This is the off-calendar work — attribute its hours to areas in the table above."
+          help="This is the off-calendar work. Attribute its hours to areas in the table above."
         />
         <QuestionField
           id="messaging-load"
@@ -287,7 +287,7 @@ export function CalendarReviewPanel({
         disabled={busy}
         className="bg-primary text-primary-foreground rounded-full px-8 py-3 text-[0.95rem] font-medium tracking-wide transition-opacity hover:opacity-90 disabled:opacity-50"
       >
-        {busy ? 'Saving…' : 'This looks right — save it'}
+        {busy ? 'Saving…' : 'This looks right, save it'}
       </button>
     </div>
   );

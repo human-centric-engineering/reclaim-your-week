@@ -12,13 +12,14 @@
  *   - attribution to the underlying model or its maker (I1) — never named.
  *
  * The list of forbidden terms is imported from the source module (`RECLAIM_BANNED_LEXICON`), not
- * re-typed here, so the guard and the prohibition can never drift apart.
+ * re-typed here, so the guard and the prohibition can never drift apart. The em dash and the
+ * first-person patterns come from `@/tests/helpers/voice-rules` for the same reason: this guard and
+ * `product-voice.test.ts` must tighten together, not one at a time.
  */
 
 import { describe, it, expect } from 'vitest';
 import { reclaimCoachAgent, RECLAIM_BANNED_LEXICON } from '@/lib/app/programme/agent';
-
-const EM_DASH = '—';
+import { EM_DASH, FIRST_PERSON_RASHMIR } from '@/tests/helpers/voice-rules';
 
 /** The three prose fields that must read cleanly. `brandVoiceInstructions` is handled separately —
  *  it is the one field that names the banned terms, as prohibitions. */
@@ -31,17 +32,6 @@ const PROSE_FIELDS: Array<[string, string]> = [
 const ALL_FIELDS: Array<[string, string]> = [
   ...PROSE_FIELDS,
   ['brandVoiceInstructions', reclaimCoachAgent.brandVoiceInstructions],
-];
-
-// First-person-as-Rashmir constructions the agent must never carry (I1). It is an instrument
-// designed by her, attributed in the third person — it never speaks as "I, Rashmir".
-const FIRST_PERSON_RASHMIR = [
-  /\bI designed\b/i,
-  /\bmy framework\b/i,
-  /\bin my experience\b/i,
-  /\bI,\s*Rashmir\b/i,
-  /\bas Rashmir\b/i,
-  /\bmy method\b/i,
 ];
 
 describe('I2 — no em dash in any agent content', () => {

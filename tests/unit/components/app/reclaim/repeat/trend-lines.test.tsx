@@ -15,6 +15,7 @@ const { readTrends } = vi.hoisted(() => ({ readTrends: vi.fn() }));
 vi.mock('@/components/app/reclaim/repeat/actions', () => ({ readTrends }));
 
 import { TrendLines } from '@/components/app/reclaim/repeat/trend-lines';
+import { NO_VALUE } from '@/components/app/reclaim/format';
 
 const runs = [
   { runId: 'r1', quarter: '2026 Q1', completedAt: '2026-04-01T00:00:00.000Z' },
@@ -112,7 +113,9 @@ describe('TrendLines', () => {
 
     render(<TrendLines />);
     expect(await screen.findByText('no change')).toBeInTheDocument();
-    expect(screen.getByText('—')).toBeInTheDocument();
+    // The shared NO_VALUE placeholder, not a literal: I2 makes U+2014 zero-tolerance in
+    // coach-voiced copy, so a table's "no number here" mark is an en dash from one constant.
+    expect(screen.getByText(NO_VALUE)).toBeInTheDocument();
   });
 
   it('breaks the line at a gap rather than drawing through a value nobody gave', async () => {

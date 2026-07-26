@@ -86,9 +86,9 @@ export function ConsentGate({ onAccepted }: { onAccepted: () => void }) {
           shared with anyone else who uses this tool.
         </p>
         <p>
-          Rashmir looks at patterns <em>across</em> audits — anonymised and aggregated, never
-          individual — to understand what leaders are carrying. Accepting the terms below includes
-          that use.
+          Rashmir looks at patterns <em>across</em> audits to understand what leaders are carrying.
+          Those patterns are anonymised and aggregated, never individual. Accepting the terms below
+          includes that use.
         </p>
       </div>
 

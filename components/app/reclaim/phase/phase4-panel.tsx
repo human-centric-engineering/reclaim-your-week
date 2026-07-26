@@ -91,7 +91,7 @@ export function Phase4Panel({ runId, onAdvanced }: { runId: string; onAdvanced: 
       <div className="space-y-2">
         <h2 className="text-foreground text-2xl font-light">The gaps</h2>
         <p className="text-muted-foreground text-[1.02rem] leading-relaxed">
-          The distance between the week you have and the one you pictured — and what it might be
+          The distance between the week you have and the one you pictured, and what it might be
           pointing to.
         </p>
       </div>
@@ -146,7 +146,7 @@ export function Phase4Panel({ runId, onAdvanced }: { runId: string; onAdvanced: 
           value={challengeResponse}
           onChange={setChallengeResponse}
           rows={2}
-          help="Only if you would like to sit with it — there is no right answer."
+          help="Only if you would like to sit with it. There is no right answer."
         />
       )}
 

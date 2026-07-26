@@ -8,6 +8,7 @@
 
 import { ReclaimChart } from '@/components/app/reclaim/chart/reclaim-chart';
 import type { AuditSummary } from '@/components/app/reclaim/summary/types';
+import { NO_VALUE } from '@/components/app/reclaim/format';
 
 export function SummaryView({ summary }: { summary: AuditSummary }) {
   const heading = summary.firstName ? `${summary.firstName}'s time audit` : 'Your time audit';
@@ -60,7 +61,7 @@ export function SummaryView({ summary }: { summary: AuditSummary }) {
                     <td className="text-foreground py-2 pr-4">{r.title}</td>
                     <td className="text-muted-foreground py-2 pr-4 tabular-nums">{r.current}h</td>
                     <td className="text-foreground py-2 tabular-nums">
-                      {r.ideal === null ? '—' : `${r.ideal}h`}
+                      {r.ideal === null ? NO_VALUE : `${r.ideal}h`}
                     </td>
                   </tr>
                 ))}

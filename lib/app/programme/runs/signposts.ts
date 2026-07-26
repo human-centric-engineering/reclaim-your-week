@@ -37,7 +37,7 @@ export const PHASE_SIGNPOSTS: Readonly<Record<string, PhaseSignpost>> = {
     duration: 'around ten minutes',
   },
   'phase-5-action': {
-    involves: 'A few specific places to begin — small, and yours to choose.',
+    involves: 'A few specific places to begin, small and yours to choose.',
     duration: 'around ten minutes',
   },
   'phase-6-summary': {

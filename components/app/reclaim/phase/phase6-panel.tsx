@@ -101,7 +101,7 @@ export function Phase6Panel({ runId, onAdvanced }: { runId: string; onAdvanced: 
           >
             {RECLAIM_CONSULTATION_EMAIL}
           </a>
-          . No pressure — the work is yours.
+          . No pressure. The work is yours.
         </p>
         {shareLink && (
           <p className="text-muted-foreground text-sm">
@@ -147,7 +147,7 @@ export function Phase6Panel({ runId, onAdvanced }: { runId: string; onAdvanced: 
         <div className="border-border/70 bg-muted/30 space-y-5 rounded-2xl border px-6 py-5 print:hidden">
           <p className="text-muted-foreground text-sm leading-relaxed">
             Sharing is entirely optional, and everything below is too. It helps Rashmir understand
-            patterns across leaders — never used to identify you.
+            patterns across leaders, never used to identify you.
           </p>
           <label className="text-foreground flex items-center gap-2 text-sm">
             <input

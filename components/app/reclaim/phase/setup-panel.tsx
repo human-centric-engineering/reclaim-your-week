@@ -278,7 +278,7 @@ export function SetupPanel({ runId, onAdvanced }: { runId: string; onAdvanced: (
           label="Your first name"
           value={s.firstName}
           onChange={(v) => set('firstName', v)}
-          help="First name only — we do not collect your last name."
+          help="First name only. Your last name is not collected."
         />
         <SelectField
           id="role"
@@ -352,7 +352,7 @@ export function SetupPanel({ runId, onAdvanced }: { runId: string; onAdvanced: (
           label="Your current average weekly hours"
           value={s.weeklyHours}
           onChange={(v) => set('weeklyHours', v)}
-          help="A rough figure is fine — this is about the shape of your week, not a precise total."
+          help="A rough figure is fine. This is about the shape of your week, not a precise total."
         />
         <TextAreaField
           id="priorities"
@@ -362,7 +362,7 @@ export function SetupPanel({ runId, onAdvanced }: { runId: string; onAdvanced: (
         />
         <TextAreaField
           id="keeping-me-up"
-          label="What is your biggest current challenge — what is keeping you up at night?"
+          label="What is your biggest current challenge? What is keeping you up at night?"
           value={s.keepingMeUp}
           onChange={(v) => set('keepingMeUp', v)}
         />
@@ -379,7 +379,7 @@ export function SetupPanel({ runId, onAdvanced }: { runId: string; onAdvanced: (
           value={s.auditPeriod}
           onChange={(v) => set('auditPeriod', v)}
           options={PERIODS.map((p) => ({ value: p, label: p }))}
-          help="The last quarter is a good default — recent enough to recall, long enough to show patterns. It's completely fine to do this during an atypical week; it is better to know."
+          help="The last quarter is a good default, recent enough to recall and long enough to show patterns. It's completely fine to do this during an atypical week; it is better to know."
         />
       </div>
 

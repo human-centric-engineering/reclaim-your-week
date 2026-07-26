@@ -25,6 +25,7 @@ const { readComparison } = vi.hoisted(() => ({ readComparison: vi.fn() }));
 vi.mock('@/components/app/reclaim/repeat/actions', () => ({ readComparison }));
 
 import { Comparison } from '@/components/app/reclaim/repeat/comparison';
+import { NO_VALUE } from '@/components/app/reclaim/format';
 
 const PREVIOUS = {
   runId: 'run-1',
@@ -174,6 +175,6 @@ describe('Comparison', () => {
 
     expect(await screen.findByText('no change')).toBeInTheDocument();
     // The bucket this audit has not reached yet reads as unknown, not as zero hours.
-    expect(screen.getAllByText('—').length).toBeGreaterThan(0);
+    expect(screen.getAllByText(NO_VALUE).length).toBeGreaterThan(0);
   });
 });

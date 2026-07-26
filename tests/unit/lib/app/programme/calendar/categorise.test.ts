@@ -27,8 +27,10 @@ import {
   categoriseCalendar,
   computeMetrics,
   bucketToken,
+  sanitiseReasoning,
   CalendarProviderUnavailableError,
 } from '@/lib/app/programme/calendar/categorise';
+import { RECLAIM_BANNED_LEXICON } from '@/lib/app/programme/agent';
 import type { CalendarEvent } from '@/lib/app/programme/calendar/parse';
 
 interface EventSpec {
@@ -243,5 +245,53 @@ describe('categoriseCalendar — the parse callback (LLM output validation)', ()
     expect(out).toHaveLength(2);
     expect(out[1].ambiguous).toBe(false);
     expect(out[1].reasoning).toBe('');
+  });
+});
+
+/**
+ * The categoriser is the product's second LLM voice and the only one whose output reaches a leader
+ * without an author. The prompt asks for the right register; this is what happens when it does not
+ * get it (open item 8).
+ */
+describe('sanitiseReasoning — model prose is cleaned before a leader reads it', () => {
+  it('leaves a well-formed sentence exactly as written', () => {
+    const clean = 'A recurring one-to-one with a direct report, judging by the cadence.';
+    expect(sanitiseReasoning(clean)).toBe(clean);
+  });
+
+  it('replaces an em dash with a comma rather than dropping the sentence (I2)', () => {
+    expect(sanitiseReasoning('A generic title — most likely a team catch-up.')).toBe(
+      'A generic title, most likely a team catch-up.'
+    );
+  });
+
+  it('collapses the spaces around the em dash instead of leaving a gap', () => {
+    expect(sanitiseReasoning('One    —    two')).toBe('One, two');
+    expect(sanitiseReasoning('One—two')).toBe('One, two');
+  });
+
+  it.each(RECLAIM_BANNED_LEXICON)(
+    'drops the whole rationale when it contains "%s"',
+    (term: string) => {
+      expect(sanitiseReasoning(`A meeting you could ${term} better.`)).toBe('');
+    }
+  );
+
+  it('catches a banned term whatever its casing', () => {
+    expect(sanitiseReasoning('Time to OPTIMISE this block.')).toBe('');
+  });
+
+  /**
+   * The order matters: a banned term hiding behind an em dash must still be caught, so the lexicon
+   * check has to run on the rewritten string rather than the original.
+   */
+  it('still drops a rationale whose banned term sat behind an em dash', () => {
+    expect(sanitiseReasoning('A long block — a chance to leverage the team.')).toBe('');
+  });
+
+  it('drops rather than patches, because a repaired sentence would misrepresent the model', () => {
+    // The hours still render; only the explanation goes. Showing a doctored rationale would be a
+    // worse trade than showing none.
+    expect(sanitiseReasoning('Best practice would be to shorten this.')).toBe('');
   });
 });
