@@ -26,12 +26,38 @@
  */
 import type { PublicNavItem } from '@/lib/public-nav/types';
 
-/** Header nav. `null` = platform default; a non-null array replaces it. */
-export const publicNavItems: PublicNavItem[] | null = null;
+/**
+ * Header nav (post-v1 P4).
+ *
+ * The platform default is Home / About / Contact, which is close but not right: for an invite-only
+ * audit the privacy notice is not fine print, it is **part of the pitch**. A leader deciding whether
+ * to spend an hour being honest with a tool wants to know where their answers go before they start,
+ * and the consent gate links there anyway. Putting it in the header says that out loud.
+ *
+ * No icons: the public surface is typographic (Brief §7 — calm, uncluttered), and a row of little
+ * glyphs in the header is the first thing that makes a page look like software.
+ *
+ * Note for the next upstream sync: the F8 plan intended to use this seam to "drop the signup link",
+ * which the post-v1 audit found was never possible — the default carries no signup link. The real
+ * routes to `/signup` were the starter template's CTAs, and those are gone with the new landing and
+ * about pages.
+ */
+export const publicNavItems: PublicNavItem[] | null = [
+  { href: '/', label: 'Home', exact: true },
+  { href: '/about', label: 'About' },
+  { href: '/privacy', label: 'Privacy' },
+  { href: '/contact', label: 'Contact' },
+];
 
-/** Footer link cluster. `null` = platform default; a non-null array replaces it. */
-export const footerNavItems: PublicNavItem[] | null = null;
+/** Footer link cluster — the same shape, since there is not much surface to navigate. */
+export const footerNavItems: PublicNavItem[] | null = [
+  { href: '/', label: 'Home' },
+  { href: '/about', label: 'About' },
+  { href: '/contact', label: 'Contact' },
+];
 
-/** Footer legal cluster. `null` = platform default; a non-null array replaces it.
- * The Cookie Preferences control renders regardless. */
-export const footerLegalItems: PublicNavItem[] | null = null;
+/** Footer legal cluster. The Cookie Preferences control renders regardless. */
+export const footerLegalItems: PublicNavItem[] | null = [
+  { href: '/privacy', label: 'Privacy' },
+  { href: '/terms', label: 'Terms' },
+];

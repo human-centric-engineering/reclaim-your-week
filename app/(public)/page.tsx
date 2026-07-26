@@ -1,264 +1,243 @@
 import type { Metadata } from 'next';
-import {
-  Zap,
-  Shield,
-  Mail,
-  Database,
-  Settings,
-  Code,
-  Package,
-  Rocket,
-  FileCode,
-  Brain,
-  Search,
-} from 'lucide-react';
-import { Hero, Section, Features, Pricing, FAQ, CTA } from '@/components/marketing';
-
-const heroDescription =
-  'Build production-ready applications faster with Sunrise. A Next.js 16 starter template with authentication, database, email, Docker — plus a complete AI agent orchestration layer for building agents, workflows, and knowledge bases.';
-
-export const metadata: Metadata = {
-  title: 'Sunrise - Production-Ready Next.js Starter Template',
-  description: heroDescription,
-  openGraph: {
-    title: 'Sunrise - Production-Ready Next.js Starter Template',
-    description: heroDescription,
-    type: 'website',
-  },
-  twitter: {
-    card: 'summary_large_image',
-    title: 'Sunrise - Production-Ready Next.js Starter Template',
-    description: heroDescription,
-  },
-};
-
-const features = [
-  {
-    icon: Zap,
-    title: 'Next.js 16',
-    description:
-      'Built with the latest App Router and React Server Components for optimal performance.',
-  },
-  {
-    icon: FileCode,
-    title: 'TypeScript',
-    description: 'Full type safety with strict mode enabled throughout the entire codebase.',
-  },
-  {
-    icon: Shield,
-    title: 'Authentication',
-    description:
-      'Secure authentication with better-auth, supporting email/password and OAuth providers.',
-  },
-  {
-    icon: Database,
-    title: 'PostgreSQL + Prisma',
-    description: 'Production-ready database setup with Prisma ORM for type-safe data access.',
-  },
-  {
-    icon: Mail,
-    title: 'Email System',
-    description: 'Transactional email support with React Email templates and Resend integration.',
-  },
-  {
-    icon: Package,
-    title: 'Docker-Ready',
-    description: 'Multi-stage Docker builds for optimized production deployments anywhere.',
-  },
-  {
-    icon: Brain,
-    title: 'Agent Orchestration',
-    description:
-      'Design, deploy, and monitor AI agents with capabilities, workflows, and provider fallback — all admin-configured.',
-  },
-  {
-    icon: Search,
-    title: 'Knowledge Base & RAG',
-    description:
-      'Upload documents, chunk, embed (pgvector), and let agents answer grounded questions via semantic search.',
-  },
-];
-
-const howItWorks = [
-  {
-    icon: Code,
-    title: 'Fork & Clone',
-    description: 'Start by forking the repository and cloning it to your local machine.',
-  },
-  {
-    icon: Settings,
-    title: 'Configure',
-    description: 'Set up your environment variables and customize to your needs.',
-  },
-  {
-    icon: Rocket,
-    title: 'Deploy',
-    description: 'Deploy with Docker, Vercel, or your preferred platform.',
-  },
-];
-
-const pricingTiers = [
-  {
-    name: 'Open Source',
-    description: 'Free forever for everyone',
-    price: '$0',
-    priceDetail: 'forever',
-    features: [
-      'Full source code access',
-      'All core features included',
-      'MIT License',
-      'Community support via GitHub',
-      'Regular updates',
-    ],
-    ctaText: 'Get Started',
-    ctaHref: 'https://github.com/human-centric-engineering/sunrise',
-  },
-  {
-    name: 'Pro Support',
-    description: 'For teams that need extra help',
-    price: '$499',
-    priceDetail: 'one-time',
-    features: [
-      'Everything in Open Source',
-      '3 months email support',
-      'Priority bug fixes',
-      'Architecture review session',
-      'Custom feature guidance',
-    ],
-    ctaText: 'Contact Us',
-    ctaHref: '/contact',
-    featured: true,
-    badge: 'Popular',
-  },
-  {
-    name: 'Enterprise',
-    description: 'For large-scale deployments',
-    price: 'Custom',
-    features: [
-      'Everything in Pro Support',
-      'Dedicated support channel',
-      'Custom feature development',
-      'On-boarding assistance',
-      'SLA guarantee',
-    ],
-    ctaText: 'Contact Sales',
-    ctaHref: '/contact',
-  },
-];
-
-const faqItems = [
-  {
-    question: 'What is Sunrise?',
-    answer:
-      'Sunrise is a production-ready Next.js starter template designed for rapid application development. It includes authentication, database setup, email integration, Docker deployment, and follows best practices for AI-assisted development.',
-  },
-  {
-    question: 'Is Sunrise really free?',
-    answer:
-      'Yes! Sunrise is open source under the MIT License. You can use it for personal and commercial projects without any restrictions. We offer paid support packages for teams that want additional assistance.',
-  },
-  {
-    question: 'What technologies does Sunrise use?',
-    answer:
-      'Sunrise is built with Next.js 16, TypeScript, PostgreSQL with Prisma ORM, better-auth for authentication, Tailwind CSS with shadcn/ui components, React Email with Resend, and Docker for deployment.',
-  },
-  {
-    question: 'How is Sunrise optimized for AI development?',
-    answer:
-      'Two ways. First, AI-assisted development: comprehensive documentation in CLAUDE.md and the .context/ substrate helps AI assistants understand the codebase and follow established patterns when generating code. Second, AI agent capabilities for the apps you build: a complete orchestration layer for designing, deploying, and monitoring AI agents.',
-  },
-  {
-    question: 'Can I build AI agents with Sunrise?',
-    answer:
-      'Yes. Sunrise ships with a full agent orchestration layer at /admin/orchestration: configure LLM providers, define agents with system instructions and budgets, create custom capabilities (tools), build multi-step workflows as DAGs, ingest documents into pgvector-backed knowledge bases for RAG, expose agents via an MCP server or embed widget, and monitor everything with execution tracing, evaluations, and an audit log. Built on the 21 agentic design patterns from Antonio Gullí.',
-  },
-  {
-    question: 'Can I use Sunrise for commercial projects?',
-    answer:
-      'Absolutely! Sunrise is released under the MIT License, which allows commercial use, modification, and distribution. You just need to include the original license in any copies of the software.',
-  },
-  {
-    question: 'How do I get support?',
-    answer:
-      'For free support, you can open issues on GitHub or participate in community discussions. For priority support, architecture reviews, or custom development, check out our Pro Support and Enterprise packages.',
-  },
-];
+import Link from 'next/link';
+import { RECLAIM_BUCKETS } from '@/lib/app/programme/content';
 
 /**
- * Landing Page
+ * The landing page (post-v1 P4).
  *
- * Public landing page showcasing Sunrise features and encouraging adoption.
- * Uses reusable marketing components for consistent styling.
+ * ## Why this looks nothing like a SaaS landing page
  *
- * Phase 3.5: Landing Page & Marketing
+ * Three constraints from the source documents govern every choice here, and together they rule out
+ * almost everything a template landing page does:
+ *
+ * - **I-frame — this is not a productivity exercise.** It is an invitation to a next level of
+ *   leadership, which may mean letting go. So there is no "save 10 hours a week", no efficiency
+ *   promise, no before/after. A page selling time saved would be selling the one thing the product
+ *   must not optimise for.
+ * - **I16 + Brief §2 — no pressure on next steps, anywhere in the product.** A landing page is
+ *   *made* of pressure by convention. This one has no trial countdown and no social-proof wall; the
+ *   strongest thing it does is say where invitations come from.
+ * - **Brief §7 — calm, uncluttered, generous white space, no stock-photo energy, no gradients.** The
+ *   brand direction is explicit about the last two, so the visual language is typographic: hairline
+ *   rules, a numbered contents list, and a great deal of nothing.
+ *
+ * ## Invite-only is the real design decision
+ *
+ * v1 is invite-gated (F8). The starter template's two "Get Started" buttons pointed at `/signup` and
+ * were, as the post-v1 audit found (P1), the only routes to it in the app. Removing them is **not a
+ * gate** — Sunrise's signup page still exists and there is no platform seam to close it
+ * (sunrise#463); the real gate is entitlement at run creation (I14). But a page inviting you to sign
+ * up for something you cannot use is worse than one that says plainly how you get in.
+ *
+ * So the primary action is **sign in**, for someone holding an invitation, and everyone else is told
+ * where invitations come from — without a waiting-list form, which would be a next step under
+ * pressure by another name.
+ *
+ * ## The nine areas are named but not described
+ *
+ * The names make the page substantive instead of vague. The diagnostic prose beneath each — the part
+ * that is actually Rashmir's IP (I11) — stays inside the audit. Read from `RECLAIM_BUCKETS` so that
+ * the day she renames one in the admin content editor, this page follows.
  */
+
+const description =
+  'A guided time audit for leaders carrying more than they can sustain. It asks where your week actually goes, draws it back to you, and leaves the decisions with you.';
+
+export const metadata: Metadata = {
+  title: 'Reclaim Your Week',
+  description,
+  openGraph: { title: 'Reclaim Your Week', description, type: 'website' },
+};
+
+/** Set like a printed contents page: number, hairline, name. Descriptions live inside the audit. */
+function Areas() {
+  return (
+    <ol className="mt-8 grid gap-x-12 sm:grid-cols-2">
+      {RECLAIM_BUCKETS.map((bucket, i) => (
+        <li key={bucket.slug} className="border-border/70 flex items-baseline gap-5 border-b py-4">
+          <span className="text-muted-foreground w-5 shrink-0 text-right text-xs tabular-nums">
+            {String(i + 1).padStart(2, '0')}
+          </span>
+          <span className="text-foreground text-[1.02rem] leading-snug font-light">
+            {bucket.title}
+          </span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+/** A section with a small left-hand label, in the manner of a set text. */
+function Movement({
+  label,
+  children,
+  aside,
+}: {
+  label: string;
+  children: React.ReactNode;
+  aside?: React.ReactNode;
+}) {
+  return (
+    <section className="border-border border-t py-20 sm:py-24">
+      <div className="grid gap-x-16 gap-y-6 md:grid-cols-[14rem_1fr]">
+        <div>
+          <h2 className="text-muted-foreground text-[0.72rem] font-medium tracking-[0.2em] uppercase">
+            {label}
+          </h2>
+          {aside}
+        </div>
+        {children}
+      </div>
+    </section>
+  );
+}
+
 export default function LandingPage() {
   return (
-    <>
-      {/* Hero Section */}
-      <Hero
-        badge="Next.js 16 Ready"
-        title="Build Production Apps Faster"
-        description="Sunrise is a production-ready Next.js starter template designed for rapid application development. Authentication, database, email, Docker — all pre-configured and ready to go, plus a production AI agent orchestration layer for building agents, workflows, and knowledge bases."
-        primaryAction={{ label: 'Get Started', href: '/signup' }}
-        secondaryAction={{
-          label: 'View on GitHub',
-          href: 'https://github.com/human-centric-engineering/sunrise',
-          variant: 'outline',
-        }}
-      />
+    <div className="mx-auto max-w-5xl px-6 sm:px-8">
+      {/* ── Masthead. One sentence, stating the frame rather than a benefit. ─────────────────── */}
+      <section className="grid gap-x-16 gap-y-10 pt-20 pb-24 sm:pt-32 sm:pb-32 md:grid-cols-[1fr_17rem]">
+        <div>
+          <p className="text-primary text-[0.72rem] font-medium tracking-[0.24em] uppercase">
+            A guided time audit
+          </p>
+          <h1 className="text-foreground mt-6 max-w-2xl text-4xl leading-[1.12] font-light text-balance sm:text-5xl">
+            Most leaders have never looked honestly at where their week goes.
+          </h1>
+          <p className="text-muted-foreground mt-7 max-w-xl text-lg leading-relaxed font-light">
+            This is an hour spent finding out. Not so that you can be more efficient, but so that
+            you can see what your time is already saying about your priorities, and decide what you
+            want to do about that.
+          </p>
+        </div>
 
-      {/* Features Section */}
-      <Section
-        id="features"
-        title="Everything You Need"
-        description="Sunrise comes with all the essential features pre-configured so you can focus on building your application."
-        variant="muted"
+        <aside className="border-primary/25 self-start border-l pt-1 pl-6 md:mt-6">
+          <p className="text-foreground text-[0.98rem] leading-relaxed font-light">
+            Designed by Rashmir Balasubramaniam, for purpose-driven leaders carrying more than they
+            can sustain.
+          </p>
+          <p className="text-muted-foreground mt-4 text-sm leading-relaxed">Open by invitation.</p>
+        </aside>
+      </section>
+
+      {/* ── The frame. The one thing that must not be misread. ───────────────────────────────── */}
+      <Movement label="What this is not">
+        <div className="max-w-2xl space-y-5">
+          <p className="text-foreground text-xl leading-relaxed font-light text-balance">
+            This is not a productivity exercise.
+          </p>
+          <p className="text-muted-foreground leading-relaxed font-light">
+            It will not hand you a tighter calendar or a system for fitting more in. It is an
+            invitation to a next level of leadership, and that often turns out to mean letting go of
+            something you are good at and have been holding on to for longer than you meant to.
+          </p>
+          <p className="text-muted-foreground leading-relaxed font-light">
+            Nothing here tells you what your week means. It shows you what is there, asks what you
+            notice, and leaves the reading to you.
+          </p>
+        </div>
+      </Movement>
+
+      {/* ── The nine areas. Substance, set as a contents page. ───────────────────────────────── */}
+      <Movement
+        label="Nine areas"
+        aside={
+          <p className="text-muted-foreground mt-4 max-w-xs text-sm leading-relaxed">
+            Your week is divided across these, in hours rather than percentages. Percentages hide
+            overwork by forcing a total of one hundred.
+          </p>
+        }
       >
-        <Features features={features} columns={3} variant="card" />
-      </Section>
+        <Areas />
+      </Movement>
 
-      {/* How It Works Section */}
-      <Section
-        id="how-it-works"
-        title="Get Started in Minutes"
-        description="Three simple steps to go from zero to production-ready."
-      >
-        <Features features={howItWorks} columns={3} variant="icon-top" />
-      </Section>
+      {/* ── Reassurance, in Brief §7's register. ─────────────────────────────────────────────── */}
+      <Movement label="Before you start">
+        <div className="bg-muted/60 max-w-2xl rounded-lg p-7 sm:p-9">
+          <ul className="space-y-4">
+            {[
+              'It is fine if you are not using your time well yet. That is usually why people do this.',
+              'It is fine to do it during an atypical week. Most weeks are atypical.',
+              'This is not about achieving a perfect calendar. There is no such thing.',
+              'No one is judging how you spend your time. It is better to know than not to know.',
+            ].map((line) => (
+              <li key={line} className="text-secondary-foreground/90 leading-relaxed font-light">
+                {line}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </Movement>
 
-      {/* Pricing Section */}
-      <Section
-        id="pricing"
-        title="Simple, Transparent Pricing"
-        description="Start for free with open source. Upgrade for priority support and custom development."
-        variant="muted"
-      >
-        <Pricing tiers={pricingTiers} />
-      </Section>
+      {/* ── What it asks, and what happens to it. Privacy stated plainly, not buried. ────────── */}
+      <Movement label="How it works">
+        <div className="max-w-2xl space-y-10">
+          <div className="space-y-4">
+            <h3 className="text-foreground text-lg font-light">
+              About an hour, in one sitting or several
+            </h3>
+            <p className="text-muted-foreground leading-relaxed font-light">
+              Seven phases: your role and what is on your plate, then your week across the nine
+              areas, then energy, the week you would design, the gap between the two, and one thing
+              to do about it. You can stop and come back. It remembers where you were.
+            </p>
+          </div>
 
-      {/* FAQ Section */}
-      <Section
-        id="faq"
-        title="Frequently Asked Questions"
-        description="Got questions? We have answers."
-      >
-        <FAQ items={faqItems} />
-      </Section>
+          <div className="space-y-4">
+            <h3 className="text-foreground text-lg font-light">
+              Your calendar, if you want the reality check
+            </h3>
+            <p className="text-muted-foreground leading-relaxed font-light">
+              You can upload a calendar export to compare what you estimated against what actually
+              happened. It is genuinely optional and the audit works without it.{' '}
+              <span className="text-foreground">
+                No meeting title, attendee or description is ever stored.
+              </span>{' '}
+              The file is read in memory, turned into hours per area, and discarded.
+            </p>
+          </div>
 
-      {/* CTA Section */}
-      <CTA
-        title="Ready to Build Something Great?"
-        description="Join developers who are building production applications faster with Sunrise."
-        primaryAction={{ label: 'Get Started Free', href: '/signup' }}
-        secondaryAction={{
-          label: 'View Documentation',
-          href: 'https://github.com/human-centric-engineering/sunrise',
-          variant: 'outline',
-        }}
-        variant="gradient"
-        className="border-t"
-      />
-    </>
+          <div className="space-y-4">
+            <h3 className="text-foreground text-lg font-light">What you say stays yours</h3>
+            <p className="text-muted-foreground leading-relaxed font-light">
+              Your answers are confidential. Sharing your summary is offered at the end and never
+              required, and nothing goes to anyone unless you choose it. You can ask for everything
+              to be deleted at any time.{' '}
+              <Link href="/privacy" className="text-primary underline underline-offset-4">
+                The privacy notice says exactly what is held, and for how long
+              </Link>
+              .
+            </p>
+          </div>
+        </div>
+      </Movement>
+
+      {/* ── The close. An open door, not a push. ─────────────────────────────────────────────── */}
+      <section className="border-border border-t py-20 sm:py-28">
+        <div className="max-w-2xl">
+          <h2 className="text-foreground text-2xl leading-snug font-light text-balance">
+            If you have an invitation, it starts whenever you have the hour.
+          </h2>
+          <div className="mt-8 flex flex-wrap items-center gap-x-8 gap-y-4">
+            <Link
+              href="/login"
+              className="bg-primary text-primary-foreground rounded-full px-7 py-3 text-sm font-medium transition-opacity hover:opacity-90"
+            >
+              Sign in
+            </Link>
+            <Link href="/about" className="text-primary text-sm underline underline-offset-4">
+              Read more about the audit
+            </Link>
+          </div>
+          <p className="text-muted-foreground mt-10 max-w-md text-sm leading-relaxed">
+            Invitations come from Rashmir directly. If this sounds useful and you do not have one,{' '}
+            <Link href="/contact" className="text-primary underline underline-offset-4">
+              get in touch
+            </Link>
+            .
+          </p>
+        </div>
+      </section>
+    </div>
   );
 }
