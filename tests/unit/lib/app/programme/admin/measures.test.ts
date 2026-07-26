@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { computeMeasures } from '@/lib/app/programme/admin/measures';
+import { computeMeasures, buildTimeline, quarterOf } from '@/lib/app/programme/admin/measures';
 
 describe('computeMeasures — return rate', () => {
   it('counts a leader with two completed audits as a return, and one with two runs of one as not', () => {
@@ -91,5 +91,124 @@ describe('computeMeasures — referral conversion', () => {
 
     expect(measures.referral.completed).toBe(1);
     expect(measures.referral.completionRate).toBe(1);
+  });
+});
+
+describe('the quarterly timeline (post-v1 P9)', () => {
+  const NOW = new Date('2026-08-15T00:00:00.000Z'); // 2026 Q3
+  const at = (iso: string) => new Date(iso);
+
+  it('labels a date by calendar quarter', () => {
+    expect(quarterOf(at('2026-01-04T00:00:00Z'))).toBe('2026 Q1');
+    expect(quarterOf(at('2026-03-31T23:59:59Z'))).toBe('2026 Q1');
+    expect(quarterOf(at('2026-04-01T00:00:00Z'))).toBe('2026 Q2');
+    expect(quarterOf(at('2026-12-31T00:00:00Z'))).toBe('2026 Q4');
+  });
+
+  it('counts a return in the quarter the leader came BACK, not the one they first finished', () => {
+    // The whole point of the timeline: "do people come back" is a direction, and the direction is
+    // only visible if the second audit lands in the quarter it happened.
+    const timeline = buildTimeline({
+      completedRunUserIds: ['ada', 'ada'],
+      completions: [
+        { userId: 'ada', completedAt: at('2026-02-10T00:00:00Z') }, // Q1 — their first
+        { userId: 'ada', completedAt: at('2026-07-10T00:00:00Z') }, // Q3 — the return
+      ],
+      clientCount: 1,
+      now: NOW,
+    });
+
+    const q1 = timeline.find((p) => p.period === '2026 Q1');
+    const q3 = timeline.find((p) => p.period === '2026 Q3');
+    expect(q1).toMatchObject({ completions: 1, returns: 0 });
+    expect(q3).toMatchObject({ completions: 1, returns: 1 });
+  });
+
+  it('does not treat two leaders’ first audits as returns', () => {
+    const timeline = buildTimeline({
+      completedRunUserIds: ['ada', 'grace'],
+      completions: [
+        { userId: 'ada', completedAt: at('2026-07-01T00:00:00Z') },
+        { userId: 'grace', completedAt: at('2026-07-02T00:00:00Z') },
+      ],
+      clientCount: 2,
+      now: NOW,
+    });
+
+    expect(timeline.find((p) => p.period === '2026 Q3')).toMatchObject({
+      completions: 2,
+      returns: 0,
+    });
+  });
+
+  it('orders a leader’s completions by date, whatever order the rows arrive in', () => {
+    // Prisma gives no ordering guarantee here, and "was this their first?" depends entirely on it.
+    const timeline = buildTimeline({
+      completedRunUserIds: ['ada', 'ada'],
+      completions: [
+        { userId: 'ada', completedAt: at('2026-07-10T00:00:00Z') }, // later row, arrives first
+        { userId: 'ada', completedAt: at('2026-02-10T00:00:00Z') },
+      ],
+      clientCount: 1,
+      now: NOW,
+    });
+
+    expect(timeline.find((p) => p.period === '2026 Q1')?.returns).toBe(0);
+    expect(timeline.find((p) => p.period === '2026 Q3')?.returns).toBe(1);
+  });
+
+  it('spans eight quarters ending in the current one, oldest first', () => {
+    const timeline = buildTimeline({
+      completedRunUserIds: ['ada'],
+      completions: [{ userId: 'ada', completedAt: at('2026-07-01T00:00:00Z') }],
+      clientCount: 1,
+      now: NOW,
+    });
+
+    expect(timeline).toHaveLength(8);
+    expect(timeline[0]?.period).toBe('2024 Q4');
+    expect(timeline[7]?.period).toBe('2026 Q3');
+  });
+
+  it('drops activity older than the window rather than misfiling it', () => {
+    const timeline = buildTimeline({
+      completedRunUserIds: ['ada'],
+      completions: [{ userId: 'ada', completedAt: at('2019-01-01T00:00:00Z') }],
+      clientCount: 1,
+      now: NOW,
+    });
+
+    expect(timeline.every((p) => p.completions === 0)).toBe(true);
+  });
+
+  it('counts referrals in the quarter they were sent', () => {
+    const timeline = buildTimeline({
+      completedRunUserIds: [],
+      referralsSentAt: [at('2026-07-04T00:00:00Z'), at('2026-07-20T00:00:00Z')],
+      clientCount: 1,
+      now: NOW,
+    });
+
+    expect(timeline.find((p) => p.period === '2026 Q3')?.referralsSent).toBe(2);
+  });
+
+  it('returns an empty timeline when nothing has happened at all', () => {
+    expect(buildTimeline({ completedRunUserIds: [], clientCount: 0, now: NOW })).toEqual([]);
+  });
+
+  it('is reachable from computeMeasures without changing the headline figures', () => {
+    const measures = computeMeasures({
+      completedRunUserIds: ['ada', 'ada'],
+      completions: [
+        { userId: 'ada', completedAt: at('2026-02-10T00:00:00Z') },
+        { userId: 'ada', completedAt: at('2026-07-10T00:00:00Z') },
+      ],
+      referralInvites: [],
+      clientCount: 1,
+      now: NOW,
+    });
+
+    expect(measures.returnRate).toMatchObject({ completedAtLeastOne: 1, completedTwoOrMore: 1 });
+    expect(measures.timeline.find((p) => p.period === '2026 Q3')?.returns).toBe(1);
   });
 });

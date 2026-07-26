@@ -43,6 +43,73 @@ function Measure({
   );
 }
 
+/**
+ * The quarter-by-quarter view (post-v1 P9).
+ *
+ * **Counts, not rates.** A quarterly return *rate* over a cohort of eleven leaders is three
+ * significant figures of noise; "two people came back this quarter" is a fact. Same discipline as the
+ * consumer charts (I12): report what happened and leave the reading to the person looking.
+ *
+ * Renders nothing until at least two quarters have activity — a single bar is not a trend, and a row
+ * of zeroes on a young product reads as failure rather than as youth.
+ */
+function Timeline({ points }: { points: MeasuresView['timeline'] }) {
+  const active = points.filter((p) => p.completions > 0 || p.referralsSent > 0);
+  if (active.length < 2) return null;
+
+  const peak = Math.max(...points.map((p) => p.completions), 1);
+
+  return (
+    <section className="mt-10 space-y-3">
+      <div className="flex items-center gap-1">
+        <h3 className="text-foreground text-sm font-medium">By quarter</h3>
+        <FieldHelp title="What these columns count">
+          <p>
+            <strong>Completed</strong> is audits finished in that quarter. <strong>Returns</strong>{' '}
+            is how many of those were somebody&rsquo;s second or later audit — the coming-back,
+            counted when it happened. <strong>Referrals</strong> is invitations your leaders sent.
+          </p>
+          <p>
+            Counts rather than percentages, deliberately. With a cohort this size a quarterly rate
+            moves several points when one person does one thing, which looks like a trend and is
+            not.
+          </p>
+        </FieldHelp>
+      </div>
+
+      <table className="w-full max-w-xl text-left text-sm">
+        <thead className="text-muted-foreground border-b text-xs uppercase">
+          <tr>
+            <th className="py-2 pr-4 font-medium">Quarter</th>
+            <th className="py-2 pr-4 font-medium">Completed</th>
+            <th className="py-2 pr-4 font-medium">Returns</th>
+            <th className="py-2 font-medium">Referrals</th>
+          </tr>
+        </thead>
+        <tbody>
+          {points.map((point) => (
+            <tr key={point.period} className="border-b last:border-0">
+              <td className="py-2 pr-4 whitespace-nowrap">{point.period}</td>
+              <td className="py-2 pr-4">
+                <span className="flex items-center gap-2">
+                  <span className="tabular-nums">{point.completions}</span>
+                  <span
+                    aria-hidden
+                    className="bg-primary/25 h-1.5 rounded-full"
+                    style={{ width: `${(point.completions / peak) * 100}%` }}
+                  />
+                </span>
+              </td>
+              <td className="text-muted-foreground py-2 pr-4 tabular-nums">{point.returns}</td>
+              <td className="text-muted-foreground py-2 tabular-nums">{point.referralsSent}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  );
+}
+
 export function MeasuresPanel() {
   const [measures, setMeasures] = useState<MeasuresView | null>(null);
   const [failed, setFailed] = useState(false);
@@ -111,6 +178,8 @@ export function MeasuresPanel() {
         {totals.runsCompleted} {totals.runsCompleted === 1 ? 'audit has' : 'audits have'} been
         completed in total.
       </p>
+
+      <Timeline points={measures.timeline} />
     </div>
   );
 }

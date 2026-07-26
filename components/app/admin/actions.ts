@@ -73,6 +73,14 @@ const measuresSchema = z.object({
     completionRate: z.number().nullable(),
   }),
   totals: z.object({ clients: z.number(), runsCompleted: z.number() }),
+  timeline: z.array(
+    z.object({
+      period: z.string(),
+      completions: z.number(),
+      returns: z.number(),
+      referralsSent: z.number(),
+    })
+  ),
 });
 
 const sharedResultSchema = z.object({
