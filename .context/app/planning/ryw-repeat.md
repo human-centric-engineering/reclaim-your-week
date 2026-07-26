@@ -2,12 +2,13 @@
 name: ryw-repeat
 feature: F9 · ryw-repeat
 epic: RYW v1
-status: in flight
+status: shipped
 owner: John
 depends_on: F7 · ryw-phases (shipped #39) · F1 · ryw-provenance (shipped #17, whose getSlotHistory this is the only consumer of) · F6 · ryw-current (#37, the chart family + bucket labels) · F10 · ryw-admin (#43, the return-rate measure this makes meaningful)
 spec: ../sources/Reclaim_Your_Week_Brief_for_John.md §1 (whether people come back) · §2 (repeat audits and nudges — trend line per area, open each repeat by comparing, gentle quarterly cadence) · ../content-source.md §4 (the recent-audit shortcut, verbatim) · ../invariants.md (I3 write path, I7 canonical slugs, I8 hours not percentages, I12 no interpretation, I16 the tool returns people to their own discernment)
 parent: plan.md
 opened: 2026-07-25
+shipped: 2026-07-26 (#46; the D1 read fix landed ahead as #45; plan #44)
 ---
 
 # ryw-repeat — the second audit, and what it knows about the first
@@ -251,9 +252,9 @@ usual (D2).
 
 | id  | Intent                                                                                                              | Files likely to touch                                                                                                                                                                                                                                                | Deps | Status | PR  |
 | --- | ------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | ------ | --- |
-| t-1 | **Fix run-scoped reads (D1)**, then per-bucket trend lines over the history read; relabels carried across runs (D3) | `lib/app/programme/runs/answers.ts`, `lib/app/programme/trends.ts`, `lib/app/programme/chart/**`, `components/app/reclaim/chart/**`, `app/api/v1/app/reclaim/runs/[runId]/trends/route.ts`, `scripts/smoke/reclaim-run.ts`, `.context/app/daybreak-asks.md`          | —    | todo   | —   |
-| t-2 | The comparative open + the recent-audit shortcut (§4, verbatim)                                                     | `lib/app/programme/compare.ts`, `lib/app/programme/content.ts` (§4 confirm line), `components/app/reclaim/phase/setup-panel.tsx`, `components/app/reclaim/compare/**`, `app/api/v1/app/reclaim/runs/route.ts`                                                        | t-1  | todo   | —   |
-| t-3 | The quarterly nudge: schema, selection, leaf email, tick route, one-click unsubscribe                               | `prisma/schema/app-reclaim.prisma` + migration, `lib/app/leaf-db-drift.ts`, `lib/app/programme/nudges/**`, `components/app/emails/quarterly-nudge.tsx`, `app/api/v1/app/reclaim/nudges/tick/route.ts`, `app/(public)/nudges/off/**`, `.context/app/daybreak-asks.md` | t-1  | todo   | —   |
+| t-1 | **Fix run-scoped reads (D1)**, then per-bucket trend lines over the history read; relabels carried across runs (D3) | `lib/app/programme/runs/answers.ts`, `lib/app/programme/trends.ts`, `lib/app/programme/chart/**`, `components/app/reclaim/chart/**`, `app/api/v1/app/reclaim/runs/[runId]/trends/route.ts`, `scripts/smoke/reclaim-run.ts`, `.context/app/daybreak-asks.md`          | —    | done   | #46 |
+| t-2 | The comparative open + the recent-audit shortcut (§4, verbatim)                                                     | `lib/app/programme/compare.ts`, `lib/app/programme/content.ts` (§4 confirm line), `components/app/reclaim/phase/setup-panel.tsx`, `components/app/reclaim/compare/**`, `app/api/v1/app/reclaim/runs/route.ts`                                                        | t-1  | done   | #46 |
+| t-3 | The quarterly nudge: schema, selection, leaf email, tick route, one-click unsubscribe                               | `prisma/schema/app-reclaim.prisma` + migration, `lib/app/leaf-db-drift.ts`, `lib/app/programme/nudges/**`, `components/app/emails/quarterly-nudge.tsx`, `app/api/v1/app/reclaim/nudges/tick/route.ts`, `app/(public)/nudges/off/**`, `.context/app/daybreak-asks.md` | t-1  | done   | #46 |
 
 > **Sizing note.** Three tasks, not the board's four: **t-4 collapses into t-1** (D3 — per-user
 > labels already carry, so what is left is a decision and a test, which is a commit rather than a
