@@ -343,6 +343,39 @@ the one three separate feature plans point at — F9 built the quarterly _cadenc
 
 ---
 
+## Decisions taken after the audit
+
+### D-P17 · OpenAI during testing, Anthropic at launch
+
+**Owner decision, 2026-07-26.** The AI layer runs on OpenAI while we are testing, and reverts to
+Anthropic before launch.
+
+This is filed as a decision rather than an assumption because it runs against something the client
+stated twice, and a reader six weeks from now needs to see that it was chosen rather than drifted
+into. Brief §3: _"Claude only. The AI behind this should be Claude (Anthropic API), not ChatGPT, and
+users do not get a choice"_ — grounded in testers reporting a noticeably better coaching experience
+with Claude. Brief §8 restates it as _"the one constraint that the AI layer is Anthropic/Claude"_.
+
+**Why it is fine for testing:** the constraint is about what leaders experience, and no leader is on
+the system yet. Access is invite-gated and the invite list is unissued (plan open item 6).
+
+**Three things it touches, and only one of them is code:**
+
+| Surface                  | State                                                                                                                                                                                          |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The coach agent          | Nothing to change. It seeds with `provider: ''` and resolves dynamically, so the layer follows whichever provider is configured — which is also why a swap leaves **no diff** to notice later. |
+| The privacy notice       | `MODEL_VENDOR` in `app/(public)/privacy/page.tsx`, now `'OpenAI'`. It is a factual claim about where personal data goes; naming the wrong processor is worse than naming none.                 |
+| `smoke:reclaim-calendar` | The one smoke needing a real key ([[post-v1#P16]]). An OpenAI key works for it, but the seeded agent must resolve to an OpenAI model — it is not a drop-in.                                    |
+
+**Reverting is one line plus an environment change**, and it is on the before-launch list in
+[[../operations|operations]]. The risk worth naming: because the swap leaves no code diff, the thing
+most likely to go wrong is that nobody remembers it happened. That is what this section, the constant,
+and the launch checklist are all for.
+
+**Not decided here:** whether the coaching quality difference Rashmir's testers reported shows up in
+our own testing. If it does, that is evidence for the constraint rather than against it, and worth
+telling her.
+
 ## What the audit did **not** find
 
 Worth recording, because a backlog with no clean column reads as a project in trouble:
@@ -369,13 +402,13 @@ plausible-looking read shipped a bug that silently emptied public share links. T
 Choices made without asking, because the work was worth more than the wait. **Each is cheap to
 reverse**, and each is here so reversing it is a decision rather than an archaeology exercise.
 
-| #   | Assumption                                                                                                                                                                                                                                        | Where it lives                  | Reversing it                                                                                     |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------ |
-| A1  | **The nine area _names_ may appear publicly**, the diagnostic prose may not. The names make the landing page substantive; the descriptions are the IP (I11) and stay inside the audit.                                                            | `app/(public)/page.tsx`         | Delete the `Areas` component. The page still reads.                                              |
-| A2  | **The public pages do not offer signup.** v1 is invite-only, so the primary action is Sign in and there is no waiting-list form (I16 — a waiting list is a next step under pressure).                                                             | landing + about                 | Add a CTA when open signup arrives; `Module.config.openSignup` is the switch that makes it true. |
-| A3  | **Governing law is England and Wales.** Inferred, then corroborated: the entity in the source copyright line is **Nsansa Ltd**, a UK company form. Still stated by nobody.                                                                        | `app/(public)/terms/page.tsx`   | One line.                                                                                        |
-| A4  | **Privacy and terms are drafts written against the implementation**, carrying a visible note saying so, rather than leaving a page that says "Placeholder". Accuracy about the system is not the same as legal sufficiency.                       | privacy + terms                 | Replace the prose; bump `policyVersion`, which re-asks everyone.                                 |
-| A5  | **The model provider is named as Anthropic** in the privacy notice. True of the build; a provider swap makes it false.                                                                                                                            | `app/(public)/privacy/page.tsx` | One sentence, but it is a factual claim — keep it true.                                          |
-| A6  | **The nudge cadence is 90 days, with a 200-day upper bound.** Brief §2 says "quarterly"; the upper bound is ours, so a dormant leader is not told their audit was "about three months ago" eighteen months later. Both are coach-editable config. | `Module.config`                 | Change the numbers; no deploy.                                                                   |
-| A7  | **The trend timeline reports counts, not rates.** At this cohort size a quarterly rate is noise wearing three significant figures.                                                                                                                | `admin/measures.ts`             | Compute rates in `buildTimeline`; the data supports either.                                      |
-| A8  | **`smoke:reclaim-calendar` stays manual** rather than adding a provider key to CI. That is P16, a cost and secret decision. (`smoke:reclaim` was in this row until it turned out to need no key; it now runs in CI.)                              | CI                              | P16.                                                                                             |
+| #   | Assumption                                                                                                                                                                                                                                         | Where it lives                                   | Reversing it                                                                                     |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| A1  | **The nine area _names_ may appear publicly**, the diagnostic prose may not. The names make the landing page substantive; the descriptions are the IP (I11) and stay inside the audit.                                                             | `app/(public)/page.tsx`                          | Delete the `Areas` component. The page still reads.                                              |
+| A2  | **The public pages do not offer signup.** v1 is invite-only, so the primary action is Sign in and there is no waiting-list form (I16 — a waiting list is a next step under pressure).                                                              | landing + about                                  | Add a CTA when open signup arrives; `Module.config.openSignup` is the switch that makes it true. |
+| A3  | **Governing law is England and Wales.** Inferred, then corroborated: the entity in the source copyright line is **Nsansa Ltd**, a UK company form. Still stated by nobody.                                                                         | `app/(public)/terms/page.tsx`                    | One line.                                                                                        |
+| A4  | **Privacy and terms are drafts written against the implementation**, carrying a visible note saying so, rather than leaving a page that says "Placeholder". Accuracy about the system is not the same as legal sufficiency.                        | privacy + terms                                  | Replace the prose; bump `policyVersion`, which re-asks everyone.                                 |
+| A5  | ~~The model provider is named as Anthropic.~~ **Superseded 2026-07-26 by an owner decision: OpenAI for the testing phase.** Recorded as D-P17 below, because it is a decision against a stated client constraint rather than an assumption I took. | `app/(public)/privacy/page.tsx` (`MODEL_VENDOR`) | One line, and it is on the before-launch list.                                                   |
+| A6  | **The nudge cadence is 90 days, with a 200-day upper bound.** Brief §2 says "quarterly"; the upper bound is ours, so a dormant leader is not told their audit was "about three months ago" eighteen months later. Both are coach-editable config.  | `Module.config`                                  | Change the numbers; no deploy.                                                                   |
+| A7  | **The trend timeline reports counts, not rates.** At this cohort size a quarterly rate is noise wearing three significant figures.                                                                                                                 | `admin/measures.ts`                              | Compute rates in `buildTimeline`; the data supports either.                                      |
+| A8  | **`smoke:reclaim-calendar` stays manual** rather than adding a provider key to CI. That is P16, a cost and secret decision. (`smoke:reclaim` was in this row until it turned out to need no key; it now runs in CI.)                               | CI                                               | P16.                                                                                             |

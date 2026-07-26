@@ -451,6 +451,20 @@ Daybreak's own plan-first discipline.
 
 Append-only. Newest at the top.
 
+- **2026-07-26 — The AI layer runs on OpenAI during testing, reverting to Anthropic at launch
+  (owner decision).** Filed here rather than as a working assumption because it runs against
+  something the client stated twice: Brief §3 makes Claude a constraint, not a default — _"Claude
+  only … not ChatGPT, and users do not get a choice"_ — on the grounds that her testers reported a
+  noticeably better coaching experience with it, and Brief §8 calls it _"the one constraint"_.
+  **Acceptable for a testing phase because the constraint is about what leaders experience, and no
+  leader is on the system**: access is invite-gated and the invite list is unissued (open item 6).
+  The coach agent seeds `provider: ''` and resolves dynamically, so the swap is an environment
+  change with **no code diff** — which is the whole risk, since nothing will later look wrong. The
+  one thing it does touch is the privacy notice, whose `MODEL_VENDOR` constant names the processor
+  to leaders. Revert steps are on the before-launch list in [[../operations|operations]], the
+  reasoning is [[post-v1#D-P17]]. **Worth telling Rashmir either way**: if we notice the coaching
+  difference her testers described, that is evidence for her constraint rather than against it.
+
 - **2026-07-24 — Brand palette confirmed with full shade ramps (open item 3, palette part).**
   Rashmir turned the working brand direction into a concrete two-colour system with ramps.
   **Primary teal `#0D4F68`** — shades `#112C36` (darkest), `#6BB4CF`, `#B8ECFF`, `#E0F7FF`

@@ -31,6 +31,25 @@ import { BRAND } from '@/lib/brand';
  * would put a product rather than a legal person in the controller field. See [[operations]].
  */
 
+/**
+ * The model vendor named to users, in one place because it is a **factual claim about where personal
+ * data goes** and a privacy notice that names the wrong processor is worse than one that names none.
+ *
+ * **Currently OpenAI, for the testing phase only — this must revert to Anthropic before launch.**
+ *
+ * Brief §3 is an explicit client constraint, not a default: "Claude only. The AI behind this should
+ * be Claude (Anthropic API), not ChatGPT, and users do not get a choice", on the grounds that testers
+ * reported a noticeably better coaching experience with Claude. Brief §8 restates it as "the one
+ * constraint that the AI layer is Anthropic/Claude". Nothing in the code enforces it: the coach agent
+ * seeds with `provider: ''` and resolves dynamically, so the layer follows whichever provider is
+ * configured and swapping it is an environment change with no diff.
+ *
+ * That is exactly why this constant exists rather than the vendor being inlined below. The revert is
+ * one line, it is on the before-launch list in [[operations]], and if it is ever wrong the page tells
+ * a leader their data goes somewhere it does not.
+ */
+const MODEL_VENDOR = 'OpenAI';
+
 const description =
   'What Reclaim Your Week records about you, what it never records, who can see it, and how to have it deleted.';
 
@@ -138,7 +157,7 @@ export default function PrivacyPage() {
       <Clause id="ai" title="The model that runs the conversation">
         <p>
           The coach is a large language model. Your messages, and the parts of your audit needed for
-          the conversation to make sense, are sent to Anthropic to generate each reply.
+          the conversation to make sense, are sent to {MODEL_VENDOR} to generate each reply.
         </p>
         <p>
           Where your calendar is categorised into areas, the same applies to the event summaries —
