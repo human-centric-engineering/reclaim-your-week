@@ -5,13 +5,32 @@ Every Claude Code session must read it before writing code. These are the rules 
 do not travel on their own: each one is a decision that looks arbitrary in isolation and is
 load-bearing in aggregate.
 
-> **The `Test:` lines below are specifications, not statements of fact.** Only one of them exists
-> today: `npm run leaf:content-diff` (I11), which is wired into `leaf:checks` and runs in CI. Every
-> `tests/unit/invariants/*.test.ts` file named below is **still to be written** — F2 t-4 builds the
-> voice, slot-sensitivity and agent-caps tests, F4 t-2 the write-path test, F5 the calendar-privacy
-> test — and each must be added to `leaf:checks`, which is the only hook CI runs for the leaf. Read
-> a `Test:` line as "this is the guard this invariant requires", not "this invariant is guarded."
-> An unwritten test that reads as written is worse than no test named at all.
+> **The `Test:` lines below are guards that exist and run.** As of 2026-07-26 (RYW v1 complete),
+> every one named here is built and wired into `npm run leaf:checks`, which CI runs on **every PR**
+> via the `app:ci-checks` seam:
+>
+> | Guard                                            | Invariant | Landed  |
+> | ------------------------------------------------ | --------- | ------- |
+> | `npm run leaf:content-diff`                      | I11 hop 1 | pre-F2  |
+> | `tests/unit/app/programme/content.test.ts`       | I11 hop 2 | F2 t-3  |
+> | `tests/unit/invariants/voice.test.ts`            | I1, I2    | F2 t-4  |
+> | `tests/unit/invariants/slot-sensitivity.test.ts` | I5        | F2 t-4  |
+> | `tests/unit/invariants/agent-caps.test.ts`       | I6        | F2 t-4  |
+> | `tests/unit/invariants/write-path.test.ts`       | I3        | F4 t-2  |
+> | `tests/unit/invariants/calendar-privacy.test.ts` | I4        | F5      |
+> | `tests/unit/invariants/admin-support.test.ts`    | D4 (F10)  | F10 t-1 |
+>
+> **This block used to say the opposite** — that every test below was "still to be written" — and it
+> stayed that way through all ten features while the guards were built one by one. Its own closing
+> line was "an unwritten test that reads as written is worse than no test named at all", and the
+> inversion is just as bad: a written guard that reads as unwritten invites the next person to
+> re-do it or to distrust it. Corrected at the v1 close-out audit
+> ([[planning/post-v1|post-v1]] P2).
+>
+> **Two things are still specification rather than guard, and are named as such where they appear:**
+> the real-DB smokes (`smoke:reclaim-calendar`, `smoke:reclaim`) are **not** run by any gate — see
+> [[planning/post-v1|post-v1]] P3 — and I-frame, I13, I16 and I17 are judgement rules a test cannot
+> express. For those, read the `Test:` line as "this is what would have to be checked by hand".
 
 ---
 
@@ -85,7 +104,7 @@ testers were anxious about the calendar step. Breaking it breaks the product's t
 just a requirement.
 
 **Test:** `tests/unit/invariants/calendar-privacy.test.ts` asserts no `streamChat` import in the calendar path.
-`smoke:reclaim` uploads a real `.ics` and asserts no meeting title exists anywhere in the database.
+`smoke:reclaim-calendar` uploads a real `.ics` and asserts no meeting title exists anywhere in the database — plus `tests/unit/invariants/calendar-privacy.test.ts`, which is the half that runs in CI. **The smoke does not** ([[planning/post-v1|post-v1]] P3): it makes a real model call, so it is a manual gate.
 
 ---
 

@@ -41,15 +41,15 @@ Editing a bridge conflicts on every Daybreak upgrade. Always edit the `leaf-*` f
 
 ## What is in this folder
 
-| Doc                                        | Is                                                                             |
-| ------------------------------------------ | ------------------------------------------------------------------------------ |
-| [`sources/`](./sources/README.md)          | **The authority.** Rashmir's five originals, byte-identical and **read-only**  |
-| [`invariants.md`](./invariants.md)         | **Read before writing any code.** I1–I18 + I-frame + I-composite               |
-| [`content-source.md`](./content-source.md) | Working extract of `sources/`, verbatim. Loads into `Module.config` (I11)      |
-| [`slot-spec.md`](./slot-spec.md)           | The 105 slot definitions — exact slugs, dataType, sensitivity                  |
-| [`coverage-audit.md`](./coverage-audit.md) | The source-instruction audit: carries / becomes UI / retired / gap             |
-| [`daybreak-asks.md`](./daybreak-asks.md)   | Framework changes we carry + defects we find, so a sync knows what to delegate |
-| [`planning/`](./planning/README.md)        | The feature board, the execution rhythm, and the retro                         |
+| Doc                                        | Is                                                                                                                                               |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [`sources/`](./sources/README.md)          | **The authority.** Rashmir's five originals, byte-identical and **read-only**                                                                    |
+| [`invariants.md`](./invariants.md)         | **Read before writing any code.** I1–I18 + I-frame + I-composite                                                                                 |
+| [`content-source.md`](./content-source.md) | Working extract of `sources/`, verbatim. Loads into `Module.config` (I11)                                                                        |
+| [`slot-spec.md`](./slot-spec.md)           | The 105 slot definitions — exact slugs, dataType, sensitivity                                                                                    |
+| [`coverage-audit.md`](./coverage-audit.md) | The source-instruction audit: carries / becomes UI / retired / gap                                                                               |
+| [`daybreak-asks.md`](./daybreak-asks.md)   | Framework changes we carry + defects we find, so a sync knows what to delegate                                                                   |
+| [`planning/`](./planning/README.md)        | The feature board, the execution rhythm, the retro — and **[`post-v1.md`](./planning/post-v1.md), the board of what is left now v1 has shipped** |
 
 The first four are the **system of record** for content, data shape, and rules. `planning/plan.md` is
 the build breakdown that consumes them. Start a feature at

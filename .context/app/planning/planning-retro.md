@@ -254,9 +254,14 @@ refuting them is a deliberate act rather than a silent drift.
 - **Paraphrase looks like success (I11) — but it is now machine-caught, in one direction.**
   `npm run leaf:content-diff` compares every blockquote in `content-source.md` against
   `.context/app/sources/` and is tamper-tested to catch a five-word reordering ("IP creation" →
-  "creating IP"). Trust it for that hop. **The second hop is still unbuilt**: F2 t-3 must assert the
-  `Module.config` defaults match the extract. Until that lands, config content genuinely does need a
-  human diff — which was the original form of this expectation, written when neither hop existed.
+  "creating IP"). Trust it for that hop. ~~**The second hop is still unbuilt**~~ — **resolved: F2 t-3
+  built it** (`tests/unit/app/programme/content.test.ts` asserts the `Module.config` defaults are
+  character-identical to the extract), so both hops now run in `leaf:checks` on every PR. **And F10
+  t-4 surfaced a third hop nobody had thought of:** once Rashmir edits content in the admin UI, what
+  users read lives in `Module.config` **in the database**, where neither guard reaches. Answered by a
+  new paragraph in [[invariants]] I11 plus a per-field "matches the source / edited" marker, so a
+  legitimate revision is visible and a paraphrase cannot pass as original. The lesson generalises: a
+  chain-of-custody guard is only as long as the last place the content can change.
 - **`/code-review` pays for itself on data-model and UI-over-backend tasks.** The framework build found
   this repeatedly (its retro §B). F4's schema + cascades and F6's charts are where to expect real
   findings.

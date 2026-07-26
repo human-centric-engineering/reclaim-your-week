@@ -129,9 +129,12 @@ opens by comparing with the first; and Rashmir can see who is in, where they sta
 whether people come back, what the cohort looks like anonymised, and can reword her own content
 without a deploy.
 
-**What is left is not features.** The remaining work is the list Rashmir owes (below), the parked
-phases, and the open [[daybreak-asks]] rows that a future upstream sync will let us delete rather
-than carry. Nothing in the epic is half-built.
+**What is left is not features, and it now has its own board: [[post-v1]].** The close-out audit on
+2026-07-26 found no half-built feature and no cross-feature deferral dropped — but it did find
+documentation that misdescribed the codebase, privacy-critical smokes that no gate ran, and a public
+surface still on the starter template. Those, plus the list Rashmir owes (below), the launch tasks,
+the 17 open [[daybreak-asks]] rows and the parked epics, are tracked in `post-v1.md`. **Start there,
+not here.**
 
 **One honest caveat, worth keeping visible.** F9's value cannot be _observed_ until real leaders have
 two audits weeks apart — trend lines and the comparative open are built and tested, and the first
@@ -414,7 +417,7 @@ changing:
     to "signal that a dedicated coaching conversation with Rashmir can go much further here"; Brief
     §2 says consultation offers appear "at the end and in follow-up, never mid-process", and Phase 2
     is mid-process. Either the Brief retired the signal, or a depth-of-topic remark is not a
-    consultation offer. Blocks F7.1. ([[content-source]] §8, Phase 2.)
+    consultation offer. ([[content-source]] §8, Phase 2.)
 
 ---
 

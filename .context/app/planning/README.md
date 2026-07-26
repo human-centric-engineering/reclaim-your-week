@@ -29,7 +29,8 @@ board, one owner per feature, plan-first, per-task gates, append-only logs.
     coverage-audit.md    ← the source-instruction audit (carries / becomes UI / retired / gap)
     planning/            ← THIS FOLDER
       README.md          ← you are here
-      plan.md            ← the board + working model + decision/work logs
+      plan.md            ← the v1 board + working model + decision/work logs
+      post-v1.md         ← EVERYTHING LEFT after v1 shipped — start here now
       building-a-feature.md
       planning-retro.md
       ryw-*.md           ← one detailed doc per app feature (written when the feature is claimed)
@@ -51,7 +52,14 @@ All five pieces are in place (landed 2026-07-23):
 4. **`.context/app/coverage-audit.md`** — the audit trail behind those fixes, and
    **`.context/app/daybreak-asks.md`** — the ledger of framework changes we carry and defects we
    find, so a Daybreak sync knows what to delegate.
-5. **This folder** — `plan.md`, `building-a-feature.md`, `planning-retro.md`, this `README.md`.
+5. **This folder** — `plan.md`, `post-v1.md`, `building-a-feature.md`, `planning-retro.md`, this
+   `README.md`.
+
+> **`RYW v1` is complete** (all ten features, 2026-07-26). **If you are picking this project up now,
+> read [`post-v1.md`](./post-v1.md) first, not `plan.md`.** The feature board is history; the post-v1
+> board is the work. It carries the close-out audit's findings — the hygiene items, the eleven things
+> Rashmir owes, the launch tasks, the 17 open upstream asks, and what is deliberately parked — in the
+> same accountable style, so nothing leaves the list by being forgotten.
 
 These four spec files are the **working system of record** — but they are not the authority. The five
 documents they derive from are now checked in at

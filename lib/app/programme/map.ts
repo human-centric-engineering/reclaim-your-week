@@ -19,7 +19,7 @@
  *
  * **Why no edge conditions.** The chain is plain `prerequisite` (phase N gates phase N+1) with
  * no `slot`/`state` conditions. Slot conditions read the head version, which breaks on run 2
- * (F1's `runId` provenance is not yet consumed until `saveAnswer`, F4 t-2). Run-aware gating is
+ * (F1's `runId` provenance is consumed by `saveAnswer` (F4 t-2) and read back per run by F9's trends). Run-aware gating is
  * F4's problem; F3 proves the map publishes and resolves. `completionMode: 'repeatable'` so a
  * repeat audit reopens every phase (Brief §2, F9).
  */
