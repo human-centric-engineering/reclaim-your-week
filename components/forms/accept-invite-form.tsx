@@ -17,6 +17,7 @@ import { Label } from '@/components/ui/label';
 import { FormError } from '@/components/forms/form-error';
 import { PasswordStrength } from '@/components/forms/password-strength';
 import { OAuthButtons } from '@/components/forms/oauth-buttons';
+import { appAuthLandingRoute } from '@/lib/app/auth-landing';
 
 /**
  * Invitation validation status
@@ -201,9 +202,9 @@ export function AcceptInviteForm() {
       // Show success message
       setSuccess(true);
 
-      // Redirect to dashboard
+      // Redirect to the app's landing route (`lib/app/auth-landing.ts`)
       setTimeout(() => {
-        router.push('/dashboard');
+        router.push(appAuthLandingRoute);
       }, 1500);
     } catch (err) {
       setIsLoading(false);
@@ -284,7 +285,7 @@ export function AcceptInviteForm() {
           {/* OAuth Buttons Section */}
           <OAuthButtons
             mode="invitation"
-            callbackUrl="/dashboard"
+            callbackUrl={appAuthLandingRoute}
             errorCallbackUrl={errorCallbackUrl}
             invitationToken={token}
             invitationEmail={emailFromUrl}

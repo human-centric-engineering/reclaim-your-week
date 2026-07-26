@@ -17,6 +17,7 @@
 
 import { useEffect, useState } from 'react';
 import { readComparison, type ComparisonView } from '@/components/app/reclaim/repeat/actions';
+import { NO_VALUE } from '@/components/app/reclaim/format';
 
 function periodLabel(previous: NonNullable<ComparisonView['previous']>): string {
   if (previous.quarter !== null && previous.quarter.trim() !== '') return previous.quarter;
@@ -103,14 +104,14 @@ export function Comparison({
             <tr key={bucket.bucketSlug} className="border-b last:border-0">
               <td className="py-2 pr-4">{bucket.title}</td>
               <td className="text-muted-foreground py-2 pr-4 text-right tabular-nums">
-                {bucket.previousHours === null ? '—' : `${bucket.previousHours}h`}
+                {bucket.previousHours === null ? NO_VALUE : `${bucket.previousHours}h`}
               </td>
               <td className="text-muted-foreground py-2 pr-4 text-right tabular-nums">
-                {bucket.currentHours === null ? '—' : `${bucket.currentHours}h`}
+                {bucket.currentHours === null ? NO_VALUE : `${bucket.currentHours}h`}
               </td>
               <td className="text-muted-foreground py-2 text-right tabular-nums">
                 {bucket.differenceHours === null
-                  ? '—'
+                  ? NO_VALUE
                   : bucket.differenceHours === 0
                     ? 'no change'
                     : `${bucket.differenceHours > 0 ? '+' : '−'}${Math.abs(bucket.differenceHours)}h`}

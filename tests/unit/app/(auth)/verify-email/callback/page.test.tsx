@@ -9,7 +9,7 @@
  * - verify-callback-content.tsx - Client component with verification logic (tested here)
  *
  * Test Coverage:
- * - Success state (no error param) - redirects to dashboard
+ * - Success state (no error param) - redirects to the app landing route
  * - Error state (error=invalid_token) - shows expired message
  * - Resend flow - email input, button click, API call
  * - Loading states during resend
@@ -25,6 +25,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { VerifyCallbackClientContent } from '@/app/(auth)/verify-email/callback/verify-callback-content';
+import { appAuthLandingRoute } from '@/lib/app/auth-landing';
 
 // Mock next/navigation
 vi.mock('next/navigation', () => ({
@@ -119,7 +120,7 @@ describe('VerifyCallbackClientContent', () => {
       // Assert: Success message appears
       await waitFor(() => {
         expect(screen.getByText(/email verified!/i)).toBeInTheDocument();
-        expect(screen.getByText(/redirecting to dashboard/i)).toBeInTheDocument();
+        expect(screen.getByText(/taking you through/i)).toBeInTheDocument();
       });
     });
 
@@ -137,13 +138,13 @@ describe('VerifyCallbackClientContent', () => {
       });
     });
 
-    it('should redirect to dashboard when no error param', async () => {
+    it('should redirect to the app landing route when no error param', async () => {
       // Arrange & Act
       render(<VerifyCallbackClientContent />);
 
-      // Assert: Router replace is called with /dashboard
+      // Assert: Router replace is called with the app's landing route
       await waitFor(() => {
-        expect(mockRouter.replace).toHaveBeenCalledWith('/dashboard');
+        expect(mockRouter.replace).toHaveBeenCalledWith(appAuthLandingRoute);
       });
     });
 
@@ -260,7 +261,7 @@ describe('VerifyCallbackClientContent', () => {
         });
       });
 
-      it('should not redirect to dashboard when error param is present', async () => {
+      it('should not redirect to the app landing route when error param is present', async () => {
         // Arrange & Act
         render(<VerifyCallbackClientContent />);
 

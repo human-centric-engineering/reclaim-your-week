@@ -138,7 +138,7 @@ export function Phase1Panel({ runId, onAdvanced }: { runId: string; onAdvanced: 
         <div className="space-y-2">
           <h2 className="text-foreground text-2xl font-light">Where your time goes now</h2>
           <p className="text-muted-foreground text-[1.02rem] leading-relaxed">
-            We will look at up to nine areas of leadership. First, here is the whole picture — then
+            We will look at up to nine areas of leadership. First, here is the whole picture, then
             we will go through them one at a time, in hours per week.
           </p>
         </div>
@@ -192,7 +192,7 @@ export function Phase1Panel({ runId, onAdvanced }: { runId: string; onAdvanced: 
                 value={hours[token] ?? ''}
                 onChange={(v) => setHours((p) => ({ ...p, [token]: v }))}
                 step="0.5"
-                help="A rough figure is fine — approximate the shape, not a precise total (I17)."
+                help="A rough figure is fine. Approximate the shape, not a precise total (I17)."
               />
               <TextAreaField
                 id={`detail-${token}`}
@@ -214,7 +214,7 @@ export function Phase1Panel({ runId, onAdvanced }: { runId: string; onAdvanced: 
                   {deepBlock === true && (
                     <TextAreaField
                       id="deep-when"
-                      label="Where does that block sit — is it in your peak window?"
+                      label="Where does that block sit? Is it in your peak window?"
                       value={deepWhen}
                       onChange={setDeepWhen}
                       rows={2}

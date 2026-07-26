@@ -28,6 +28,7 @@
  */
 import type { EmailOverrides } from '@/lib/email/registry';
 import ReclaimInvitationEmail from '@/components/app/emails/invitation';
+import ReclaimWelcomeEmail from '@/components/app/emails/welcome';
 
 export const emailOverrides: EmailOverrides = {
   /**
@@ -38,4 +39,16 @@ export const emailOverrides: EmailOverrides = {
    * stays untouched as the platform reference (I10).
    */
   invitation: ReclaimInvitationEmail,
+
+  /**
+   * Post-v1. The platform default told leaders that Reclaim Your Week "is your production-ready
+   * Next.js starter template designed for rapid application development", over a button to
+   * `/dashboard`. It had gone to every account since the first one: `invitation` was overridden
+   * because F8 t-1 went looking at it, and nothing sends a maintainer the welcome email.
+   *
+   * The two failures were the same failure. The nav had no link to the programme and this email
+   * pointed at the account pages, so a leader who accepted an invitation was told twice, in two
+   * places, that the product was somewhere it was not.
+   */
+  welcome: ReclaimWelcomeEmail,
 };

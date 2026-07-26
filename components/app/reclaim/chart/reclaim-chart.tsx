@@ -12,6 +12,7 @@
 import { useEffect, useState } from 'react';
 import type { ChartData, ChartBucket } from '@/lib/app/programme/chart/series';
 import { bucketColour } from '@/components/app/reclaim/chart/palette';
+import { NO_VALUE } from '@/components/app/reclaim/format';
 
 /** Detect the active theme so bar fills use the light or dark palette step. */
 function useIsDark(): boolean {
@@ -94,7 +95,7 @@ export function ReclaimChart({ data }: { data: ChartData }) {
                 <td className="text-foreground py-2 pr-4">{b.title}</td>
                 <td className="text-foreground py-2 pr-4 tabular-nums">{b.hours}</td>
                 <td className="text-muted-foreground py-2 pr-4 tabular-nums">{b.percent}%</td>
-                <td className="text-muted-foreground py-2">{STATUS_LABEL[b.status] || '—'}</td>
+                <td className="text-muted-foreground py-2">{STATUS_LABEL[b.status] || NO_VALUE}</td>
               </tr>
             ))}
           </tbody>
@@ -153,7 +154,7 @@ export function ReclaimChart({ data }: { data: ChartData }) {
             Areas with no time against them this period
           </p>
           <p className="text-muted-foreground mt-1.5 text-sm">
-            {data.unallocated.join(' · ')}. Worth holding these next to your priorities — often the
+            {data.unallocated.join(' · ')}. Worth holding these next to your priorities. Often the
             most telling gap.
           </p>
         </div>

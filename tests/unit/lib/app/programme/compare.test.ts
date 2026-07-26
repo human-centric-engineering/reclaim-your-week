@@ -26,7 +26,12 @@ vi.mock('@/lib/app/programme/config', () => ({
   readReclaimShortcutConfig: mocks.readShortcutConfig,
 }));
 
-import { readComparison, readShortcut, fillConfirmLine } from '@/lib/app/programme/compare';
+import {
+  readComparison,
+  readShortcut,
+  fillConfirmLine,
+  hasCompletedAudit,
+} from '@/lib/app/programme/compare';
 
 const hours = (n: number) => ({ value: String(n), valueJson: n });
 const text = (v: string) => ({ value: v, valueJson: null });
@@ -257,5 +262,30 @@ describe('fillConfirmLine', () => {
   it('never leaves a raw placeholder on screen when an answer is missing', () => {
     const filled = fillConfirmLine('[role] at [organisation], [hours], [priorities]', {});
     expect(filled).not.toContain('[');
+  });
+});
+
+describe('hasCompletedAudit (open item 10 — the `repeat_only` strategy-mirror mode)', () => {
+  it('is false for a leader who has never finished an audit', async () => {
+    mocks.runFindFirst.mockResolvedValue(null);
+    expect(await hasCompletedAudit('user-1')).toBe(false);
+  });
+
+  it('is true once one is complete', async () => {
+    mocks.runFindFirst.mockResolvedValue({ id: 'run-1' });
+    expect(await hasCompletedAudit('user-1')).toBe(true);
+  });
+
+  it("asks only whether one exists, scoped to the leader's completed audits", async () => {
+    mocks.runFindFirst.mockResolvedValue(null);
+    await hasCompletedAudit('user-1');
+    const args = mocks.runFindFirst.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(args.where).toEqual({ userId: 'user-1', status: 'complete' });
+    // No ordering: "is there one" has no most-recent. `previousCompletedRun` carries a deliberate
+    // `nulls: 'last'` because it answers a different question, and borrowing it here would suggest
+    // order mattered to this one.
+    expect(args.orderBy).toBeUndefined();
+    // The in-progress audit needs no exclusion — it is not `complete` until the leader finishes it.
+    expect(JSON.stringify(args.where)).not.toContain('not');
   });
 });

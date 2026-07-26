@@ -102,12 +102,12 @@ export default function LandingPage() {
             A guided time audit
           </p>
           <h1 className="text-foreground mt-6 max-w-2xl text-4xl leading-[1.12] font-light text-balance sm:text-5xl">
-            Most leaders have never looked honestly at where their week goes.
+            Many leaders have never looked honestly at where their week goes.
           </h1>
           <p className="text-muted-foreground mt-7 max-w-xl text-lg leading-relaxed font-light">
-            This is an hour spent finding out. Not so that you can be more efficient, but so that
-            you can see what your time is already saying about your priorities, and decide what you
-            want to do about that.
+            This is an hour spent finding out. Your time already says something about your
+            priorities, and this is a chance to see what it says and decide what you want to do
+            about it.
           </p>
         </div>
 
@@ -121,19 +121,19 @@ export default function LandingPage() {
       </section>
 
       {/* ── The frame. The one thing that must not be misread. ───────────────────────────────── */}
-      <Movement label="What this is not">
+      <Movement label="The point of it">
         <div className="max-w-2xl space-y-5">
           <p className="text-foreground text-xl leading-relaxed font-light text-balance">
             This is not a productivity exercise.
           </p>
           <p className="text-muted-foreground leading-relaxed font-light">
             It will not hand you a tighter calendar or a system for fitting more in. It is an
-            invitation to a next level of leadership, and that often turns out to mean letting go of
+            invitation to step into your next level of leadership, and that may mean letting go of
             something you are good at and have been holding on to for longer than you meant to.
           </p>
           <p className="text-muted-foreground leading-relaxed font-light">
             Nothing here tells you what your week means. It shows you what is there, asks what you
-            notice, and leaves the reading to you.
+            notice, and leaves the conclusions to you.
           </p>
         </div>
       </Movement>
@@ -143,8 +143,8 @@ export default function LandingPage() {
         label="Nine areas"
         aside={
           <p className="text-muted-foreground mt-4 max-w-xs text-sm leading-relaxed">
-            Your week is divided across these, in hours rather than percentages. Percentages hide
-            overwork by forcing a total of one hundred.
+            The audit goes through each one in turn and asks roughly how many hours a week it takes.
+            Estimates are fine.
           </p>
         }
       >
@@ -156,10 +156,10 @@ export default function LandingPage() {
         <div className="bg-muted/60 max-w-2xl rounded-lg p-7 sm:p-9">
           <ul className="space-y-4">
             {[
-              'It is fine if you are not using your time well yet. That is usually why people do this.',
-              'It is fine to do it during an atypical week. Most weeks are atypical.',
+              'It is okay if you are not using your time well yet.',
+              'It is fine to do this during an atypical week. Most weeks are atypical.',
               'This is not about achieving a perfect calendar. There is no such thing.',
-              'No one is judging how you spend your time. It is better to know than not to know.',
+              'No one is judging how you spend your time. It is better to know.',
             ].map((line) => (
               <li key={line} className="text-secondary-foreground/90 leading-relaxed font-light">
                 {line}
@@ -177,9 +177,10 @@ export default function LandingPage() {
               About an hour, in one sitting or several
             </h3>
             <p className="text-muted-foreground leading-relaxed font-light">
-              Seven phases: your role and what is on your plate, then your week across the nine
-              areas, then energy, the week you would design, the gap between the two, and one thing
-              to do about it. You can stop and come back. It remembers where you were.
+              Seven phases: your role and what is on your plate, your week across the nine areas,
+              which of those hours give you energy and which take it, the week you would design if
+              you were starting fresh, the gap between that and the week you have, and one thing to
+              do about it. You can stop and come back, and it remembers where you were.
             </p>
           </div>
 
@@ -188,20 +189,21 @@ export default function LandingPage() {
               Your calendar, if you want the reality check
             </h3>
             <p className="text-muted-foreground leading-relaxed font-light">
-              You can upload a calendar export to compare what you estimated against what actually
+              You can upload your calendar and compare what you estimated against what actually
               happened. It is genuinely optional and the audit works without it.{' '}
               <span className="text-foreground">
                 No meeting title, attendee or description is ever stored.
               </span>{' '}
-              The file is read in memory, turned into hours per area, and discarded.
+              Your calendar is turned into hours for each of the nine areas, and then the file is
+              gone.
             </p>
           </div>
 
           <div className="space-y-4">
             <h3 className="text-foreground text-lg font-light">What you say stays yours</h3>
             <p className="text-muted-foreground leading-relaxed font-light">
-              Your answers are confidential. Sharing your summary is offered at the end and never
-              required, and nothing goes to anyone unless you choose it. You can ask for everything
+              Your answers are confidential. At the end you are offered the chance to share your
+              summary, and nothing goes to anyone unless you choose it. You can ask for everything
               to be deleted at any time.{' '}
               <Link href="/privacy" className="text-primary underline underline-offset-4">
                 The privacy notice says exactly what is held, and for how long

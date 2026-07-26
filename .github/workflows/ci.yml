@@ -334,12 +334,17 @@ jobs:
         run: npx tsx scripts/db/check-drift.ts
       - run: npx tsx scripts/smoke/erasure.ts
 
-      # Leaf (Reclaim Your Week) smokes — the three that need only Postgres + the seed.
+      # Leaf (Reclaim Your Week) smokes — the four that need only Postgres + the seed.
       #
       # These were local-only until 2026-07-26, which cost us: `smoke:reclaim-calendar` sat red on
       # `main` for two features after F8 put a consent gate in front of `createRun`, and nothing
-      # re-ran it. Two of the five make real model calls and so cannot run here (see the note below);
-      # these three do not, and two of them back claims the product makes to its users.
+      # re-ran it.
+      #
+      # **Only ONE of the five needs a real model key** — `smoke:reclaim-calendar`, whose whole point
+      # is that a real model response never reaches the database. `smoke:reclaim` was assumed to need
+      # one too and does not: it stubs the LLM with a fake provider exactly as `smoke:chat` does, so
+      # it proves the wiring (surface resolution, primary binding, conversation creation, the three
+      # silent-failure traps) with no key at all. That assumption is why it sat outside CI.
       #
       # `db:seed` above already materialises the reclaim module, map and coach agent — the seed
       # runner walks subdirectories, so `prisma/seeds/app-reclaim/**` is included.
@@ -349,6 +354,11 @@ jobs:
         run: npx tsx scripts/smoke/reclaim-erasure.ts
       - name: Smoke — reclaim access gate (one grant per invite, concurrent first-runs)
         run: npx tsx scripts/smoke/reclaim-access.ts
+      # Fake provider, no key. Catches the failure mode nothing else does: a coach that answers but
+      # has no tools and no module context, which is what taking upstream's version of the two
+      # `globalThis` fixes would silently produce on a sync (.context/app/upstream-sync.md).
+      - name: Smoke — reclaim module surface + one streamed turn (fake provider)
+        run: npx tsx scripts/smoke/reclaim.ts
 
   docker:
     name: Docker Build

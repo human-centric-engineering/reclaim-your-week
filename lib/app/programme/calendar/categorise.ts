@@ -17,7 +17,7 @@ import { resolveAgentProviderAndModel } from '@/lib/orchestration/llm/agent-reso
 import { runStructuredCompletion } from '@/lib/orchestration/llm/structured-completion';
 import { tryParseJson } from '@/lib/orchestration/evaluations/parse-structured';
 import { RECLAIM_BUCKETS, bucketToken } from '@/lib/app/programme/content';
-import { reclaimCoachAgent } from '@/lib/app/programme/agent';
+import { reclaimCoachAgent, RECLAIM_BANNED_LEXICON } from '@/lib/app/programme/agent';
 import type { CalendarEvent } from '@/lib/app/programme/calendar/parse';
 
 /** Re-exported from `content` (client-safe home) so existing calendar imports keep working. */
@@ -64,6 +64,18 @@ const CATEGORISE_MAX_TOKENS = 4_096;
 const CATEGORISE_TIMEOUT_MS = 60_000;
 const GAP_TOLERANCE_MINUTES = 5;
 
+/**
+ * The categoriser's prompt.
+ *
+ * **This is the product's second LLM voice, and the leader reads its output.** The `reasoning` field
+ * is rendered to them beside each ambiguous event in `calendar-review.tsx`, so it is coach-voiced
+ * copy generated at runtime. It had no voice constraints at all until open item 8 was decided: no
+ * banned lexicon, no register, nothing. A single "let's optimise your calendar" would have landed
+ * inside an audit whose whole frame (I-frame) is that this is not a productivity exercise.
+ *
+ * The prohibition list is imported rather than re-typed, on the same discipline as the agent's own
+ * voice guard: one list, so the ban and the guard cannot drift apart.
+ */
 const SYSTEM_PROMPT =
   "You categorise a leader's calendar events into fixed work buckets for a time audit. For each " +
   'event you are given, choose the single best bucket from the provided list, or "personal" for ' +
@@ -71,7 +83,30 @@ const SYSTEM_PROMPT =
   "the leader's role context. Mark an event ambiguous only when its title is generic (e.g. " +
   '"Meeting", "Call", "Catch up") and give a one-sentence reason for your best guess. Respond ONLY ' +
   'with the requested JSON. Never include event titles in any reasoning field verbatim if they ' +
-  'contain personal information; describe the basis for the guess instead.';
+  'contain personal information; describe the basis for the guess instead. ' +
+  'The leader reads the reasoning, so write it for them: one short plain sentence, describing what ' +
+  'the event looks like rather than judging how their time is spent. Never use this language, or ' +
+  `any corporate-consultant framing: ${RECLAIM_BANNED_LEXICON.join(', ')}. Do not use em dashes; ` +
+  "use a comma or a full stop. Never write in the first person as the tool's designer, and never " +
+  'name the model or the company that runs you.';
+
+/**
+ * Clean a model-authored `reasoning` line before a leader ever sees it.
+ *
+ * The prompt above is a request; this is the guard. A model that ignores an instruction is ordinary,
+ * and the cost of it here is copy in the wrong register inside the one screen that is supposed to
+ * feel like a mirror rather than an assessment.
+ *
+ * Em dashes are rewritten because the fix is unambiguous (I2 says use a comma). A banned term is not
+ * rewritten but **dropped entirely**: the sentence is a rationale, not load-bearing, and showing the
+ * hours with no explanation is honest where showing a patched sentence is not.
+ */
+export function sanitiseReasoning(reasoning: string): string {
+  const noEmDash = reasoning.replace(/\s*\u2014\s*/g, ', ');
+  const lower = noEmDash.toLowerCase();
+  if (RECLAIM_BANNED_LEXICON.some((term) => lower.includes(term.toLowerCase()))) return '';
+  return noEmDash;
+}
 
 interface Classification {
   index: number;
@@ -227,7 +262,7 @@ export async function categoriseCalendar(
             index,
             bucketSlug: bucketSlug,
             ambiguous: rec.ambiguous === true,
-            reasoning: typeof rec.reasoning === 'string' ? rec.reasoning : '',
+            reasoning: typeof rec.reasoning === 'string' ? sanitiseReasoning(rec.reasoning) : '',
           });
         }
         return out.length > 0 ? out : null;

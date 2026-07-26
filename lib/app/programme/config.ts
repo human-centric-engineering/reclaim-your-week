@@ -1,25 +1,32 @@
 /**
  * Read the coach-editable Reclaim config (F7, extended F8).
  *
- * Two readers over one `Module.config` row: the **UI** toggles the phase screens fetch (F7's two open
- * items), and the **access policy** the server-side gate reads (F8 — the client window, the open-signup
- * door, the policy version). Both fall back to the schema defaults, so a module row that has never been
- * edited behaves exactly as `reclaimConfigSchema.parse({})` says it should.
+ * Several readers over one `Module.config` row: the **UI** setting the phase screens fetch, and the
+ * **access policy** the server-side gate reads (F8 — the client window, the open-signup door, the
+ * policy version), among others. All fall back to the schema defaults, so a module row that has never
+ * been edited behaves exactly as `reclaimConfigSchema.parse({})` says it should.
  *
  * Everything here is config rather than feature-flag machinery, deliberately: these are decisions
  * Rashmir makes and changes, not release toggles an engineer flips.
  */
 
 import { prisma } from '@/lib/db/client';
+import { hasCompletedAudit } from '@/lib/app/programme/compare';
 import {
   reclaimConfigSchema,
   RECLAIM_MODULE_SLUG,
   type ReclaimConfig,
 } from '@/lib/app/programme/module';
 
-/** The subset of config the client UIs need — the two open-item toggles. */
+/**
+ * The subset of config the client UIs need.
+ *
+ * Still a plain `boolean` even though the stored value is now a three-way mode: the client asks
+ * "should I render the strategy mirror for *this* leader", and resolving `repeat_only` needs a
+ * database read the browser has no business making. Keeping the answer here means `phase4-panel`
+ * never learns that placement is configurable at all.
+ */
 export interface ReclaimUiConfig {
-  phase2CoachingSignal: boolean;
   strategyMirror: boolean;
 }
 
@@ -29,6 +36,13 @@ export interface ReclaimAccessConfig {
   clientMustStartWithinDays: number;
   openSignup: boolean;
   policyVersion: string;
+}
+
+/** The subset the group-invite-link surfaces need (F11): what to default a link to, and the ceiling. */
+export interface ReclaimJoinConfig {
+  joinLinkDefaultMaxClaims: number;
+  joinLinkDefaultDays: number;
+  joinLinkMaxClaims: number;
 }
 
 /** The subset the recent-audit shortcut needs (F9 t-2): the confirm line and its window. */
@@ -59,13 +73,17 @@ async function readReclaimConfig(): Promise<ReclaimConfig> {
   return parsed.success ? parsed.data : reclaimConfigSchema.parse({});
 }
 
-/** Read the stored module config, falling back to the schema defaults (both toggles off). */
-export async function readReclaimUiConfig(): Promise<ReclaimUiConfig> {
+/**
+ * Resolve the UI config for one leader (open item 10).
+ *
+ * `repeat_only` is the only mode that costs a query, and it only costs one when selected — `off` and
+ * `always` are answered from the config row alone.
+ */
+export async function readReclaimUiConfig(userId: string): Promise<ReclaimUiConfig> {
   const config = await readReclaimConfig();
-  return {
-    phase2CoachingSignal: config.phase2CoachingSignal,
-    strategyMirror: config.strategyMirror,
-  };
+  if (config.strategyMirrorMode === 'off') return { strategyMirror: false };
+  if (config.strategyMirrorMode === 'always') return { strategyMirror: true };
+  return { strategyMirror: await hasCompletedAudit(userId) };
 }
 
 /** Read the access policy (F8): client-window durations, the open-signup door, the policy version. */
@@ -76,6 +94,21 @@ export async function readReclaimAccessConfig(): Promise<ReclaimAccessConfig> {
     clientMustStartWithinDays: config.clientMustStartWithinDays,
     openSignup: config.openSignup,
     policyVersion: config.policyVersion,
+  };
+}
+
+/**
+ * Read the group-invite-link policy (F11): the mint-form defaults and the seat ceiling.
+ *
+ * Read on the admin form (to prefill) and again on the server at mint (to refuse). Both, deliberately
+ * — a ceiling enforced only where the form renders it is not a ceiling.
+ */
+export async function readReclaimJoinConfig(): Promise<ReclaimJoinConfig> {
+  const config = await readReclaimConfig();
+  return {
+    joinLinkDefaultMaxClaims: config.joinLinkDefaultMaxClaims,
+    joinLinkDefaultDays: config.joinLinkDefaultDays,
+    joinLinkMaxClaims: config.joinLinkMaxClaims,
   };
 }
 

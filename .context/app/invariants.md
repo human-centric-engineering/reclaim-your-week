@@ -50,8 +50,34 @@ content ported from it will carry the wrong persona unless deliberately re-point
 prompted this change, one of whom was using the tool outside its design scope precisely because it
 sounded like her.
 
+### What the tool calls itself (decided 2026-07-26 — plan.md open item 8)
+
+Brief §4 settles that the tool is not Rashmir, then adds: "the exact register may need a little
+refinement together". What it never settles is the pronoun the tool uses **for itself**, and for ten
+features the answer differed by surface: the agent says "the tool", the interface says "we". Both
+are defensible; having both is not, because a leader cannot tell which sentences came from which.
+
+Four rules, decided on the most defensible reading of Brief §4 and reversible if Rashmir disagrees:
+
+1. **The tool never says "I" in its own voice.** An instrument that says "I think" invites exactly
+   the person-substitute confusion I1 exists to prevent, and one tester had already made that
+   mistake. **Leader-voiced form controls are exempt and correct**: "I accept the terms", "Create a
+   link I can share" are the _leader_ speaking through the interface, not the tool speaking.
+2. **"We" only as inclusive-we** — the coach and the leader, together, doing the work. "We will look
+   at up to nine areas" is right. Vendor-we, meaning a company behind the product, is not: "we do
+   not collect your last name" becomes "your last name is not collected".
+3. **System and error strings are exempt.** "We could not load your audit" is the product
+   apologising for a technical failure. Rewriting roughly twenty-five of them buys a distinction no
+   leader will draw, so this is a decision rather than an oversight.
+4. **Third person for the tool when it describes what it does**: "the audit hands the insight back
+   to you".
+
+Rule 2 is **specification, not guard**: inclusive-we and vendor-we are a judgement no regex makes,
+and a guard that fires falsely earns an allowlist within a month. It is enforced by review.
+
 **Test:** `tests/unit/invariants/voice.test.ts` asserts no first-person-as-Rashmir construction in agent
-system prompt content.
+system prompt content. `tests/unit/invariants/product-voice.test.ts` extends the same checks to
+coach-voiced copy the app authors.
 
 ---
 
@@ -72,7 +98,32 @@ Also never:
 
 Short sentences. Plain language. No corporate or consultant framing.
 
+### What "agent output" means (decided 2026-07-26 — plan.md open item 8)
+
+I2 was written about the agent, and was read that way for ten features: the coach never used an em
+dash, while the interface around it used one every other paragraph. Brief §7 says "the register of
+the whole product matters as much as any single page", and a leader reads one screen, not two
+sources.
+
+So **I2 binds agent output _and_ coach-voiced copy the app authors** — the phase panels, the
+reflection prompt, the signposts, the consent gate, the calendar review, and the categoriser's
+runtime prose. It does **not** bind:
+
+- **Rashmir's verbatim content** in `lib/app/programme/content.ts`. It contains nineteen em dashes
+  and they are hers. **I11 outranks I2**: a paraphrase to satisfy a formatting rule would be the
+  exact drift the content chain exists to prevent.
+- **System and error strings**, per I1's rule 3 above.
+
+> **A correction worth keeping.** [[planning/ryw-phases]] said four times that the F7 work must
+> extend `voice.test.ts` to the `Module.config` copy, and it never happened — the done-when was
+> signed off regardless. On inspection that promise was also **wrong**: that copy is Rashmir's
+> verbatim IP, so the extension as specified would have failed on its first run or forced a
+> paraphrase. The right target was always coach-voiced copy _we_ authored, which nobody had guarded.
+
 **Test:** `tests/unit/invariants/voice.test.ts` greps agent config for the banned list and for U+2014.
+`tests/unit/invariants/product-voice.test.ts` greps coach-voiced app copy for the same, and requires
+every file under `components/app/reclaim/` to be classified as coach-voiced or not, so a new screen
+cannot join the product unguarded.
 
 ---
 

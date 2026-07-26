@@ -23,6 +23,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
 import { proxy } from '@/proxy';
+import { appAuthLandingRoute } from '@/lib/app/auth-landing';
 
 vi.mock('@/lib/logging/context', () => ({
   generateRequestId: vi.fn(() => 'test-request-id-123'),
@@ -245,7 +246,7 @@ describe('proxy (project root)', () => {
   });
 
   describe('Auth routes — authenticated users', () => {
-    it('redirects to /dashboard when accessing /login with the HTTP cookie', async () => {
+    it('redirects to the app landing route when accessing /login with the HTTP cookie', async () => {
       const request = createMockRequest('/login', {
         cookies: { 'better-auth.session_token': 'valid-token' },
       });
@@ -253,11 +254,11 @@ describe('proxy (project root)', () => {
       const response = await proxy(request);
 
       expect(response.status).toBe(307);
-      expect(response.headers.get('location')).toContain('/dashboard');
+      expect(response.headers.get('location')).toContain(appAuthLandingRoute);
       expect(response.headers.get('x-request-id')).toBe('test-request-id-123');
     });
 
-    it('redirects to /dashboard when accessing /signup with the HTTPS cookie', async () => {
+    it('redirects to the app landing route when accessing /signup with the HTTPS cookie', async () => {
       const request = createMockRequest('/signup', {
         cookies: { '__Secure-better-auth.session_token': 'valid-secure-token' },
       });
@@ -265,10 +266,10 @@ describe('proxy (project root)', () => {
       const response = await proxy(request);
 
       expect(response.status).toBe(307);
-      expect(response.headers.get('location')).toContain('/dashboard');
+      expect(response.headers.get('location')).toContain(appAuthLandingRoute);
     });
 
-    it('redirects to /dashboard when accessing /reset-password with a session', async () => {
+    it('redirects to the app landing route when accessing /reset-password with a session', async () => {
       const request = createMockRequest('/reset-password', {
         cookies: { '__Secure-better-auth.session_token': 'valid-token' },
       });
@@ -276,7 +277,7 @@ describe('proxy (project root)', () => {
       const response = await proxy(request);
 
       expect(response.status).toBe(307);
-      expect(response.headers.get('location')).toContain('/dashboard');
+      expect(response.headers.get('location')).toContain(appAuthLandingRoute);
     });
   });
 

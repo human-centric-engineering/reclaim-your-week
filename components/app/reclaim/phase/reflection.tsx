@@ -28,7 +28,7 @@ export function Reflection({
       >
         {prompt}
         <FieldHelp>
-          A sentence or two is plenty. This is your own noticing — the audit hands the insight back
+          A sentence or two is plenty. This is your own noticing. The audit hands the insight back
           to you, it does not decide for you.
         </FieldHelp>
       </label>

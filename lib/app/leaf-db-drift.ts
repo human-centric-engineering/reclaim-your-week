@@ -63,6 +63,14 @@ const RECLAIM_USER_FKS: ReadonlyArray<{ table: string; constraint: string; onDel
   // F9 t-3: the nudge preference. CASCADE — a preference about being emailed evidences nothing once
   // the person is gone, and a retained row keyed by an unsubscribe token could be matched back.
   { table: 'app_reclaim_nudge', constraint: 'app_reclaim_nudge_userId_fkey', onDelete: 'CASCADE' },
+  // F11: who minted a group invite link. SET NULL — retained config, like the invite rows it issued.
+  // The link must outlive the admin account that created it, or erasing an admin would take the
+  // record of who was invited with it.
+  {
+    table: 'app_reclaim_invite_link',
+    constraint: 'app_reclaim_invite_link_createdByUserId_fkey',
+    onDelete: 'SET NULL',
+  },
 ];
 
 export function registerLeafDriftProbes(): void {

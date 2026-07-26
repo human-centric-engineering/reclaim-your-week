@@ -2,28 +2,38 @@
 
 /**
  * Phase 2 — energy (F7 t-1). Two questions (§8): when they are at their best, and whether the schedule
- * protects or consumes that window; plus the team-distribution brainstorm where useful. The Phase 2
- * **coaching signal** (open item 11) renders only when the coach-editable config toggle is on
- * (default off, Rashmir's call). Ends with the required reflection `reclaim_reflection_p2` (I9).
+ * protects or consumes that window. Ends with the required reflection `reclaim_reflection_p2` (I9).
+ *
+ * ## The coaching signal that used to render here (open item 11, decided 2026-07-26: no)
+ *
+ * A config toggle once put `RECLAIM_PHASE2_COACHING_SIGNAL` on this screen. It is gone, and both
+ * halves of that are decisions.
+ *
+ * **Not here**, because Brief §2 says consultation offers appear "at the end and in follow-up, never
+ * mid-process" and Phase 2 is mid-process. The source system prompt says the opposite; the Brief is
+ * later and `sources/README.md` gives it precedence. Phase 6 already carries the one offer, so the
+ * product is not silent about coaching, only about coaching *here*.
+ *
+ * **Not behind a toggle either**, because the string is facilitator instruction voice: "Where useful,
+ * signal that a dedicated coaching conversation with Rashmir can go much further here" is addressed
+ * to whoever runs the audit, telling them to signal something. Shown to a leader it reads as leaked
+ * prompt. There is no configuration in which rendering it is correct, so leaving a switch would have
+ * preserved only the ability to ship broken copy.
+ *
+ * Rashmir's sentence is untouched in `lib/app/programme/content.ts` and still guarded verbatim.
+ * Bringing the signal back means authoring a leader-facing line with her.
  */
 
-import { useEffect, useState } from 'react';
-import { RECLAIM_PHASE2_COACHING_SIGNAL } from '@/lib/app/programme/content';
+import { useState } from 'react';
 import { Reflection } from '@/components/app/reclaim/phase/reflection';
 import { TextAreaField } from '@/components/app/reclaim/phase/fields';
 import { AdvanceControls } from '@/components/app/reclaim/phase/advance-controls';
 import { type AnswerInput } from '@/components/app/reclaim/phase/actions';
-import { fetchUiConfig } from '@/components/app/reclaim/phase/config';
 
 export function Phase2Panel({ runId, onAdvanced }: { runId: string; onAdvanced: () => void }) {
   const [peak, setPeak] = useState('');
   const [protectedWindow, setProtectedWindow] = useState('');
   const [reflection, setReflection] = useState('');
-  const [coachingSignal, setCoachingSignal] = useState(false);
-
-  useEffect(() => {
-    void fetchUiConfig().then((c) => setCoachingSignal(c.phase2CoachingSignal));
-  }, []);
 
   const answers = (): AnswerInput[] => {
     const out: AnswerInput[] = [];
@@ -45,7 +55,7 @@ export function Phase2Panel({ runId, onAdvanced }: { runId: string; onAdvanced: 
 
       <TextAreaField
         id="peak"
-        label="When in the day or week are you at your best — most focused, creative, and energised?"
+        label="When in the day or week are you at your best, most focused, creative, and energised?"
         value={peak}
         onChange={setPeak}
         help="Your peak window. We will use it when we design your ideal week."
@@ -56,12 +66,6 @@ export function Phase2Panel({ runId, onAdvanced }: { runId: string; onAdvanced: 
         value={protectedWindow}
         onChange={setProtectedWindow}
       />
-
-      {coachingSignal && (
-        <p className="text-muted-foreground border-primary/40 border-l-2 pl-4 text-sm leading-relaxed">
-          {RECLAIM_PHASE2_COACHING_SIGNAL}
-        </p>
-      )}
 
       <Reflection value={reflection} onChange={setReflection} />
       <AdvanceControls

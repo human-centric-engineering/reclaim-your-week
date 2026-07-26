@@ -35,6 +35,7 @@ export const EXPORTED_SOURCES = [
   'app_reclaim_report_share',
   'app_reclaim_feedback',
   'app_reclaim_nudge',
+  'app_reclaim_invite_link',
   'framework_slot_value',
 ] as const;
 
@@ -52,6 +53,11 @@ export interface ClientExport {
   feedback: unknown[];
   /** Their reminder preference — opt-out state and when they were last nudged (F9 t-3). */
   nudge: unknown;
+  /**
+   * Group invite links this subject minted (F11). Empty for a leader — only an admin creates these —
+   * but an admin is a data subject too, and "which doors did I open" is a fact about them.
+   */
+  inviteLinks: unknown[];
   /** Every current slot value — the audit answers, including the sensitive prose. */
   answers: Array<{
     slotSlug: string;
@@ -80,6 +86,7 @@ export async function buildClientExport(userId: string): Promise<ClientExport | 
     coachShares,
     feedback,
     nudge,
+    inviteLinks,
     heads,
   ] = await Promise.all([
     prisma.reclaimAuditRun.findMany({ where: { userId }, orderBy: { startedAt: 'asc' } }),
@@ -98,6 +105,23 @@ export async function buildClientExport(userId: string): Promise<ClientExport | 
     prisma.reclaimNudge.findUnique({
       where: { userId },
       select: { optedOutAt: true, lastNudgedAt: true, lastNudgedForRunId: true, createdAt: true },
+    }),
+    // Links this subject minted. `token` is deliberately NOT selected, for the reason the nudge
+    // token is redacted just above, and more sharply: a link token is a live capability that issues
+    // invitations, and an export is a file that leaves the system. The label, the bounds and the
+    // usage are the facts about the subject; the credential is not.
+    prisma.reclaimInviteLink.findMany({
+      where: { createdByUserId: userId },
+      select: {
+        id: true,
+        label: true,
+        tier: true,
+        maxClaims: true,
+        claimCount: true,
+        expiresAt: true,
+        revokedAt: true,
+        createdAt: true,
+      },
     }),
     // Heads, not history: the subject's data as it stands. Superseded versions are an artefact of
     // how the store works rather than something the leader ever said twice on purpose.
@@ -119,6 +143,7 @@ export async function buildClientExport(userId: string): Promise<ClientExport | 
     coachShares,
     feedback,
     nudge,
+    inviteLinks,
     answers: heads.map((h) => ({
       slotSlug: h.slotSlug,
       value: h.value,

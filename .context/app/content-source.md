@@ -611,11 +611,21 @@ Those cannot both hold literally. Phase 2 is mid-process. The two readings are t
 retired the Phase 2 signal, or that "signal a topic goes deeper" is not a consultation offer and
 survives §2 untouched.
 
-**This is Rashmir's call — open item 11 in `planning/plan.md`, not decided here.** Recommended
-default until she rules: keep the signal, phrased as depth-of-topic rather than availability-of-
-Rashmir, with no email and no invitation. The precedence rule in [`sources/README.md`](./sources/)
-says the Brief wins, and a silent resolution in favour of the older document is exactly the drift
-this file exists to prevent.
+**Decided 2026-07-26 (open item 11): the Brief wins, and the signal is not rendered.** The
+precedence rule in [`sources/README.md`](./sources/) settles it — this file exists to stop a silent
+resolution in favour of the older document, and resolving it _loudly_ in favour of the newer one is
+that rule working. Phase 6 still carries the one consultation offer, so the product is not silent
+about coaching, only about coaching mid-process.
+
+The **toggle** that used to gate it is gone too, on a second ground that is about copy rather than
+policy: the quoted sentence is written **to the facilitator**, not the leader. "Where useful, signal
+that…" instructs whoever runs the audit. On a leader's screen it reads as a leaked prompt, so no
+configuration made rendering it correct.
+
+The earlier recommendation here — keep the signal, phrased as depth-of-topic rather than
+availability-of-Rashmir — is **not retired, only unbuilt**. It describes a _new_ leader-facing
+sentence, and authoring one is Rashmir's call under I11, not a paraphrase this file may make. The
+quotation above stays verbatim and guarded; what is gone is the render.
 
 ### Phase 3 — ideal week questions
 

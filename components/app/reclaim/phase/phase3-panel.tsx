@@ -19,6 +19,7 @@ import {
   type AnswerInput,
   type RunAnswers,
 } from '@/components/app/reclaim/phase/actions';
+import { NO_VALUE } from '@/components/app/reclaim/format';
 
 export function Phase3Panel({ runId, onAdvanced }: { runId: string; onAdvanced: () => void }) {
   const [base, setBase] = useState<RunAnswers>({});
@@ -106,7 +107,7 @@ export function Phase3Panel({ runId, onAdvanced }: { runId: string; onAdvanced: 
       <div className="space-y-2">
         <h2 className="text-foreground text-2xl font-light">Your ideal week</h2>
         <p className="text-muted-foreground text-[1.02rem] leading-relaxed">
-          A realistic target, grounded in what you now know about your energy and the gaps — not a
+          A realistic target, grounded in what you now know about your energy and the gaps, not a
           fantasy. Set the hours you would want in each area; the change from today shows as you go.
         </p>
       </div>
@@ -116,7 +117,7 @@ export function Phase3Panel({ runId, onAdvanced }: { runId: string; onAdvanced: 
         label="What would a sustainable weekly total look like?"
         value={total}
         onChange={setTotal}
-        help="Hours per week you could hold steadily — not a heroic peak."
+        help="Hours per week you could hold steadily, not a heroic peak."
       />
 
       <div className="overflow-x-auto">
@@ -152,7 +153,7 @@ export function Phase3Panel({ runId, onAdvanced }: { runId: string; onAdvanced: 
                   </td>
                   <td className="py-2 tabular-nums">
                     {gap === null ? (
-                      <span className="text-muted-foreground/50">—</span>
+                      <span className="text-muted-foreground/50">{NO_VALUE}</span>
                     ) : (
                       <span
                         className={

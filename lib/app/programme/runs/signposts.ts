@@ -21,11 +21,11 @@ export const PHASE_SIGNPOSTS: Readonly<Record<string, PhaseSignpost>> = {
     duration: 'a few minutes',
   },
   'phase-1-current': {
-    involves: 'An honest look at where your time goes now, area by area.',
+    involves: 'A methodical look at where your time goes now, area by area.',
     duration: 'around fifteen minutes',
   },
   'phase-2-energy': {
-    involves: 'Which of that work gives you energy, and which quietly takes it.',
+    involves: 'Which of that work gives you energy, and which drains it.',
     duration: 'around ten minutes',
   },
   'phase-3-ideal': {
@@ -37,7 +37,7 @@ export const PHASE_SIGNPOSTS: Readonly<Record<string, PhaseSignpost>> = {
     duration: 'around ten minutes',
   },
   'phase-5-action': {
-    involves: 'A few specific places to begin — small, and yours to choose.',
+    involves: 'A few specific places to begin, small and yours to choose.',
     duration: 'around ten minutes',
   },
   'phase-6-summary': {

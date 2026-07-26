@@ -1,160 +1,149 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { Mail, Clock } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ContactForm } from '@/components/forms/contact-form';
+import { EnquiryForm } from '@/components/app/contact/enquiry-form';
+
+/**
+ * Contact — the form first, the explanation after.
+ *
+ * ## What this replaced
+ *
+ * The starter template's page: a two-column card layout selling Sunrise, with a placeholder
+ * `hello@example.com`, a "Pro Support package" that does not exist, and a GitHub issues link. None
+ * of it was about this product, and the last of it invited a leader with a broken sign-in to open a
+ * public issue on a framework repository.
+ *
+ * ## Why this page carries weight the template's did not
+ *
+ * Three separate things point here and nothing else does:
+ *
+ * - the landing page ends "Invitations come from Rashmir directly. If this sounds useful and you do
+ *   not have one, get in touch" — so **this is the only door into an invite-only audit** (F8);
+ * - the privacy notice names it twice as the route for a copy, a correction, or erasure, which
+ *   makes it a stated part of a data-protection promise, not marketing furniture;
+ * - the audit itself has no support surface. A leader stuck mid-phase has this page or nothing.
+ *
+ * ## Order: masthead, form, then the notes
+ *
+ * The first draft explained the four audiences at length *before* the form, and buried the only
+ * interactive thing on the page below three screens of prose. **The tick boxes already say what the
+ * four reasons are**, so the prose was restating the form to someone who had not reached it yet.
+ * What survives sits underneath as short notes: the things a person might want *after* deciding to
+ * write, not before.
+ *
+ * ## The coaching note is a signpost, not a sales page
+ *
+ * Rashmir's practice is described in the **third person and sparingly** (I1), the same register as
+ * `/about`, and links out to her own pages rather than restating her offers or, especially, her
+ * prices: those are hers to state and hers to change, and a stale figure on a page she does not
+ * control would be worse than no figure. I16 applies as much here as inside the audit, so there is
+ * no urgency device, no scarcity note, and no waiting list.
+ */
+
+const description =
+  'Ask for an invitation to Reclaim Your Week, raise a question about the audit, or enquire about coaching with Rashmir Balasubramaniam.';
 
 export const metadata: Metadata = {
   title: 'Contact',
-  description:
-    'Get in touch with the Sunrise team. Questions, feedback, or just want to say hello? We would love to hear from you.',
-  openGraph: {
-    title: 'Contact - Sunrise',
-    description:
-      'Get in touch with the Sunrise team. Questions, feedback, or just want to say hello? We would love to hear from you.',
-  },
-  twitter: {
-    card: 'summary_large_image',
-    title: 'Contact - Sunrise',
-    description:
-      'Get in touch with the Sunrise team. Questions, feedback, or just want to say hello? We would love to hear from you.',
-  },
+  description,
+  openGraph: { title: 'Contact Reclaim Your Week', description, type: 'website' },
 };
 
-/**
- * Contact Page
- *
- * Two-column layout with contact form and additional contact information.
- *
- * Phase 3.5: Landing Page & Marketing
- */
+/** A short note under the form, set as a list entry rather than a card. */
+function Note({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <li className="border-border/70 border-b py-5 first:pt-0">
+      <h3 className="text-foreground text-[1.02rem] font-light">{title}</h3>
+      <p className="text-muted-foreground mt-2 leading-relaxed font-light">{children}</p>
+    </li>
+  );
+}
+
 export default function ContactPage() {
   return (
-    <div className="container mx-auto px-4 py-16 md:py-24">
-      <div className="mx-auto max-w-5xl">
-        {/* Page Header */}
-        <div className="mb-12 text-center">
-          <h1 className="mb-4 text-4xl font-bold tracking-tight">Get in Touch</h1>
-          <p className="text-muted-foreground mx-auto max-w-2xl text-lg">
-            Have a question about Sunrise? Want to discuss a custom implementation? Or just want to
-            say hello? We&apos;d love to hear from you.
+    <div className="mx-auto max-w-5xl px-6 sm:px-8">
+      {/* ── Masthead. Two lines, then the form. ─────────────────────────────────────────────── */}
+      <section className="grid gap-x-16 gap-y-6 pt-16 pb-10 sm:pt-20 md:grid-cols-[1fr_17rem]">
+        <div>
+          <p className="text-primary text-[0.72rem] font-medium tracking-[0.24em] uppercase">
+            Contact
           </p>
+          <h1 className="text-foreground mt-5 max-w-2xl text-4xl leading-[1.14] font-light text-balance">
+            Ask a question, or request an invitation.
+          </h1>
         </div>
+        <aside className="border-primary/25 self-start border-l pt-1 pl-6 md:mt-8">
+          <p className="text-muted-foreground text-sm leading-relaxed">
+            Messages go to a person, not a queue. A reply usually comes within a few working days.
+          </p>
+        </aside>
+      </section>
 
-        {/* Two-column layout */}
-        <div className="grid gap-8 lg:grid-cols-5">
-          {/* Contact Form - takes 3 columns */}
-          <div className="lg:col-span-3">
-            <Card>
-              <CardHeader>
-                <CardTitle>Send a Message</CardTitle>
-                <CardDescription>
-                  Fill out the form below and we&apos;ll get back to you as soon as possible.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ContactForm />
-              </CardContent>
-            </Card>
-          </div>
+      {/* ── The form, immediately. It is what the page is for. ──────────────────────────────── */}
+      <section className="border-border border-t pt-10 pb-16 sm:pb-20">
+        <EnquiryForm />
+      </section>
 
-          {/* Contact Info - takes 2 columns */}
-          <div className="space-y-6 lg:col-span-2">
-            {/* Email */}
-            <Card>
-              <CardHeader className="pb-3">
-                <div className="flex items-center gap-3">
-                  <div className="bg-primary/10 text-primary flex h-10 w-10 items-center justify-center rounded-lg">
-                    <Mail className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <CardTitle className="text-base">Email</CardTitle>
-                    <CardDescription>For general inquiries</CardDescription>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="pt-0">
-                <a href="mailto:hello@example.com" className="text-primary hover:underline">
-                  hello@example.com
-                </a>
-              </CardContent>
-            </Card>
+      {/* ── The notes. What someone might want after deciding to write, not before. ─────────── */}
+      <section className="border-border border-t py-14 sm:py-16">
+        <div className="grid gap-x-16 gap-y-6 md:grid-cols-[14rem_1fr]">
+          <h2 className="text-muted-foreground text-[0.72rem] font-medium tracking-[0.2em] uppercase">
+            Worth knowing
+          </h2>
+          <ul className="max-w-2xl">
+            <Note title="Invitations">
+              There is no waiting list and nothing to buy. Something about your work and what is
+              making the week hard to hold is the most useful thing to say.{' '}
+              <Link href="/about" className="text-primary underline underline-offset-4">
+                The about page
+              </Link>{' '}
+              describes the audit in full.
+            </Note>
 
-            {/* Response Time */}
-            <Card>
-              <CardHeader className="pb-3">
-                <div className="flex items-center gap-3">
-                  <div className="bg-primary/10 text-primary flex h-10 w-10 items-center justify-center rounded-lg">
-                    <Clock className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <CardTitle className="text-base">Response Time</CardTitle>
-                    <CardDescription>When to expect a reply</CardDescription>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="pt-0">
-                <p className="text-muted-foreground text-sm">
-                  We typically respond within 1-2 business days. For urgent matters, please mention
-                  &quot;URGENT&quot; in the subject line.
-                </p>
-              </CardContent>
-            </Card>
+            <Note title="Working with Rashmir">
+              Rashmir Balasubramaniam coaches leaders, entrepreneurs and social innovators, from
+              transformational leadership coaching through purpose work to long-run strategic
+              thought partnership. Her own pages set that out in full:{' '}
+              <a
+                href="https://rashmir.net/coaching"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary underline underline-offset-4"
+              >
+                rashmir.net/coaching
+              </a>
+              . This audit is one instrument from that practice; doing it is not the same as working
+              with her.
+            </Note>
 
-            {/* GitHub */}
-            <Card>
-              <CardHeader className="pb-3">
-                <div className="flex items-center gap-3">
-                  <div className="bg-primary/10 text-primary flex h-10 w-10 items-center justify-center rounded-lg">
-                    {/* GitHub mark — lucide v1 removed brand icons, so inline the SVG */}
-                    <svg
-                      viewBox="0 0 24 24"
-                      fill="currentColor"
-                      aria-hidden="true"
-                      className="h-5 w-5"
-                    >
-                      <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.605-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.91 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222 0 1.606-.014 2.898-.014 3.293 0 .322.216.694.825.576C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12" />
-                    </svg>
-                  </div>
-                  <div>
-                    <CardTitle className="text-base">GitHub</CardTitle>
-                    <CardDescription>Issues and discussions</CardDescription>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="pt-0">
-                <p className="text-muted-foreground mb-2 text-sm">
-                  For bug reports and feature requests, open an issue on GitHub.
-                </p>
-                <a
-                  href="https://github.com/human-centric-engineering/sunrise/issues"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary text-sm hover:underline"
-                >
-                  Open an Issue
-                </a>
-              </CardContent>
-            </Card>
+            <Note title="Something not working">
+              A sign-in that will not take, a phase that will not advance, a chart that looks wrong.
+              Say roughly what you were doing and when. There is no ticket number and no support
+              portal; it comes straight through.
+            </Note>
 
-            {/* Support Options */}
-            <Card className="border-primary/50 bg-primary/5">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">Need Priority Support?</CardTitle>
-              </CardHeader>
-              <CardContent className="pt-0">
-                <p className="text-muted-foreground mb-3 text-sm">
-                  Our Pro Support package includes dedicated email support, priority bug fixes, and
-                  architecture review sessions.
-                </p>
-                <Link href="/#pricing" className="text-primary text-sm font-medium hover:underline">
-                  View Support Options
-                </Link>
-              </CardContent>
-            </Card>
-          </div>
+            <Note title="Your data">
+              A copy of what is held about you, a correction, or deletion of the whole lot, handled
+              within a month.{' '}
+              <Link href="/privacy" className="text-primary underline underline-offset-4">
+                The privacy notice
+              </Link>{' '}
+              says what is held, why, and for how long.
+            </Note>
+          </ul>
         </div>
-      </div>
+      </section>
+
+      {/* ── The close. Already have an invitation? Then this page is not the one you want. ───── */}
+      <section className="border-border border-t py-16 sm:py-20">
+        <div className="flex max-w-2xl flex-wrap items-center gap-x-8 gap-y-4">
+          <p className="text-muted-foreground leading-relaxed font-light">
+            Already have an invitation? You do not need to write.
+          </p>
+          <Link href="/login" className="text-primary text-sm underline underline-offset-4">
+            Sign in
+          </Link>
+        </div>
+      </section>
     </div>
   );
 }

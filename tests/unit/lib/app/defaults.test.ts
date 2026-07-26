@@ -36,12 +36,26 @@ afterEach(() => {
 });
 
 describe('lib/app/ bootstrap defaults are no-ops', () => {
-  it('registerAppRateLimits registers no tiers or rules by default', () => {
-    // Act — run the real (empty) hook
+  it('registerAppRateLimits registers exactly the leaf’s own public-claim rule', () => {
+    // Act — run the real hook. No longer empty: F11 registers the cap for the public group-link
+    // claim here, which is what the reserved seam is for (Sunrise ships it empty; the LEAF fills it),
+    // and the only place a leaf may add one — `lib/security/**` is core.
     registerAppRateLimits();
 
-    // Assert — no app rules → the effective policy is the base policy by identity
-    expect(getEffectiveRateLimitPolicy()).toBe(RATE_LIMIT_POLICY);
+    // Assert — the policy is no longer the base by identity, and what was added is ours and bounded.
+    const effective = getEffectiveRateLimitPolicy();
+    expect(effective).not.toBe(RATE_LIMIT_POLICY);
+
+    const appRules = effective.filter((rule) => !RATE_LIMIT_POLICY.includes(rule));
+    // The catch-all is appended alongside app rules, so exclude it before counting ours.
+    const ours = appRules.filter((rule) => rule.tier === 'reclaim-join');
+    expect(ours).toHaveLength(1);
+    // Keyed on IP because the claimant has no account yet, by definition, and scoped to the one
+    // public path. A broader matcher here would silently re-cap authenticated leaf routes.
+    expect(ours[0]?.key).toBe('ip');
+    expect(ours[0]?.match).toBeInstanceOf(RegExp);
+    expect((ours[0]?.match as RegExp).test('/api/v1/app/reclaim/join/abc')).toBe(true);
+    expect((ours[0]?.match as RegExp).test('/api/v1/app/reclaim/invites')).toBe(false);
   });
 
   it('initAppCapabilities is a no-op by default', () => {
@@ -108,13 +122,20 @@ describe('lib/app/ bootstrap defaults are no-ops', () => {
     expect(publicNavItems?.map((i) => i.href)).toContain('/privacy');
   });
 
-  it('overrides only the invitation email, leaving every other kind on the platform template', () => {
-    // F8 t-1 overrides `invitation` deliberately: the platform copy is written for a SaaS team invite
-    // and this is the first thing an invited leader reads from the product. The assertion that still
-    // earns its keep is the *scope* — a stray override would silently swap an auth email (welcome,
-    // verification, password reset) for every install, which is not something this feature intends.
-    expect(Object.keys(emailOverrides)).toEqual(['invitation']);
+  it('overrides the two emails a leader reads, leaving the credential emails on the platform template', () => {
+    // F8 t-1 overrides `invitation`: the platform copy is written for a SaaS team invite, and this is
+    // the first thing an invited leader reads from the product. `welcome` joined it post-v1 for a
+    // worse reason — the platform default was still describing this app as "your production-ready
+    // Next.js starter template", and it had gone to every account since the first.
+    //
+    // **The scope is the assertion**, and it now cuts both ways. A stray override still swaps an auth
+    // email for every install. But the failure this list actually had was the opposite one: `welcome`
+    // sat on a platform default nobody had read, because an override is only ever added by someone
+    // who went looking. `verifyEmail` and `resetPassword` are deliberately left — both are pure
+    // credential mechanics, and neither carries a claim about what this product is.
+    expect(Object.keys(emailOverrides).sort()).toEqual(['invitation', 'welcome']);
     expect(emailOverrides.invitation).toBeTypeOf('function');
+    expect(emailOverrides.welcome).toBeTypeOf('function');
   });
 
   it('initApp does no boot work by default (resolves to undefined)', async () => {

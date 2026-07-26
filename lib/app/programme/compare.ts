@@ -116,6 +116,24 @@ async function previousCompletedRun(
 }
 
 /**
+ * Has this leader ever finished an audit? (open item 10 — the `repeat_only` strategy-mirror mode.)
+ *
+ * Deliberately **not** `previousCompletedRun(userId) !== null`. That function's `nulls: 'last'`
+ * ordering exists to settle *which* run is the most recent, and it is subtle enough to carry a
+ * comment about Postgres sort order. This question is only *whether any exists*, where ordering is
+ * meaningless — so borrowing the ordered read would invite the next reader to think it mattered.
+ *
+ * The audit in progress needs no exclusion: it is not `complete` until the leader finishes it.
+ */
+export async function hasCompletedAudit(userId: string): Promise<boolean> {
+  const run = await prisma.reclaimAuditRun.findFirst({
+    where: { userId, status: 'complete' },
+    select: { id: true },
+  });
+  return run !== null;
+}
+
+/**
  * The previous audit beside the one in progress. Returns `previous: null` for a first audit, so the
  * UI can be absent rather than show an empty comparison.
  */

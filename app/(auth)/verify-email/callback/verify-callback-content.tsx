@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
+import { appAuthLandingRoute } from '@/lib/app/auth-landing';
 
 /**
  * Email Verification Callback Content
@@ -31,10 +32,10 @@ function VerifyEmailCallbackContent() {
   const [resent, setResent] = useState(false);
   const [resendError, setResendError] = useState<string | null>(null);
 
-  // If no error, verification succeeded - redirect to dashboard
+  // If no error, verification succeeded - redirect to the app's landing route
   useEffect(() => {
     if (!error) {
-      router.replace('/dashboard');
+      router.replace(appAuthLandingRoute);
     }
   }, [error, router]);
 
@@ -49,7 +50,9 @@ function VerifyEmailCallbackContent() {
             </div>
           </div>
           <CardTitle className="text-2xl font-bold">Email Verified!</CardTitle>
-          <CardDescription>Redirecting to dashboard...</CardDescription>
+          {/* Destination-agnostic: the route is the app's (`lib/app/auth-landing.ts`), so naming
+              "dashboard" here went stale the moment it changed. */}
+          <CardDescription>Taking you through...</CardDescription>
         </CardHeader>
       </Card>
     );

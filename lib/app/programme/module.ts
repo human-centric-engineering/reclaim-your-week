@@ -121,11 +121,45 @@ export const reclaimConfigSchema = z.object({
   /** Where the once-at-the-end consultation invitation points. Operator-set; seeded from §10. */
   consultationEmail: z.string().default(RECLAIM_CONSULTATION_EMAIL),
   /**
-   * F7 open-item toggles (Rashmir's to rule — plan.md open items 10 & 11). Coach-editable, **default
-   * off** until she decides; this is `Module.config`, not feature-flag machinery.
+   * **Where the strategy mirror sits** (plan.md open item 10, decided 2026-07-26).
+   *
+   * Brief §5 asks for it "somewhere in the audit when useful", then hedges: "though this could be in
+   * a follow up audit". Three placements follow from that, and the shipped `boolean` could express
+   * only two of them — so the question the plan actually asked ("run 1, repeat audits only, or
+   * both?") was unanswerable without a deploy. An enum makes all three hers to pick, and the
+   * framework's generic config form renders it as a select.
+   *
+   * `always` is the default because the hedge is a "could", not a preference, and because nearly
+   * everyone at launch is on their first audit: `repeat_only` would hide the feature at exactly the
+   * moment it is being reviewed.
+   *
+   * **Why this is a new key rather than a retyped one.** `saveModuleConfig` replaces the whole config
+   * row and `saveStoredContent` writes a fully-parsed `ReclaimConfig`, so the moment Rashmir saves
+   * the content editor once, `strategyMirror: false` is persisted as a boolean. `readReclaimConfig`
+   * parses all-or-nothing and falls back to `parse({})` on failure — so retyping the key in place
+   * would fail that parse and silently revert **every** value she had edited, content strings
+   * included. `z.object` strips unknown keys, so the retired boolean is now simply ignored. No
+   * migration, no risk.
    */
-  phase2CoachingSignal: z.boolean().default(false),
-  strategyMirror: z.boolean().default(false),
+  strategyMirrorMode: z.enum(['off', 'always', 'repeat_only']).default('always'),
+
+  /**
+   * **The Phase 2 coaching signal is gone, deliberately** (plan.md open item 11, decided 2026-07-26).
+   *
+   * `phase2CoachingSignal` used to live here, default off, pending Rashmir's ruling on a conflict:
+   * the older system prompt tells the facilitator to signal that coaching goes deeper in Phase 2,
+   * while Brief §2 says consultation offers appear "at the end and in follow-up, never mid-process".
+   * `sources/README.md`'s precedence rule says the Brief wins, and Phase 6 already carries the one
+   * offer.
+   *
+   * The flag is **removed** rather than left off because the string behind it is facilitator
+   * instruction voice, not leader-facing copy ("Where useful, signal that a dedicated coaching
+   * conversation with Rashmir can go much further here"). Rendered to a leader it reads as leaked
+   * prompt, so there is no state in which flipping it is correct, and a checkbox in the generic
+   * config form is not a safe place to keep that. Her sentence is untouched in `./content.ts` and
+   * still guarded verbatim; reinstating the signal means authoring a leader-facing line with her,
+   * which was always the real work.
+   */
 
   /**
    * F8 access policy (Brief §8). Coach-editable for the same reason as the toggles above — she wrote
@@ -144,6 +178,25 @@ export const reclaimConfigSchema = z.object({
    * rather than by default".
    */
   openSignup: z.boolean().default(false),
+
+  /**
+   * F11 — **group invite links**: the defaults a new link is minted with, and the ceiling it may
+   * never exceed.
+   *
+   * Coach-editable for the same reason the client window is: how many people are in the room, and
+   * how long a link should stay live afterwards, are facts about how Rashmir runs a session and not
+   * decisions an engineer should be re-deploying for.
+   *
+   * The ceiling is the one that is doing safety work rather than convenience work. A link is a bearer
+   * capability — whoever holds the URL can claim a standard-tier audit — so `joinLinkMaxClaims`
+   * bounds the blast radius of a link that gets forwarded, screenshotted, or posted somewhere it was
+   * never meant to go. It is deliberately a *ceiling on the form*, not a suggestion: the mint path
+   * refuses a larger number rather than clamping to it, because a silently reduced cap is how you end
+   * up with a room of thirty people where ten can get in.
+   */
+  joinLinkDefaultMaxClaims: z.number().int().min(1).max(500).default(10),
+  joinLinkDefaultDays: z.number().int().min(1).max(90).default(7),
+  joinLinkMaxClaims: z.number().int().min(1).max(500).default(50),
 
   /**
    * F8 t-4 — the version of terms + privacy a leader must have accepted before starting an audit.

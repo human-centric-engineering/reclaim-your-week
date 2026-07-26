@@ -394,7 +394,11 @@ changing:
    identities this sits under. The teal is also what F6.3's colour collision is against —
    `#1B4965` strategic-planning blue sits close to it.
 4. Page copy for landing, Home, About, FAQs, in the reassurance register of Brief §7 (the Setup
-   Guide's "no one is judging you" wording is the register — [[content-source]] §12).
+   Guide's "no one is judging you" wording is the register — [[content-source]] §12). **Now a draft
+   rather than a blank**: [[post-v1]] P4 shipped all four public pages written in that register, so
+   this is a react-and-correct rather than a write-from-nothing. The reassurance block on the landing
+   page is §12's wording nearly verbatim, which is the part most worth her eye — it is the closest
+   the public surface comes to her voice.
 5. Tester quotes and worked examples.
 6. Invite list for v1.
 7. Privacy and IP clauses (she has offered these). **Shipped against a versioned placeholder**:
@@ -402,22 +406,42 @@ changing:
    content change plus a version bump, which re-asks everyone — which is the point. F10 t-3's
    anonymised aggregate reads that consent as its lawful basis, so it is live but currently resting
    on placeholder wording.
-8. Confirmation of the exact third-person register — Brief §4 notes it "may need a little refinement
-   together".
+8. ~~Confirmation of the exact third-person register~~ — **decided 2026-07-26, hers to overturn.**
+   Brief §4 says "the exact register may need a little refinement together"; what it left open was
+   never the attribution (settled and guarded since F2) but **what the tool calls itself**. The
+   agent said "the tool", the interface said "we", and nothing chose. Four rules now do
+   ([[../invariants|invariants]] I1/I2): no "I" in the tool's own voice, with leader-voiced form
+   controls exempt; "we" only as coach-and-leader together, never a vendor "we"; error strings
+   exempt; and I2's formatting rules bind coach-voiced product copy, not only the agent. **Her
+   verbatim content is explicitly out of scope** — its nineteen em dashes are hers, and I11 outranks
+   I2. Enforced by `tests/unit/invariants/product-voice.test.ts`. _What to ask her:_ nothing
+   blocking. This is the "refinement together" made concrete enough to react to.
 9. **Decision:** checkpoint summaries — keep as an on-screen per-phase recap, or retire entirely?
    ([[content-source]] §"checkpoint decision".) F4 t-4's per-phase signpost is what shipped in their
    place; nothing is blocked either way.
-10. **Decision:** where does the strategy mirror sit? Brief §5 offers "If a stranger read your
-    calendar, what would they say your priorities are?" and then hedges — "though this could be in a
-    follow up audit". Run 1, repeat audits only, or both? **Shipped behind `Module.config`
-    `strategyMirror`, default off.** Now that F9 exists, "repeat audits only" is genuinely available
-    as an answer rather than hypothetical.
-11. **Decision:** does the Phase 2 coaching signal survive Brief §2? **Shipped behind
-    `Module.config` `phase2CoachingSignal`, default off.** The system prompt tells Phase 2
-    to "signal that a dedicated coaching conversation with Rashmir can go much further here"; Brief
-    §2 says consultation offers appear "at the end and in follow-up, never mid-process", and Phase 2
-    is mid-process. Either the Brief retired the signal, or a depth-of-topic remark is not a
-    consultation offer. ([[content-source]] §8, Phase 2.)
+10. ~~Where does the strategy mirror sit?~~ — **decided 2026-07-26: everyone, Phase 4.** Her hedge
+    ("though this could be in a follow up audit") is a "could", not a preference, and at launch
+    nearly every leader is on their first audit, so repeat-only would hide the question at exactly
+    the moment she is being shown the product. `Module.config.strategyMirrorMode` is now
+    `off | always | repeat_only`, default `always`, so **all three of her options are a select in
+    the admin form rather than a deploy** — which the old boolean could not express.
+    _What to ask her:_ does it land in Phase 4, and does it belong on a first audit? One click
+    either way.
+11. ~~Does the Phase 2 coaching signal survive Brief §2?~~ — **decided 2026-07-26: no, and the
+    toggle is gone.** Brief §2 says consultation offers appear "at the end and in follow-up, never
+    mid-process"; Phase 2 is mid-process; [[../sources/README|sources/README]]'s precedence rule
+    gives the later Brief the win over the older system prompt; and Phase 6 already carries the one
+    offer, so the product is not silent about coaching, only about coaching _there_.
+
+    The **toggle** was removed rather than left off for a separate reason worth her knowing: the
+    string is written to the facilitator, not the leader. "Where useful, signal that a dedicated
+    coaching conversation with Rashmir can go much further here" instructs whoever is running the
+    audit; shown on screen it reads as a leaked prompt. No setting made rendering it correct, so a
+    checkbox preserved only the ability to ship broken copy. **Her sentence is untouched** in
+    `content.ts` and still guarded character-identical.
+    _What to ask her:_ if she wants the signal back, it needs a leader-facing line written with her
+    — which was always the real work, and which [[content-source]] §8 already recommended ("phrased
+    as depth-of-topic rather than availability-of-Rashmir").
 
 ---
 
@@ -446,6 +470,33 @@ Daybreak's own plan-first discipline.
 ## Decisions log
 
 Append-only. Newest at the top.
+
+- **2026-07-26 — Open items 8, 10 and 11 decided without her, to be reviewed with her (owner
+  call).** Three of the eleven had sat open since F7. The owner's instruction was to take the most
+  defensible reading of her own documents, ship it, and reverse anything she disagrees with. Two of
+  the three could not be decided as they stood: **item 10**'s boolean could express only two of the
+  three placements her hedge names, and **item 11**'s flag would have rendered facilitator
+  instruction voice to a leader. So each decision came with a fix. **Item 8** turned out not to be a
+  copy problem at all but a specification gap — "third person" was settled for attribution and
+  silent on what the tool calls itself — and the guard that [[ryw-phases]] promised four times would
+  cover product copy had never been written. It now is, and the promise itself was wrong as
+  written: it pointed at her verbatim content, which legitimately contains em dashes, so it would
+  have failed on its first run or forced a paraphrase. Full reasoning and the reversal path sit
+  against each item above.
+
+- **2026-07-26 — The AI layer runs on OpenAI during testing, reverting to Anthropic at launch
+  (owner decision).** Filed here rather than as a working assumption because it runs against
+  something the client stated twice: Brief §3 makes Claude a constraint, not a default — _"Claude
+  only … not ChatGPT, and users do not get a choice"_ — on the grounds that her testers reported a
+  noticeably better coaching experience with it, and Brief §8 calls it _"the one constraint"_.
+  **Acceptable for a testing phase because the constraint is about what leaders experience, and no
+  leader is on the system**: access is invite-gated and the invite list is unissued (open item 6).
+  The coach agent seeds `provider: ''` and resolves dynamically, so the swap is an environment
+  change with **no code diff** — which is the whole risk, since nothing will later look wrong. The
+  one thing it does touch is the privacy notice, whose `MODEL_VENDOR` constant names the processor
+  to leaders. Revert steps are on the before-launch list in [[../operations|operations]], the
+  reasoning is [[post-v1#D-P17]]. **Worth telling Rashmir either way**: if we notice the coaching
+  difference her testers described, that is evidence for her constraint rather than against it.
 
 - **2026-07-24 — Brand palette confirmed with full shade ramps (open item 3, palette part).**
   Rashmir turned the working brand direction into a concrete two-colour system with ramps.

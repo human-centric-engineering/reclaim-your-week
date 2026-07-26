@@ -78,6 +78,12 @@ export interface IssueInviteInput {
   inviterName: string;
   /** The referrer, for a `referral` invite. Null/omitted for an admin-issued one (F8 t-3). */
   invitedByUserId?: string | null;
+  /**
+   * The group link this was claimed through (F11). Set at creation rather than by the caller
+   * afterwards: a second write is a second thing that can fail, and when it does the invite exists
+   * with its provenance lost — which is exactly the row nobody can explain later.
+   */
+  viaLinkId?: string | null;
   /** Rotate the token and resend when an invitation is already pending for this email. */
   resend?: boolean;
 }
@@ -137,6 +143,7 @@ export async function issueInvite(input: IssueInviteInput): Promise<IssueInviteR
             token: tokenHash,
             tier: input.tier,
             invitedByUserId: input.invitedByUserId ?? null,
+            viaLinkId: input.viaLinkId ?? null,
           },
         });
 
@@ -164,14 +171,23 @@ export async function issueInvite(input: IssueInviteInput): Promise<IssueInviteR
     });
   }
 
+  // Record the outcome on the row, so a send that failed is a fact on the admin screen rather than a
+  // line in a log nobody is watching. Written after the send for the obvious reason, and separately
+  // from the row above because the status is not known until the provider has answered.
+  const recorded = await prisma.reclaimInvite.update({
+    where: { id: invite.id },
+    data: { emailStatus: emailResult.status },
+  });
+
   logger.info('Reclaim: invite issued', {
     inviteId: invite.id,
     tier: invite.tier,
     resend: existingInvite !== null,
     referred: invite.invitedByUserId !== null,
+    emailStatus: emailResult.status,
   });
 
-  return { invite, emailStatus: emailResult.status, expiresAt };
+  return { invite: recorded, emailStatus: emailResult.status, expiresAt };
 }
 
 /**
@@ -201,13 +217,20 @@ export interface InviteListItem {
   status: 'pending' | 'redeemed' | 'revoked';
   invitedByName: string | null;
   redeemedByName: string | null;
+  /** The group link this was claimed through (F11), or null when Rashmir typed the address. */
+  viaLinkLabel: string | null;
+  /** What happened to the invitation email: `sent | failed | disabled`, or null if not recorded. */
+  emailStatus: string | null;
   redeemedAt: string | null;
   createdAt: string;
 }
 
 /**
- * Every invite, newest first, with both user names resolved in **one** extra query (repo rule: a list
- * endpoint returns everything the table renders; never a fetch per row).
+ * Every invite, newest first, with both user names and any group-link label resolved in **two** extra
+ * queries (repo rule: a list endpoint returns everything the table renders; never a fetch per row).
+ *
+ * Two rather than one because they are unrelated lookups against different tables — still constant in
+ * the number of invites, which is the property the rule is actually about.
  */
 export async function listInvites(): Promise<InviteListItem[]> {
   const invites = await prisma.reclaimInvite.findMany({ orderBy: { createdAt: 'desc' } });
@@ -219,14 +242,26 @@ export async function listInvites(): Promise<InviteListItem[]> {
       )
     ),
   ];
-  const users =
+  const linkIds = [
+    ...new Set(invites.map((i) => i.viaLinkId).filter((id): id is string => id !== null)),
+  ];
+
+  const [users, links] = await Promise.all([
     userIds.length === 0
       ? []
-      : await prisma.user.findMany({
+      : prisma.user.findMany({
           where: { id: { in: userIds } },
           select: { id: true, name: true },
-        });
+        }),
+    linkIds.length === 0
+      ? []
+      : prisma.reclaimInviteLink.findMany({
+          where: { id: { in: linkIds } },
+          select: { id: true, label: true },
+        }),
+  ]);
   const nameById = new Map(users.map((u) => [u.id, u.name]));
+  const labelById = new Map(links.map((l) => [l.id, l.label]));
 
   return invites.map((invite) => ({
     id: invite.id,
@@ -238,6 +273,8 @@ export async function listInvites(): Promise<InviteListItem[]> {
       invite.invitedByUserId === null ? null : (nameById.get(invite.invitedByUserId) ?? null),
     redeemedByName:
       invite.redeemedByUserId === null ? null : (nameById.get(invite.redeemedByUserId) ?? null),
+    viaLinkLabel: invite.viaLinkId === null ? null : (labelById.get(invite.viaLinkId) ?? null),
+    emailStatus: invite.emailStatus,
     redeemedAt: invite.redeemedAt?.toISOString() ?? null,
     createdAt: invite.createdAt.toISOString(),
   }));

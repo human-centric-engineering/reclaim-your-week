@@ -72,8 +72,8 @@ export default function TermsPage() {
 
       <Clause title="Who this is between">
         <p>
-          You, and {BRAND.legalName}, which operates Reclaim Your Week on behalf of Rashmir
-          Balasubramaniam&rsquo;s coaching practice.
+          You, and {BRAND.legalName} — Rashmir Balasubramaniam&rsquo;s company, which operates
+          Reclaim Your Week and holds the copyright in the method behind it.
         </p>
       </Clause>
 
