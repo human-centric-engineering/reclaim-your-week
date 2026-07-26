@@ -180,6 +180,25 @@ export const reclaimConfigSchema = z.object({
   openSignup: z.boolean().default(false),
 
   /**
+   * F11 — **group invite links**: the defaults a new link is minted with, and the ceiling it may
+   * never exceed.
+   *
+   * Coach-editable for the same reason the client window is: how many people are in the room, and
+   * how long a link should stay live afterwards, are facts about how Rashmir runs a session and not
+   * decisions an engineer should be re-deploying for.
+   *
+   * The ceiling is the one that is doing safety work rather than convenience work. A link is a bearer
+   * capability — whoever holds the URL can claim a standard-tier audit — so `joinLinkMaxClaims`
+   * bounds the blast radius of a link that gets forwarded, screenshotted, or posted somewhere it was
+   * never meant to go. It is deliberately a *ceiling on the form*, not a suggestion: the mint path
+   * refuses a larger number rather than clamping to it, because a silently reduced cap is how you end
+   * up with a room of thirty people where ten can get in.
+   */
+  joinLinkDefaultMaxClaims: z.number().int().min(1).max(500).default(10),
+  joinLinkDefaultDays: z.number().int().min(1).max(90).default(7),
+  joinLinkMaxClaims: z.number().int().min(1).max(500).default(50),
+
+  /**
    * F8 t-4 — the version of terms + privacy a leader must have accepted before starting an audit.
    * Bumping this string requires everyone to accept again, which is the point: consent is to a
    * *version*. The clauses themselves are Rashmir's to supply (plan.md open item 7); this default is a

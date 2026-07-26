@@ -51,6 +51,7 @@
     "prepare": "husky",
     "leaf:content-diff": "tsx scripts/content-source/check.ts",
     "smoke:reclaim-access": "tsx --env-file=.env.local scripts/smoke/reclaim-access.ts",
+    "smoke:reclaim-join": "tsx --env-file=.env.local scripts/smoke/reclaim-join.ts",
     "nudges:tick": "tsx --env-file=.env.local scripts/nudges/tick.ts"
   },
   "repository": {
@@ -125,6 +126,7 @@
     "pdf-parse": "^2.4.5",
     "pg": "^8.22.0",
     "prisma": "^7.8.0",
+    "qrcode": "^1.5.4",
     "react": "^19.2.7",
     "react-day-picker": "^10.0.1",
     "react-dom": "^19.2.7",
@@ -161,6 +163,7 @@
     "@types/node": "^26.1.0",
     "@types/pdf-parse": "^1.1.5",
     "@types/pg": "^8.20.0",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.2.0",

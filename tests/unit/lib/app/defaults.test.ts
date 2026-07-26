@@ -36,12 +36,26 @@ afterEach(() => {
 });
 
 describe('lib/app/ bootstrap defaults are no-ops', () => {
-  it('registerAppRateLimits registers no tiers or rules by default', () => {
-    // Act — run the real (empty) hook
+  it('registerAppRateLimits registers exactly the leaf’s own public-claim rule', () => {
+    // Act — run the real hook. No longer empty: F11 registers the cap for the public group-link
+    // claim here, which is what the reserved seam is for (Sunrise ships it empty; the LEAF fills it),
+    // and the only place a leaf may add one — `lib/security/**` is core.
     registerAppRateLimits();
 
-    // Assert — no app rules → the effective policy is the base policy by identity
-    expect(getEffectiveRateLimitPolicy()).toBe(RATE_LIMIT_POLICY);
+    // Assert — the policy is no longer the base by identity, and what was added is ours and bounded.
+    const effective = getEffectiveRateLimitPolicy();
+    expect(effective).not.toBe(RATE_LIMIT_POLICY);
+
+    const appRules = effective.filter((rule) => !RATE_LIMIT_POLICY.includes(rule));
+    // The catch-all is appended alongside app rules, so exclude it before counting ours.
+    const ours = appRules.filter((rule) => rule.tier === 'reclaim-join');
+    expect(ours).toHaveLength(1);
+    // Keyed on IP because the claimant has no account yet, by definition, and scoped to the one
+    // public path. A broader matcher here would silently re-cap authenticated leaf routes.
+    expect(ours[0]?.key).toBe('ip');
+    expect(ours[0]?.match).toBeInstanceOf(RegExp);
+    expect((ours[0]?.match as RegExp).test('/api/v1/app/reclaim/join/abc')).toBe(true);
+    expect((ours[0]?.match as RegExp).test('/api/v1/app/reclaim/invites')).toBe(false);
   });
 
   it('initAppCapabilities is a no-op by default', () => {

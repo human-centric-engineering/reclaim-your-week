@@ -243,6 +243,7 @@ export function InviteManager() {
                   <th className="px-4 py-2.5 font-medium">Tier</th>
                   <th className="px-4 py-2.5 font-medium">Status</th>
                   <th className="px-4 py-2.5 font-medium">Referred by</th>
+                  <th className="px-4 py-2.5 font-medium">Via</th>
                   <th className="px-4 py-2.5 font-medium">Redeemed</th>
                   <th className="sr-only px-4 py-2.5 font-medium">Actions</th>
                 </tr>
@@ -261,6 +262,10 @@ export function InviteManager() {
                     </td>
                     <td className="text-muted-foreground px-4 py-2.5">
                       {invite.invitedByName ?? '—'}
+                    </td>
+                    {/* Which group link this was claimed through. A dash means she typed the address. */}
+                    <td className="text-muted-foreground px-4 py-2.5">
+                      {invite.viaLinkLabel ?? '—'}
                     </td>
                     <td className="text-muted-foreground px-4 py-2.5">
                       {invite.redeemedByName ?? '—'}

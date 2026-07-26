@@ -82,6 +82,9 @@ const invite = (over: Record<string, unknown> = {}) => ({
   redeemedByUserId: null,
   redeemedAt: null,
   revokedAt: null,
+  // F11: null here is the ordinary case — an invite Rashmir typed rather than one claimed from a
+  // group link. `invite-links.test.ts` covers the populated side.
+  viaLinkId: null,
   createdAt: new Date('2026-07-01T00:00:00Z'),
   ...over,
 });

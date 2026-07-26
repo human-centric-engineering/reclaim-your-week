@@ -144,12 +144,79 @@ model ReclaimInvite {
   /// invite resolves to nothing at the entitlement gate.
   revokedAt DateTime?
 
+  /// Which group link this invite was claimed through (F11), or null for one she typed by hand.
+  ///
+  /// Not just reporting: the claim path reads it to recognise a second submission from the same
+  /// address through the same link, so a double-tap on a phone costs one seat rather than two.
+  ///
+  /// A plain column with no FK, for the reason `ReclaimGrant.sourceInviteId` gives — the link is
+  /// retained config and the invite is retained audit, so a cascade in either direction would be
+  /// wrong, and provenance only ever reads one way.
+  viaLinkId String?
+
   createdAt DateTime @default(now())
 
   @@index([redeemedByUserId])
   @@index([invitedByUserId])
   @@index([email])
+  @@index([viaLinkId])
   @@map("app_reclaim_invite")
+}
+
+/// A shareable group invite link (F11) — one URL, printed or shown as a QR code, that a room full of
+/// people can claim a standard-tier invitation from.
+///
+/// **Why this exists at all.** Sunrise's invitation token is bound to ONE email, stored as a hash,
+/// and DELETED on acceptance (`/api/auth/accept-invite`) — the first scan would kill it for everyone
+/// else. So this is a leaf-owned bearer capability that sits in FRONT of that flow: it proves
+/// "Rashmir authorised this person at this tier", and then the ordinary `issueInvite()` path runs
+/// unchanged. Nothing downstream (the grant ledger, the anti-escalation check in `grants.ts`, the
+/// entitlement gate) learns that group links exist.
+///
+/// **`token` is PLAINTEXT here, unlike `ReclaimInvite.token`, and that is deliberate.** An invite
+/// token is a secret addressed to one person, so only its hash is ever stored. A link token is a
+/// bearer capability printed on a slide: Rashmir has to be able to reopen this page next month and
+/// reprint the SAME QR code, which a hash makes impossible. `ReclaimShare` stores its public token
+/// the same way for the same reason.
+///
+/// **Bounded by construction.** `maxClaims` and `expiresAt` are both required — a link with neither
+/// is an open-signup door with extra steps, and `Module.config.openSignup` already provides that more
+/// honestly. Retained config → `createdByUserId` is `SET NULL`.
+model ReclaimInviteLink {
+  id    String @id @default(cuid())
+  token String @unique
+
+  /// What this link is for, in Rashmir's words ("Leadership offsite, March"). Shown on the admin
+  /// table and against every invite claimed through it, so a row in the ledger says where it came
+  /// from without her having to remember which token was which.
+  label String
+
+  /// Always `standard` in v1. Stored rather than assumed so widening it later is a data change:
+  /// `client` is the paid twelve-month entitlement and must never be mintable from a forwarded
+  /// screenshot, and `referral` is meaningless here (its unlock is owed to a specific referrer).
+  tier String @default("standard")
+
+  /// The seat count, and how many have been taken. `claimCount` is only ever moved by a conditional
+  /// UPDATE that carries `claimCount < maxClaims` in its WHERE — a read-then-write would let two
+  /// simultaneous scans both take the last seat.
+  maxClaims  Int
+  claimCount Int @default(0)
+
+  /// When the link stops working. Independent of the 7-day expiry on each invitation it issues: a
+  /// claim on this link's last day still gets a full fresh 7 days to accept.
+  expiresAt DateTime
+
+  /// Set when Rashmir withdraws the link. Retained (audit), and it does NOT revoke the invitations
+  /// already claimed through it — those people accepted in good faith.
+  revokedAt DateTime?
+
+  /// Who minted it. FK to User.id — ON DELETE SET NULL (retained config; the link outlives them).
+  createdByUserId String?
+
+  createdAt DateTime @default(now())
+
+  @@index([createdByUserId])
+  @@map("app_reclaim_invite_link")
 }
 
 /// A user's display label for a canonical bucket (F6 t-4). The canonical `bucketSlug` is NEVER

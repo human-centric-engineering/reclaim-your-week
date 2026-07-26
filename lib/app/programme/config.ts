@@ -38,6 +38,13 @@ export interface ReclaimAccessConfig {
   policyVersion: string;
 }
 
+/** The subset the group-invite-link surfaces need (F11): what to default a link to, and the ceiling. */
+export interface ReclaimJoinConfig {
+  joinLinkDefaultMaxClaims: number;
+  joinLinkDefaultDays: number;
+  joinLinkMaxClaims: number;
+}
+
 /** The subset the recent-audit shortcut needs (F9 t-2): the confirm line and its window. */
 export interface ReclaimShortcutConfig {
   recentAuditConfirm: string;
@@ -87,6 +94,21 @@ export async function readReclaimAccessConfig(): Promise<ReclaimAccessConfig> {
     clientMustStartWithinDays: config.clientMustStartWithinDays,
     openSignup: config.openSignup,
     policyVersion: config.policyVersion,
+  };
+}
+
+/**
+ * Read the group-invite-link policy (F11): the mint-form defaults and the seat ceiling.
+ *
+ * Read on the admin form (to prefill) and again on the server at mint (to refuse). Both, deliberately
+ * — a ceiling enforced only where the form renders it is not a ceiling.
+ */
+export async function readReclaimJoinConfig(): Promise<ReclaimJoinConfig> {
+  const config = await readReclaimConfig();
+  return {
+    joinLinkDefaultMaxClaims: config.joinLinkDefaultMaxClaims,
+    joinLinkDefaultDays: config.joinLinkDefaultDays,
+    joinLinkMaxClaims: config.joinLinkMaxClaims,
   };
 }
 

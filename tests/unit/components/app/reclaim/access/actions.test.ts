@@ -43,6 +43,8 @@ const inviteRow = {
   status: 'pending' as const,
   invitedByName: null,
   redeemedByName: null,
+  // F11: null is an invite Rashmir typed. A populated label means it was claimed from a group link.
+  viaLinkLabel: null,
   redeemedAt: null,
   createdAt: '2026-07-01T00:00:00.000Z',
 };

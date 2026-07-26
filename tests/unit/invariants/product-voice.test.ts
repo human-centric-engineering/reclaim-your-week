@@ -42,6 +42,10 @@ const RECLAIM_COMPONENTS = 'components/app/reclaim';
  * wherever it happens to live.
  */
 const COACH_VOICED = [
+  // F11. The claim page for a group invite link is the FIRST thing a leader ever reads of this
+  // product — before an account, before consent, standing in a room with a phone. If any screen is
+  // coach voice, it is this one.
+  'components/app/reclaim/access/join-form.tsx',
   'components/app/reclaim/begin-audit.tsx',
   'components/app/reclaim/calendar/calendar-branch.tsx',
   'components/app/reclaim/calendar/calendar-entry.tsx',

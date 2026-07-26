@@ -201,13 +201,18 @@ export interface InviteListItem {
   status: 'pending' | 'redeemed' | 'revoked';
   invitedByName: string | null;
   redeemedByName: string | null;
+  /** The group link this was claimed through (F11), or null when Rashmir typed the address. */
+  viaLinkLabel: string | null;
   redeemedAt: string | null;
   createdAt: string;
 }
 
 /**
- * Every invite, newest first, with both user names resolved in **one** extra query (repo rule: a list
- * endpoint returns everything the table renders; never a fetch per row).
+ * Every invite, newest first, with both user names and any group-link label resolved in **two** extra
+ * queries (repo rule: a list endpoint returns everything the table renders; never a fetch per row).
+ *
+ * Two rather than one because they are unrelated lookups against different tables — still constant in
+ * the number of invites, which is the property the rule is actually about.
  */
 export async function listInvites(): Promise<InviteListItem[]> {
   const invites = await prisma.reclaimInvite.findMany({ orderBy: { createdAt: 'desc' } });
@@ -219,14 +224,26 @@ export async function listInvites(): Promise<InviteListItem[]> {
       )
     ),
   ];
-  const users =
+  const linkIds = [
+    ...new Set(invites.map((i) => i.viaLinkId).filter((id): id is string => id !== null)),
+  ];
+
+  const [users, links] = await Promise.all([
     userIds.length === 0
       ? []
-      : await prisma.user.findMany({
+      : prisma.user.findMany({
           where: { id: { in: userIds } },
           select: { id: true, name: true },
-        });
+        }),
+    linkIds.length === 0
+      ? []
+      : prisma.reclaimInviteLink.findMany({
+          where: { id: { in: linkIds } },
+          select: { id: true, label: true },
+        }),
+  ]);
   const nameById = new Map(users.map((u) => [u.id, u.name]));
+  const labelById = new Map(links.map((l) => [l.id, l.label]));
 
   return invites.map((invite) => ({
     id: invite.id,
@@ -238,6 +255,7 @@ export async function listInvites(): Promise<InviteListItem[]> {
       invite.invitedByUserId === null ? null : (nameById.get(invite.invitedByUserId) ?? null),
     redeemedByName:
       invite.redeemedByUserId === null ? null : (nameById.get(invite.redeemedByUserId) ?? null),
+    viaLinkLabel: invite.viaLinkId === null ? null : (labelById.get(invite.viaLinkId) ?? null),
     redeemedAt: invite.redeemedAt?.toISOString() ?? null,
     createdAt: invite.createdAt.toISOString(),
   }));

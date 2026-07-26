@@ -81,17 +81,27 @@ describe('rate-limit auto-wire (lib/app/rate-limit.ts → middleware realm)', ()
     expect(resolveRateLimitTier('wiretest')).toBeDefined();
   });
 
-  it('default lib/app/rate-limit is a no-op (effective policy is the base policy by identity)', async () => {
-    // Arrange — no doMock: the real (empty) registerAppRateLimits runs
+  it('the real lib/app/rate-limit reaches the middleware realm (F11’s public claim cap)', async () => {
+    // Arrange — no doMock: the REAL registerAppRateLimits runs, which is the point. The sibling test
+    // above proves the wire with a synthetic rule; this one proves the wire carries the rule this app
+    // actually depends on, in the realm that enforces it.
     vi.resetModules();
 
     // Act
     await import('@/lib/security/rate-limit-middleware');
-    const { getEffectiveRateLimitPolicy, RATE_LIMIT_POLICY } =
-      await import('@/lib/security/rate-limit-policy');
+    const { getEffectiveRateLimitPolicy } = await import('@/lib/security/rate-limit-policy');
+    const { resolveRateLimitTier } = await import('@/lib/security/rate-limit');
 
-    // Assert — no app rules registered → identity return (no allocation, no extra rule)
-    expect(getEffectiveRateLimitPolicy()).toBe(RATE_LIMIT_POLICY);
+    // Assert — the claim path resolves to the leaf's own tier rather than falling through to the
+    // catch-all. If the middleware stopped auto-calling the hook, the public endpoint would silently
+    // inherit the 100/min session-user cap it cannot key on, and nobody would notice until it was
+    // being abused.
+    const rule = getEffectiveRateLimitPolicy().find(
+      (r) => r.match instanceof RegExp && r.match.test('/api/v1/app/reclaim/join/abc')
+    );
+    expect(rule?.tier).toBe('reclaim-join');
+    expect(rule?.key).toBe('ip');
+    expect(resolveRateLimitTier('reclaim-join')).toBeDefined();
   });
 
   it('aborts boot when an app rule references an unregistered tier (finding #6 integrity check)', async () => {
