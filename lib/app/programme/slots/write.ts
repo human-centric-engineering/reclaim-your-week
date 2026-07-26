@@ -29,7 +29,7 @@ import {
   SLOT_SOURCE_TYPE,
   type SlotSourceType,
 } from '@/lib/framework/data-slots/vocabulary';
-import { RECLAIM_MODULE_SLUG } from '@/lib/app/programme/module';
+import { RECLAIM_MODULE_SLUG } from '@/lib/app/programme/identity';
 import { reclaimSlotDefinitions } from '@/lib/app/programme/slots';
 
 /** Slug → its declared sensitivity + dataType, for the masking lookup. Built once at module load. */
@@ -93,4 +93,49 @@ export function saveAnswer(input: SaveAnswerInput): ReturnType<typeof appendSlot
       nodeKey: input.nodeKey,
     },
   });
+}
+
+/**
+ * Whether an error is a unique-constraint violation, recognised by shape rather than by class.
+ *
+ * `lib/app/**` may not import Prisma at runtime — the extension surface stays storage-agnostic — so
+ * an `instanceof PrismaClientKnownRequestError` check is not available here. Reading the `code`
+ * property off an unknown error is the storage-agnostic equivalent, and P2002 is a stable published
+ * identifier rather than an internal detail.
+ */
+function isUniqueViolation(err: unknown): boolean {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    'code' in err &&
+    (err as { code?: unknown }).code === 'P2002'
+  );
+}
+
+/**
+ * `saveAnswer`, retrying once on a concurrent-append collision.
+ *
+ * `appendSlotValue` computes the next version by reading the current head and inserting
+ * `head.version + 1`; two writers racing on one slug both compute the same number and the loser
+ * violates `@@unique([userId, slotSlug, version])` (P2002). The engine deliberately does not retry —
+ * its own note says a caller expecting concurrent same-slug writes should catch and re-run — and
+ * until now this app had only one writer per slug at a time, so `saveAnswer` did not need to.
+ *
+ * Conversational capture ends that. The coach can record a slug in the same moment the leader saves
+ * the form panel in hybrid mode, or a second tab is open, and the loser surfaced as a 500 in the
+ * middle of an audit. The re-run reads the now-committed head and takes the next version, so the
+ * later write lands as a normal new version rather than failing.
+ *
+ * One retry only. A second collision on the same slug means sustained contention on a single
+ * leader's single answer, which is not a race worth papering over, so it propagates.
+ */
+export async function saveAnswerWithRetry(
+  input: SaveAnswerInput
+): ReturnType<typeof appendSlotValue> {
+  try {
+    return await saveAnswer(input);
+  } catch (err) {
+    if (isUniqueViolation(err)) return saveAnswer(input);
+    throw err;
+  }
 }
