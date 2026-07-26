@@ -92,16 +92,20 @@ describe('lib/app/ bootstrap defaults are no-ops', () => {
     //
     // What still earns an assertion is that nothing here points somewhere that does not exist: a
     // nav item to a 404 is the kind of thing nobody notices until a real visitor does.
+    // Only the HEADER is overridden — it gains Privacy, because for an invite-only audit the notice
+    // is part of the pitch rather than fine print. Both footer clusters stay `null`: the platform
+    // defaults already point at the pages we have, and overriding with an identical list would read
+    // as intent while carrying none.
+    expect(footerNavItems).toBeNull();
+    expect(footerLegalItems).toBeNull();
+
     const routes = new Set(['/', '/about', '/privacy', '/terms', '/contact']);
-    for (const list of [publicNavItems, footerNavItems, footerLegalItems]) {
-      expect(list, 'the leaf sets all three clusters explicitly').not.toBeNull();
-      for (const item of list ?? []) {
-        expect(routes.has(item.href), `${item.href} is not a page this app has`).toBe(true);
-        expect(item.label.length).toBeGreaterThan(0);
-      }
+    expect(publicNavItems).not.toBeNull();
+    for (const item of publicNavItems ?? []) {
+      expect(routes.has(item.href), `${item.href} is not a page this app has`).toBe(true);
+      expect(item.label.length).toBeGreaterThan(0);
     }
-    // The legal cluster must carry both documents the consent gate depends on.
-    expect(footerLegalItems?.map((i) => i.href).sort()).toEqual(['/privacy', '/terms']);
+    expect(publicNavItems?.map((i) => i.href)).toContain('/privacy');
   });
 
   it('overrides only the invitation email, leaving every other kind on the platform template', () => {

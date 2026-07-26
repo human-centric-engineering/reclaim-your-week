@@ -53,9 +53,15 @@ parked with a reason. Nothing leaves by being forgotten.
 | P15 | The parked epics                                   | —       | parked            | scope     | future epics                |
 | P16 | A provider key for CI, or a nightly smoke run      | —       | ready ▲           | gate      | P3's remainder; a cost call |
 
-**Doing P1–P3 first was deliberate.** They are the three where the repository currently tells a
-reader something untrue, or where a claim the product makes to users is not gated by anything. Every
-other item is honest about its own state; these three were not.
+**Doing P1–P3 first was deliberate.** They are the three where the repository told a reader something
+untrue, or where a claim the product makes to users was not gated by anything. Every other item was
+honest about its own state; those three were not.
+
+**Everything the team owns is now shipped.** P1–P3, P5–P11 and P4's build all landed across two
+branches on 2026-07-26. What remains is the four items nobody here can close alone: **P12** (the
+eleven things Rashmir owes), **P16** (a cost decision about a provider key in CI), and the two parked
+scope items — plus **P4's copy sign-off**, since the pages exist and the words in them are a draft
+until she reads them.
 
 ---
 
@@ -163,20 +169,52 @@ than something to decide unilaterally here.
 
 ## The rest of the board, in brief
 
-### P4 · The public surface is still the starter template
+### P4 · The public surface — **built; the words need Rashmir**
 
-`app/(public)/page.tsx`, `about/`, `terms/` and `privacy/` are stock Sunrise copy — the landing page
-still asks "Is Sunrise really free?". The sharp end is **`privacy/page.tsx`, which is documented
-in-file as a placeholder**, because that is the page the consent gate links leaders to, and F10 t-3's
-anonymised aggregate rests its lawful basis on consent recorded against `policyVersion: 'draft-1'`.
-Open item 4 undersells this as "page copy"; it is the only user-facing surface no feature ever owned.
-Blocked on Rashmir (items 3, 4, 7). P1's signup-CTA finding lands here.
+_Owner:_ John · _Status:_ **shipped** (copy sign-off outstanding) · _Class:_ launch
 
-### P5 · The quarterly nudge has no scheduler
+All four pages were stock Sunrise copy — the landing page asked "Is Sunrise really free?" and
+`privacy/page.tsx` was documented in-file as a placeholder, which mattered because it is the page the
+consent gate links leaders to and F10 t-3's aggregate rests its lawful basis on consent recorded
+against it.
 
-`POST /api/v1/app/reclaim/nudges/tick` is built for a daily external cron, matching the platform's own
-pattern. Nothing schedules it, so F9 t-3's whole mechanism never fires until someone wires it at
-deploy. A deployment decision (platform cron vs. a workflow), not a code change.
+**Rebuilt around three constraints that rule out almost everything a template landing page does:**
+I-frame (not a productivity exercise, so nothing sells time saved), I16 and Brief §2 (no pressure on
+next steps _anywhere_, so no trial countdown, no social-proof wall, and no waiting-list form — which
+is a next step under pressure by another name), and Brief §7 (calm, generous space, no stock photos,
+no gradients — so the language is typographic).
+
+The real decision was invite-only: the template's two "Get Started" buttons were the only routes to
+`/signup` in the app (P1). The primary action is now **Sign in**, and everyone else is told where
+invitations come from. That is not a gate — sunrise#463 is still open — but a page inviting you to
+sign up for something you cannot use is worse than one that says how you get in.
+
+Privacy and terms are written **against the implementation**: the in-memory calendar path, the model
+provider, the two-step access to the sensitive prose, the aggregate's three constraints, and the
+retention asymmetry where a consent record deliberately outlives the account. Both carry a visible
+note that the wording is a draft.
+
+**What is still owed:** Rashmir's sign-off on the copy, her real privacy and IP clauses (open item 7 —
+after which bump `policyVersion`, which re-asks everyone), and logos (open item 3). Two assumptions
+were made and are cheap to reverse — see _Assumptions taken_ at the foot of this file.
+
+### P5 · The quarterly nudge — **`npm run nudges:tick`, still to be scheduled at deploy**
+
+_Owner:_ John · _Status:_ **shipped** (needs wiring at deploy) · _Class:_ launch
+
+F9 t-3's route was built for an external cron and never got one, so the mechanism has never fired.
+
+Wiring it turned out to be a choice. The HTTP route is admin-guarded and Vercel Cron issues **GET**, so
+using it would mean a mutating GET on a path that sends mail — a far worse trade than the one the
+unsubscribe page makes (subtractive and idempotent; this is neither). Adding a `CRON_SECRET` beside
+the platform's audited guard is what F9's own route comment declined.
+
+So: **a command**, talking to the database the way the seeds and smokes do. No new auth surface, no
+new public endpoint, runs on any host with a scheduler that can start a process. The HTTP route stays
+for manual triggering and serverless hosts; both share `runNudgeTick`.
+
+**Still to do at deploy:** actually schedule it. [[operations]] carries the cron line and the
+alternatives.
 
 ### P6 · Doc drift: stale cross-references
 
@@ -208,30 +246,48 @@ their own file, and **the plan's explicit pre-flight check — re-verify that `p
 populated on every historical slot version — has no recorded outcome.** The nine gate findings are in
 `plan.md`'s work log but not in the feature's own plan.
 
-### P9 · Operator-side trends over the success measures
+### P9 · Operator-side trends — **shipped**
 
-Deferred in a circle: `ryw-admin.md` says trends over the success measures are "F9's history reads";
-`ryw-repeat.md` says cross-run analytics for Rashmir are F10's and "per-leader trends are the
-leader's". Both features have shipped and `admin/measures.ts` has no time series. Genuinely on the
-floor — low severity (Brief §1 asks for the measures, not their trend), but nobody owns it and it is
-not parked.
+_Owner:_ John · _Status:_ **shipped** · _Class:_ feature
 
-### P10 · Is I4's non-persistence contractual or incidental?
+Deferred in a circle: each of F9 and F10 handed it to the other, both shipped, nobody owned it. The
+measures were point-in-time only — the one shape that cannot answer what Brief §1 asks, because "do
+people come back" is a direction and one number taken today cannot say whether it is moving.
 
-`ryw-calendar.md` asked t-2 to note whether the categorise step's non-persistence is a **contract** or
-merely current behaviour of `runStructuredCompletion`, and to file a [[daybreak-asks]] row if the
-latter. No row exists and no answer was recorded. I4 is guarded downstream by
-`tests/unit/invariants/calendar-privacy.test.ts` and the calendar smoke, so the claim holds today —
-but an upstream refactor could break it silently, which is exactly the question that was asked and
-not answered.
+Eight quarters: completions, how many were somebody's second or later, referrals sent. **Counts, not
+rates** — a quarterly rate over eleven leaders moves several points when one person does one thing,
+which looks like a trend and is not. A return is counted in the quarter the leader _came back_, which
+depends on ordering each leader's completions in time, which Prisma does not guarantee; there is a
+test with the rows deliberately arriving in the wrong order.
 
-### P11 · The upstream-sync playbook
+### P10 · I4's non-persistence — **answered: incidental**
 
-**17 open asks: 8 Daybreak, 9 Sunrise. All filed.** Four carry actual upstream code that will conflict
-on the next `git merge upstream/main` — daybreak#156 (`data-slots/values.ts`), daybreak#160
-(`modules/registry.ts`), sunrise#462 (two `lib/orchestration/**` files). The ledger has a
-delegate-when-it-lands action per row; what it does not have is a **single ordered procedure** for a
-sync, which is the thing someone will want at the moment they least want to reconstruct it.
+_Owner:_ John · _Status:_ **shipped** · _Class:_ risk
+
+F5 asked whether `runStructuredCompletion`'s non-persistence is a contract or merely current
+behaviour, and to file upstream if the latter. Nobody recorded an answer for five features.
+
+**It is incidental.** The function imports `calculateCost` and no database client, so nothing is
+written — but its docstring commits only to being a "neutral LLM utility — no evaluation coupling, no
+Next.js imports", which is about layering, not writes. Upstream prompt logging would be consistent
+with everything that file says about itself and would break a **public** privacy claim without
+touching a line of ours.
+
+A canary in `calendar-privacy.test.ts` now fails on the next PR if that file acquires a route to the
+database, plus an assertion that the calendar still routes through it so the canary keeps guarding the
+only door. Filed as sunrise#472 for the guarantee to be made contractual where it belongs.
+
+### P11 · The upstream-sync playbook — **shipped**
+
+_Owner:_ John · _Status:_ **shipped** · _Class:_ upstream
+
+**18 open asks: 8 Daybreak, 10 Sunrise. All filed.** [[upstream-sync]] is now the ordered procedure.
+
+The fact that made it urgent rather than tidy: four rows mean we carry **modified copies of upstream
+files** — edits inside core's tree, not workarounds beside it. Two fail _silently_ if resolved by
+reflex, because taking upstream's version of the `globalThis` registry fixes before upstream has
+actually fixed them leaves the coach answering while quietly losing its tools and its module context.
+`smoke:reclaim` is the only thing that notices.
 
 ### P12 · The eleven items Rashmir owes
 
@@ -251,6 +307,11 @@ which it previously was not.
 F10 t-5 shipped the admin-side export. `ryw-admin.md` named a self-service SAR flow as out of scope —
 "the Brief does not ask for one, and building a user-facing SAR flow is its own feature". Recorded
 here so it is parked rather than merely absent.
+
+### P12–P15 · Unchanged
+
+The eleven items Rashmir owes, and the three parked scope items, are as described below. P12 is the
+critical path to launch now that the build is not.
 
 ### P16 · A provider key for CI, or a nightly smoke run
 
@@ -297,3 +358,21 @@ The one systemic near-miss is worth naming, since it is the reason P8's missing 
 matters: **`getSlotHistory` was built in F1 and had no consumer for nine features**, and in that gap a
 plausible-looking read shipped a bug that silently emptied public share links. The lesson is in
 [[planning-retro]] §B. Anything built early and consumed later is an open item until it is consumed.
+
+---
+
+## Assumptions taken
+
+Choices made without asking, because the work was worth more than the wait. **Each is cheap to
+reverse**, and each is here so reversing it is a decision rather than an archaeology exercise.
+
+| #   | Assumption                                                                                                                                                                                                                                        | Where it lives                  | Reversing it                                                                                     |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------ |
+| A1  | **The nine area _names_ may appear publicly**, the diagnostic prose may not. The names make the landing page substantive; the descriptions are the IP (I11) and stay inside the audit.                                                            | `app/(public)/page.tsx`         | Delete the `Areas` component. The page still reads.                                              |
+| A2  | **The public pages do not offer signup.** v1 is invite-only, so the primary action is Sign in and there is no waiting-list form (I16 — a waiting list is a next step under pressure).                                                             | landing + about                 | Add a CTA when open signup arrives; `Module.config.openSignup` is the switch that makes it true. |
+| A3  | **Governing law is England and Wales.** Inferred from the client being a UK entity; nobody stated it.                                                                                                                                             | `app/(public)/terms/page.tsx`   | One line.                                                                                        |
+| A4  | **Privacy and terms are drafts written against the implementation**, carrying a visible note saying so, rather than leaving a page that says "Placeholder". Accuracy about the system is not the same as legal sufficiency.                       | privacy + terms                 | Replace the prose; bump `policyVersion`, which re-asks everyone.                                 |
+| A5  | **The model provider is named as Anthropic** in the privacy notice. True of the build; a provider swap makes it false.                                                                                                                            | `app/(public)/privacy/page.tsx` | One sentence, but it is a factual claim — keep it true.                                          |
+| A6  | **The nudge cadence is 90 days, with a 200-day upper bound.** Brief §2 says "quarterly"; the upper bound is ours, so a dormant leader is not told their audit was "about three months ago" eighteen months later. Both are coach-editable config. | `Module.config`                 | Change the numbers; no deploy.                                                                   |
+| A7  | **The trend timeline reports counts, not rates.** At this cohort size a quarterly rate is noise wearing three significant figures.                                                                                                                | `admin/measures.ts`             | Compute rates in `buildTimeline`; the data supports either.                                      |
+| A8  | **`smoke:reclaim` and `smoke:reclaim-calendar` stay manual** rather than adding a provider key to CI. That is P16, a cost and secret decision.                                                                                                    | CI                              | P16.                                                                                             |

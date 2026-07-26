@@ -49,15 +49,16 @@ export const publicNavItems: PublicNavItem[] | null = [
   { href: '/contact', label: 'Contact' },
 ];
 
-/** Footer link cluster — the same shape, since there is not much surface to navigate. */
-export const footerNavItems: PublicNavItem[] | null = [
-  { href: '/', label: 'Home' },
-  { href: '/about', label: 'About' },
-  { href: '/contact', label: 'Contact' },
-];
-
-/** Footer legal cluster. The Cookie Preferences control renders regardless. */
-export const footerLegalItems: PublicNavItem[] | null = [
-  { href: '/privacy', label: 'Privacy' },
-  { href: '/terms', label: 'Terms' },
-];
+/**
+ * Footer clusters: **left on the platform defaults, deliberately.**
+ *
+ * The default link cluster is already Home / About / Contact, and the default legal cluster is
+ * already Privacy Policy / Terms of Service pointing at the two pages we have. Overriding either
+ * with an identical list would be a change that reads as intent and carries none — and the full
+ * legal names are the right call in a footer anyway, which is where people scan for them. The
+ * shorter "Privacy" belongs in the header, where the tone is quieter and the space is tighter.
+ *
+ * Only override a cluster that genuinely differs. `null` means "the platform's, which is correct".
+ */
+export const footerNavItems: PublicNavItem[] | null = null;
+export const footerLegalItems: PublicNavItem[] | null = null;
