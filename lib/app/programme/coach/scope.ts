@@ -17,8 +17,35 @@
  * prohibition. There is no argument for the model to get wrong.
  */
 
+import { encodeScope } from '@/lib/framework/shared/scope';
+import { RECLAIM_MODULE_SLUG } from '@/lib/app/programme/identity';
+
 /** The scope key carrying the audit run id. Leaf-owned; the framework ignores unknown keys. */
 export const RECLAIM_RUN_SCOPE_KEY = 'reclaimRunId';
+
+/** What the route knows and the model must not choose: the run, and the phase it is being run at. */
+export interface CoachScopeInput {
+  /** `ReclaimAuditRun.id`, verified as the caller's before this is built. */
+  runId: string;
+  /** The map node the leader is currently on, so a capture is stamped where it happened. */
+  nodeKey?: string;
+}
+
+/**
+ * Build the dispatch scope for a coach turn: the framework's two keys plus the leaf's run id.
+ *
+ * This is the write half of `readCoachScope`, and the only place a run id enters a conversation.
+ * It is a *route-side* function on purpose — a client cannot reach it, and the map it returns is
+ * threaded verbatim by the chat handler into `CapabilityContext.scope`, which never appears in the
+ * model's context. `encodeScope` owns `moduleSlug`/`nodeKey` so the framework's vocabulary stays in
+ * one place (`lib/framework/shared/scope.ts`).
+ */
+export function buildCoachScope(input: CoachScopeInput): Record<string, string> {
+  return {
+    ...encodeScope({ moduleSlug: RECLAIM_MODULE_SLUG, nodeKey: input.nodeKey }),
+    [RECLAIM_RUN_SCOPE_KEY]: input.runId,
+  };
+}
 
 /** What the coach capabilities need to know about their dispatch, read out of the scope carrier. */
 export interface ReclaimCoachScope {

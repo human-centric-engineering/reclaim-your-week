@@ -70,6 +70,10 @@ const COACH_VOICED = [
   'components/app/reclaim/calendar/calendar-upload.tsx',
   'components/app/reclaim/chart/reclaim-chart.tsx',
   'components/app/reclaim/coach-chat.tsx',
+  // The conversational phase surface. The panel speaks to the leader about their own answers ("Taken
+  // from what you said. Have we got it right?"), which is as much coach voice as a phase panel is.
+  'components/app/reclaim/coach/captured-panel.tsx',
+  'components/app/reclaim/coach/phase-conversation.tsx',
   'components/app/reclaim/consent-gate.tsx',
   'components/app/reclaim/phase-rail.tsx',
   'components/app/reclaim/phase/advance-controls.tsx',
@@ -94,6 +98,11 @@ const COACH_VOICED = [
   'lib/app/programme/runs/signposts.ts',
   // The categoriser's prompt, whose `reasoning` output renders to the leader in `calendar-review`.
   'lib/app/programme/calendar/categorise.ts',
+  // The per-turn instructions the coach reads. Not copy a leader sees, and in scope anyway: a model
+  // writes like the context it is given, so an em dash or a banned term here comes back out in the
+  // conversation. Rashmir's verbatim content reaches this file as imported constants, never as
+  // literal text, so the zero-tolerance rule can stay bare here too.
+  'lib/app/programme/coach/phase-context.ts',
   // The three emails the app authors. `welcome.tsx` is here because its absence had a cost; the other
   // two were already clean, which is luck rather than enforcement, and this is what ends the luck.
   'components/app/emails/invitation.tsx',

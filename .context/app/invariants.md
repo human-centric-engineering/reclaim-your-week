@@ -199,6 +199,15 @@ verbatim into every dispatch (`lib/orchestration/chat/types.ts:41-49`); the mode
 cannot influence it. So the hazard is removed by construction rather than by prohibition, and the
 capability that carries the run this way is safe to grant where `fill_slot` is not.
 
+**One route issues that scope, and it is a leaf route for a reason.** The framework's module-surface
+stream sends `{ moduleSlug }`, which is everything the framework knows and one key short of what the
+audit needs; a run id is a leaf concept it has no vocabulary for. So the conversation runs through
+`POST /api/v1/app/reclaim/runs/:runId/coach/stream`, which verifies the run is the caller's and in
+progress, reads the phase from the journey, and builds the map in `buildCoachScope`
+(`lib/app/programme/coach/scope.ts`). Both halves are server-derived: the client supplies the run in
+the path, where ownership is checked, and the model supplies nothing at all. A turn sent to the
+framework route instead carries no run and records nothing, which is the safe failure.
+
 **Was this loosened?** The original rule read "the agent reads; it does not write". It was written
 when the audit was captured entirely by forms and no conversational path existed. Making the phases
 conversational means the coach must record what it hears or the conversation captures nothing. What
@@ -328,6 +337,21 @@ senior leader. Above this is often a signal of under-delegation or difficulty le
 earlier identity as a practitioner" is a diagnostic in her voice. A cleaner version is a different
 product.
 
+### The coach reads her words from the config, and until the conversational surface it read nothing
+
+The agent's authored prose deliberately does **not** restate the frame or the nine areas — that is
+this invariant working, and its system instructions say the content "is supplied to you in context".
+It was not. The framework's module context injects the module's name, description and the user's slot
+values; `Module.config` reached no prompt, so the coach ran a nine-area audit without the nine areas.
+Nothing showed while the phases were forms, because the panels read the config directly and the coach
+was rendered nowhere.
+
+`buildCoachPhaseContext` supplies it now, phase by phase, read from the stored row so an operator's
+rewording reaches the conversation exactly as it reaches the screen. **The rule this creates: content
+reaches the coach as injected context read from `Module.config`, never as text written into the agent's
+prose fields.** A future session tempted to paste an area definition into `systemInstructions` to "help
+the model" would fork the single source of truth and slip past both hops of the chain above.
+
 ### The third hop is Rashmir's own, and it is not a violation (F10 t-4)
 
 Both hops above stop at the **code**. From F10 t-4, the words a leader actually reads come from
@@ -375,6 +399,18 @@ gap analysis. Implemented as a context contributor injecting the verbatim
 Brief §5 is explicit: "This is a data-flow requirement, not just prompt text." Do not implement it
 by asking the model to remember.
 
+**Register the contributor under the chat `contextType`, not the module slug.** For ten features this
+was registered under `'reclaim-audit'`, which is a conversation's `contextId`; contributors are keyed
+on `contextType`, which for a module surface is `'module'`. So the block was built correctly and
+never dispatched, and the test could not see it because it mocked the registry and asserted only the
+loader's output. The leaf now registers under `MODULE_CONTEXT_TYPE` and **delegates to the
+framework's `loadModuleContext` first**, because the registry replaces per type rather than composing:
+take the type without delegating and the module's name, description and fresh slots disappear from
+the prompt.
+
+**Test:** `tests/unit/lib/app/context-contributors.test.ts` asserts the registration key, that the
+framework's context is preserved, and that another module slug passes through untouched.
+
 ---
 
 ## I14 — Entitlement is enforced at run creation
@@ -400,6 +436,31 @@ Set `isActive: false` on the `AiConversation` when a run completes.
 the repeat-audit comparison reads its own history as new input.
 
 **Test:** `smoke:reclaim` asserts a fresh `conversationId` on the second run.
+
+---
+
+## I19 — The run owns its conversation
+
+`ReclaimAuditRun.conversationId` is set by the **coach stream route** with the id of the conversation
+that route's first turn opens (`app/api/v1/app/reclaim/runs/[runId]/coach/stream`). Write-once: the
+update is conditional on the column still being `null`, so a resumed run keeps its original
+attribution and two turns racing on the first message cannot disagree.
+
+**It used to be a guess, and the guess was never sound.** `linkRunConversation` looked up the
+leader's most-recently-updated active surface conversation and assumed it belonged to this run. That
+held only while the coach was rendered nowhere: a transcript left open by a previous audit, or opened
+from any other module surface entry, was equally eligible, and a leader who never spoke to the coach
+still had a conversation attributed to their run. Cost is logged per conversation and never per run,
+so the wrong link is a wrong cost line against a leader.
+
+Two things depend on the link being a fact rather than an inference: the admin cost-per-audit view
+(F10 t-1, Brief §8) and **resume** — the conversational surface reads the run's transcript back from
+this column, so a leader who reloads mid-phase meets a coach that remembers the last twenty minutes.
+
+**Test:** `smoke:reclaim-run` step 6a asserts the link is written, is not overwritten by a later
+conversation, and is read back by `loadCoachTurnTarget`;
+`tests/unit/app/api/v1/app/reclaim/coach-stream.route.test.ts` asserts the route resumes the run's own
+conversation rather than the resolver's most-recent guess.
 
 ---
 
@@ -484,25 +545,26 @@ auto-advance through a reflection the person is still sitting with.
 
 ## Quick reference
 
-| #           | Rule                                                                           |
-| ----------- | ------------------------------------------------------------------------------ |
-| I1          | Third-person attribution; never speaks as Rashmir                              |
-| I2          | Banned lexicon; no em dashes; no bullets in conversation                       |
-| I3          | Only `saveAnswer()` calls `appendSlotValue()`                                  |
-| I4          | Calendar: in-memory, `runStructuredCompletion` only, totals only               |
-| I5          | Never `special_category`                                                       |
-| I6          | Agent reads only; no `request_transition`, no `fill_slot`                      |
-| I7          | Canonical bucket slugs never change                                            |
-| I8          | Hours, never percentages                                                       |
-| I9          | Reflection enforced server-side, `422 REFLECTION_REQUIRED`                     |
-| I10         | Tier boundaries; never edit `lib/framework/**` or the bridges                  |
-| I11         | Content loaded verbatim from `sources/`, never paraphrased                     |
-| I12         | Chart and interpretation are separate beats                                    |
-| I13         | Refer-back is a data flow, not a prompt                                        |
-| I14         | Entitlement at run creation                                                    |
-| I15         | `isActive: false` on completion                                                |
-| I16         | The tool returns people to their own discernment; it reflects, does not decide |
-| I-frame     | Not a productivity exercise; an invitation to lead differently                 |
-| I-composite | After an upload the chart shows calendar plus discursive, never raw calendar   |
-| I17         | Never judged; possibility, not failure                                         |
-| I18         | Slow down on emotion; slow and refer, never counsel                            |
+| #           | Rule                                                                                |
+| ----------- | ----------------------------------------------------------------------------------- |
+| I1          | Third-person attribution; never speaks as Rashmir                                   |
+| I2          | Banned lexicon; no em dashes; no bullets in conversation                            |
+| I3          | Only `saveAnswer()` calls `appendSlotValue()`                                       |
+| I4          | Calendar: in-memory, `runStructuredCompletion` only, totals only                    |
+| I5          | Never `special_category`                                                            |
+| I6          | The run comes from the server, never from a model argument; no `request_transition` |
+| I7          | Canonical bucket slugs never change                                                 |
+| I8          | Hours, never percentages                                                            |
+| I9          | Reflection enforced server-side, `422 REFLECTION_REQUIRED`                          |
+| I10         | Tier boundaries; never edit `lib/framework/**` or the bridges                       |
+| I11         | Content loaded verbatim from `sources/`, never paraphrased                          |
+| I12         | Chart and interpretation are separate beats                                         |
+| I13         | Refer-back is a data flow, not a prompt                                             |
+| I14         | Entitlement at run creation                                                         |
+| I15         | `isActive: false` on completion                                                     |
+| I16         | The tool returns people to their own discernment; it reflects, does not decide      |
+| I-frame     | Not a productivity exercise; an invitation to lead differently                      |
+| I-composite | After an upload the chart shows calendar plus discursive, never raw calendar        |
+| I17         | Never judged; possibility, not failure                                              |
+| I18         | Slow down on emotion; slow and refer, never counsel                                 |
+| I19         | The coach stream writes the run's conversation, write-once; never a timestamp guess |

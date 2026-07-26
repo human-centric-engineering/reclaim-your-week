@@ -164,12 +164,17 @@ describe('lib/app/ bootstrap defaults are no-ops', () => {
     // glob, and that it restates the core `@/`-alias ban rather than dropping it.
     expect(appEslintConfig).toHaveLength(1);
     const [block] = appEslintConfig;
-    // The leaf-owned framework-consuming paths: seeds + the app API/UI surfaces (F3, F4).
+    // The leaf-owned framework-consuming paths: seeds + the app API/UI surfaces (F3, F4), plus the
+    // leaf's own tests for them (the conversational surface) — a test must import what it exercises
+    // and ships in no build, which is the reason Daybreak's own ban exempts its tests too.
     expect(block.files).toEqual([
       'prisma/seeds/app-reclaim/**/*.{ts,tsx}',
       'app/api/v1/app/**/*.{ts,tsx}',
       'app/(protected)/programme/**/*.{ts,tsx}',
       'app/admin/programme/**/*.{ts,tsx}',
+      'tests/**/lib/app/**/*.{ts,tsx}',
+      'tests/**/app/api/v1/app/**/*.{ts,tsx}',
+      'tests/**/components/app/reclaim/**/*.{ts,tsx}',
     ]);
     expect(block.rules['no-restricted-imports']).toBeDefined();
   });

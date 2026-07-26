@@ -34,24 +34,25 @@ parked with a reason. Nothing leaves by being forgotten.
 
 ## Board
 
-| #   | Item                                               | Owner   | Status            | Class     | Blocks / waits on           |
-| --- | -------------------------------------------------- | ------- | ----------------- | --------- | --------------------------- |
-| P1  | The asks ledger describes code that is not there   | John    | **shipped**       | integrity | —                           |
-| P2  | `invariants.md` says its own tests are unwritten   | John    | **shipped**       | integrity | —                           |
-| P3  | No reclaim smoke runs in any gate                  | John    | **shipped**       | gate      | 2 of 5 still manual (below) |
-| P4  | The public surface is still the starter template   | —       | blocked → Rashmir | launch    | open items 3, 4, 7          |
-| P5  | The quarterly nudge has no scheduler               | —       | ready ▲           | launch    | a deploy decision           |
-| P6  | Doc drift: stale cross-references                  | —       | ready ▲           | integrity | —                           |
-| P7  | F2 has no feature plan                             | —       | ready ▲           | record    | —                           |
-| P8  | `ryw-repeat.md` has no post-build record           | —       | ready ▲           | record    | —                           |
-| P9  | Operator-side trends over the success measures     | —       | ready ▲           | feature   | nobody owns it (see below)  |
-| P10 | Is I4's non-persistence contractual or incidental? | —       | ready ▲           | risk      | —                           |
-| P11 | The upstream-sync playbook                         | —       | ready ▲           | upstream  | 17 open asks                |
-| P12 | The eight items Rashmir owes (was eleven)          | Rashmir | waiting: Rashmir  | client    | sign-off, not build         |
-| P13 | The follow-up email sequence                       | —       | parked            | scope     | Brief §2; seam only in v1   |
-| P14 | User-facing subject-access export                  | —       | parked            | scope     | not asked for in the Brief  |
-| P15 | The parked epics                                   | —       | parked            | scope     | future epics                |
-| P16 | A provider key for CI, or a nightly smoke run      | —       | ready ▲           | gate      | P3's remainder; a cost call |
+| #   | Item                                                        | Owner   | Status                 | Class     | Blocks / waits on           |
+| --- | ----------------------------------------------------------- | ------- | ---------------------- | --------- | --------------------------- |
+| P1  | The asks ledger describes code that is not there            | John    | **shipped**            | integrity | —                           |
+| P2  | `invariants.md` says its own tests are unwritten            | John    | **shipped**            | integrity | —                           |
+| P3  | No reclaim smoke runs in any gate                           | John    | **shipped**            | gate      | 2 of 5 still manual (below) |
+| P4  | The public surface is still the starter template            | —       | blocked → Rashmir      | launch    | open items 3, 4, 7          |
+| P5  | The quarterly nudge has no scheduler                        | —       | ready ▲                | launch    | a deploy decision           |
+| P6  | Doc drift: stale cross-references                           | —       | ready ▲                | integrity | —                           |
+| P7  | F2 has no feature plan                                      | —       | ready ▲                | record    | —                           |
+| P8  | `ryw-repeat.md` has no post-build record                    | —       | ready ▲                | record    | —                           |
+| P9  | Operator-side trends over the success measures              | —       | ready ▲                | feature   | nobody owns it (see below)  |
+| P10 | Is I4's non-persistence contractual or incidental?          | —       | ready ▲                | risk      | —                           |
+| P11 | The upstream-sync playbook                                  | —       | ready ▲                | upstream  | 17 open asks                |
+| P12 | The eight items Rashmir owes (was eleven)                   | Rashmir | waiting: Rashmir       | client    | sign-off, not build         |
+| P13 | The follow-up email sequence                                | —       | parked                 | scope     | Brief §2; seam only in v1   |
+| P14 | User-facing subject-access export                           | —       | parked                 | scope     | not asked for in the Brief  |
+| P15 | The parked epics                                            | —       | parked                 | scope     | future epics                |
+| P16 | A provider key for CI, or a nightly smoke run               | —       | ready ▲                | gate      | P3's remainder; a cost call |
+| P18 | The audit is seven forms; it was meant to be a conversation | John    | **stages 0–2 shipped** | feature   | [[ryw-conversational]]      |
 
 **Doing P1–P3 first was deliberate.** They are the three where the repository told a reader something
 untrue, or where a claim the product makes to users was not gated by anything. Every other item was
@@ -320,6 +321,19 @@ here so it is parked rather than merely absent.
 
 The items Rashmir owes, and the three parked scope items, are as described below. P12 is the
 critical path to launch now that the build is not.
+
+### P18 · The audit is seven forms; it was meant to be a conversation — **stages 0–2 shipped**
+
+The one item on this board that is a feature rather than a loose end, and it is here because the
+v1 close-out audit did not look for it: it checked that every feature was finished, and every feature
+was. What it could not see is that the coach agent, authored in F2 and streaming since F3, is bound to
+a surface no phase ever rendered — so the tool shipped as the seven forms it was explicitly not
+supposed to be.
+
+Planned in five stages and tracked in its own doc, [[ryw-conversational]]. Stage 0 shipped in #50
+(the capture capability). Stages 1 and 2 shipped together (the run-scoped stream and the phase surface),
+because stage 2 has nowhere to stand without stage 1. Stages 3 onward were never written down and are
+deliberately not reconstructed; the open questions the built stages raised are listed in that doc.
 
 ### P16 · A provider key for CI, or a nightly smoke run
 

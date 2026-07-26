@@ -12,7 +12,15 @@ export const phaseViewSchema = z.object({
   status: phaseStatusSchema,
 });
 export const currentRunStateSchema = z.object({
-  run: z.object({ id: z.string(), quarter: z.string().nullable() }).nullable(),
+  // `conversationId` is the run's own transcript (null until the leader first speaks to the coach) —
+  // what lets a reload resume the conversation rather than starting the phase again in silence.
+  run: z
+    .object({
+      id: z.string(),
+      quarter: z.string().nullable(),
+      conversationId: z.string().nullable(),
+    })
+    .nullable(),
   phases: z.array(phaseViewSchema),
   currentPhaseKey: z.string(),
 });

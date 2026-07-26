@@ -2,16 +2,28 @@
 
 /**
  * The programme shell (F4 t-4) — the frame that holds a run: the seven-phase spine, the signpost for
- * where the leader is, and the coach conversation. Loads the current run + progress in one enriched
- * read (`GET /runs/current`) and resumes there. Shell only — no phase content (F6/F7).
+ * where the leader is, and the phase itself. Loads the current run + progress in one enriched read
+ * (`GET /runs/current`) and resumes there.
+ *
+ * **The conversation is the way through a phase; the form is the alternative.** Phases 0 to 5 open as
+ * a coaching conversation, which is what the tool was designed to be. The form panels F6/F7 built are
+ * intact and one click away, for a leader who would rather type into fields, and because the two paths
+ * write the same slots through the same server path (I3) the choice can be changed mid-phase without
+ * losing anything. The preference is remembered locally, per leader, so it does not have to be made
+ * again at every phase.
+ *
+ * Phase 6 has no conversational form: its content is the summary the leader takes away and the sharing
+ * choices, and consent is not something a coach may record (I6).
  */
 
 import { useCallback, useEffect, useState } from 'react';
+import { useLocalStorage } from '@/lib/hooks/use-local-storage';
 import { currentRunStateSchema, type CurrentRunState } from '@/components/app/reclaim/types';
 import { PhaseRail } from '@/components/app/reclaim/phase-rail';
 import { TrendLines } from '@/components/app/reclaim/repeat/trend-lines';
 import { Signpost } from '@/components/app/reclaim/signpost';
-import { CoachChat } from '@/components/app/reclaim/coach-chat';
+import { FINAL_PHASE_KEY } from '@/lib/app/programme/runs/phases';
+import { PhaseConversation } from '@/components/app/reclaim/coach/phase-conversation';
 import { BeginAudit } from '@/components/app/reclaim/begin-audit';
 import { ConsentGate } from '@/components/app/reclaim/consent-gate';
 import { SetupPanel } from '@/components/app/reclaim/phase/setup-panel';
@@ -22,10 +34,16 @@ import { Phase4Panel } from '@/components/app/reclaim/phase/phase4-panel';
 import { Phase5Panel } from '@/components/app/reclaim/phase/phase5-panel';
 import { Phase6Panel } from '@/components/app/reclaim/phase/phase6-panel';
 
+/** Where the leader's choice of conversation or form is remembered. Versioned, so the shape can move. */
+const PHASE_MODE_KEY = 'reclaim.phase-mode.v1';
+
+type PhaseMode = 'conversation' | 'form';
+
 export function ProgrammeShell() {
   const [state, setState] = useState<CurrentRunState | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
+  const [phaseMode, setPhaseMode] = useLocalStorage<PhaseMode>(PHASE_MODE_KEY, 'conversation');
   /** F8 t-4: set once the leader has accepted the current policy version (or already had). */
   const [consented, setConsented] = useState(false);
   // Stable identity on purpose — `ConsentGate` takes this as an effect dependency (see the note there).
@@ -120,18 +138,46 @@ export function ProgrammeShell() {
 
         <main className="min-w-0 space-y-9">
           <Signpost phaseKey={currentPhase.key} index={currentIndex} label={currentPhase.label} />
-          <PhaseContent
-            phaseKey={currentPhase.key}
-            runId={state.run.id}
-            onAdvanced={() => void load()}
-          />
+          {phaseMode === 'conversation' && currentPhase.key !== FINAL_PHASE_KEY ? (
+            <PhaseConversation
+              runId={state.run.id}
+              phaseKey={currentPhase.key}
+              conversationId={state.run.conversationId}
+              onAdvanced={() => void load()}
+              onSwitchToForm={() => setPhaseMode('form')}
+            />
+          ) : (
+            <div className="space-y-9">
+              <PhaseContent
+                phaseKey={currentPhase.key}
+                runId={state.run.id}
+                onAdvanced={() => void load()}
+              />
+              {currentPhase.key !== FINAL_PHASE_KEY && (
+                <button
+                  type="button"
+                  onClick={() => setPhaseMode('conversation')}
+                  className="text-muted-foreground hover:text-foreground text-xs underline underline-offset-4"
+                >
+                  I would rather talk this through
+                </button>
+              )}
+            </div>
+          )}
         </main>
       </div>
     </div>
   );
 }
 
-/** Render the panel for the current phase (F6/F7); phases with no panel yet show the coach chat. */
+/**
+ * Render the form panel for the current phase (F6/F7) — the alternative to talking it through.
+ *
+ * The default branch is unreachable for the seven seeded phase keys and is a stated fallback rather
+ * than a chat surface: it used to render the coach conversation, which meant an unknown phase key
+ * silently opened a conversation with no phase behind it. A phase key that is not one of the seven is
+ * a map that has moved, and saying so is more use than a chat window.
+ */
 function PhaseContent({
   phaseKey,
   runId,
@@ -157,6 +203,10 @@ function PhaseContent({
     case 'phase-6-summary':
       return <Phase6Panel runId={runId} onAdvanced={onAdvanced} />;
     default:
-      return <CoachChat />;
+      return (
+        <p className="text-muted-foreground text-sm leading-relaxed">
+          This part of the audit is not available just now.
+        </p>
+      );
   }
 }

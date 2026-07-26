@@ -25,6 +25,8 @@ import {
   transitionRun,
   completeRun,
   saveRunAnswer,
+  linkRunConversation,
+  loadCoachTurnTarget,
 } from '@/app/api/v1/app/reclaim/runs/service';
 
 const PREFIX = 'smoke-reclaim-run';
@@ -129,6 +131,36 @@ async function main(): Promise<void> {
         isActive: true,
       },
     });
+    // The run owns its conversation (the conversational surface). The coach stream links the
+    // conversation its first turn opens; here we drive that link directly, because the assertion worth
+    // having is the one a timestamp guess used to fail: write-once, and never overwritten by a later
+    // conversation. Also check the turn target reads the link back, since that is what a resumed
+    // conversation depends on.
+    await linkRunConversation(run.id, convo.id);
+    const linked = await prisma.reclaimAuditRun.findUniqueOrThrow({
+      where: { id: run.id },
+      select: { conversationId: true },
+    });
+    if (linked.conversationId !== convo.id) {
+      fail(`run's conversation is "${linked.conversationId}", expected "${convo.id}"`);
+    }
+    const target = await loadCoachTurnTarget(uid, run.id);
+    if (target.conversationId !== convo.id) {
+      fail(`coach turn would open a new conversation instead of resuming ${convo.id}`);
+    }
+    if (target.phaseKey !== 'phase-2-energy') {
+      fail(`coach turn scope names phase "${target.phaseKey}", expected phase-2-energy`);
+    }
+    await linkRunConversation(run.id, 'a-later-conversation');
+    const stillLinked = await prisma.reclaimAuditRun.findUniqueOrThrow({
+      where: { id: run.id },
+      select: { conversationId: true },
+    });
+    if (stillLinked.conversationId !== convo.id) {
+      fail('a second link overwrote the run’s original conversation attribution');
+    }
+    console.log('[6a] run linked to its conversation, write-once, and resumed by the turn target');
+
     const completed = await completeRun(uid, run.id);
     if (completed.status !== 'complete') fail(`completed run status is "${completed.status}"`);
     const convoAfter = await prisma.aiConversation.findUnique({

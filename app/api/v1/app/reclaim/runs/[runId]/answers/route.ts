@@ -20,11 +20,21 @@ import { cuidSchema } from '@/lib/validations/common';
 import { saveRunAnswer } from '@/app/api/v1/app/reclaim/runs/service';
 import { readRunAnswers } from '@/lib/app/programme/runs/answers';
 
-/** One captured answer — shared with the batch route so the two shapes can never drift. */
+/**
+ * One captured answer — shared with the batch route so the two shapes can never drift.
+ *
+ * `confirming` is the leader saying yes to a reading the coach offered back, which is a *different*
+ * fact from them stating it cold: it records `user_confirmed` rather than `direct`, so the audit can
+ * still tell later which figures began as the coach's inference. It is a boolean rather than a
+ * `sourceType` string on purpose. A client that could name its own source type could label a
+ * model-derived reading as directly stated, and the distinction the panel exists to draw would be
+ * only as honest as the client.
+ */
 export const answerSchema = z.object({
   slotSlug: z.string().trim().min(1).max(120),
   value: z.string().min(1),
   valueJson: z.unknown().optional(),
+  confirming: z.boolean().optional(),
 });
 
 function parseRunId(raw: string): string {

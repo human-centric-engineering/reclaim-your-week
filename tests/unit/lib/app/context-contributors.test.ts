@@ -1,44 +1,100 @@
 /**
- * The app context-contributor registration (F7 t-2, I13). The framework's `registerContextContributor`
- * and `buildReferBackForActiveRun` are mocked, so we can capture the registered loader and check it:
- * with a `userId` it returns the refer-back block; without one it returns empty (no per-user context).
+ * The app context-contributor registration (F7 t-2 / I13, and the conversational phase block).
+ *
+ * **What this suite got wrong before, and why the fix is the first test here.** It mocked
+ * `registerContextContributor`, captured the loader, and asserted what the loader returned. Every
+ * assertion passed while the contributor was registered under `'reclaim-audit'` — the chat request's
+ * `contextId`, not its `contextType` — so `buildContext` never dispatched it and the refer-back that
+ * Brief §5 calls a data-flow requirement never reached the coach. A test that checks a loader's output
+ * and not its key cannot see that. So the key is now asserted against `MODULE_CONTEXT_TYPE`, and the
+ * loader tests below stand on top of it rather than in place of it.
+ *
+ * The framework's own module loader and both leaf blocks are mocked: what matters here is the
+ * composition (framework context first, leaf blocks appended, other modules passed through
+ * untouched), not what each part says.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-const { registerMock, referBackMock } = vi.hoisted(() => ({
+const { registerMock, moduleContextMock, referBackMock, phaseMock } = vi.hoisted(() => ({
   registerMock: vi.fn(),
+  moduleContextMock: vi.fn(),
   referBackMock: vi.fn(),
+  phaseMock: vi.fn(),
 }));
 vi.mock('@/lib/orchestration/chat/context-builder', () => ({
   registerContextContributor: registerMock,
 }));
+vi.mock('@/lib/framework/modules/context', () => ({
+  loadModuleContext: moduleContextMock,
+  MODULE_CONTEXT_TYPE: 'module',
+}));
 vi.mock('@/lib/app/programme/refer-back', () => ({ buildReferBackForActiveRun: referBackMock }));
+vi.mock('@/lib/app/programme/coach/phase-context', () => ({
+  buildCoachPhaseContext: phaseMock,
+}));
 
 import { initAppContextContributors } from '@/lib/app/context-contributors';
+import { MODULE_CONTEXT_TYPE } from '@/lib/framework/modules/context';
 
-type Loader = (id: string, request: { userId?: string }) => Promise<string>;
+type Loader = (id: string, request?: { userId?: string }) => Promise<string>;
+
+const loader = (): Loader => registerMock.mock.calls[0][1] as Loader;
 
 beforeEach(() => {
   registerMock.mockReset();
+  moduleContextMock.mockReset();
   referBackMock.mockReset();
+  phaseMock.mockReset();
+  moduleContextMock.mockResolvedValue('FRAMEWORK');
+  referBackMock.mockResolvedValue({ keepingMeUp: null, whyNow: null, contextBlock: 'REFER BACK' });
+  phaseMock.mockResolvedValue('PHASE');
 });
 
 describe('initAppContextContributors', () => {
-  it('registers a loader that returns the refer-back block for a user', async () => {
+  it('registers under the chat contextType, not the module slug', () => {
+    // The regression guard. `contextId` is 'reclaim-audit'; `contextType` is what the registry keys on,
+    // and registering under the id silently disables the contributor.
     initAppContextContributors();
     expect(registerMock).toHaveBeenCalledTimes(1);
-    const loader = registerMock.mock.calls[0][1] as Loader;
+    expect(registerMock.mock.calls[0][0]).toBe(MODULE_CONTEXT_TYPE);
+    expect(registerMock.mock.calls[0][0]).not.toBe('reclaim-audit');
+  });
 
-    referBackMock.mockResolvedValue({ keepingMeUp: 'x', whyNow: null, contextBlock: 'THE BLOCK' });
-    expect(await loader('reclaim-audit', { userId: 'u1' })).toBe('THE BLOCK');
+  it("appends the phase block and the refer-back to the framework's module context", async () => {
+    initAppContextContributors();
+    const context = await loader()('reclaim-audit', { userId: 'u1' });
+
+    expect(context).toBe('FRAMEWORK\n\nPHASE\n\nREFER BACK');
+    expect(moduleContextMock).toHaveBeenCalledWith('reclaim-audit', { userId: 'u1' });
+    expect(phaseMock).toHaveBeenCalledWith('u1');
     expect(referBackMock).toHaveBeenCalledWith('u1');
   });
 
-  it('returns empty (no per-user context) when there is no userId', async () => {
+  it('omits a leaf block that has nothing to say, without leaving a gap', async () => {
+    phaseMock.mockResolvedValue('');
+    referBackMock.mockResolvedValue({ keepingMeUp: null, whyNow: null, contextBlock: '' });
     initAppContextContributors();
-    const loader = registerMock.mock.calls[0][1] as Loader;
-    expect(await loader('reclaim-audit', {})).toBe('');
+
+    expect(await loader()('reclaim-audit', { userId: 'u1' })).toBe('FRAMEWORK');
+  });
+
+  it('passes another module through with only the framework context', async () => {
+    initAppContextContributors();
+    const context = await loader()('some-other-module', { userId: 'u1' });
+
+    expect(context).toBe('FRAMEWORK');
+    expect(phaseMock).not.toHaveBeenCalled();
+    expect(referBackMock).not.toHaveBeenCalled();
+  });
+
+  it('adds no per-user block when the request carries no user', async () => {
+    initAppContextContributors();
+    const context = await loader()('reclaim-audit', {});
+
+    // A shared (non-user) context request still gets the module's user-agnostic half.
+    expect(context).toBe('FRAMEWORK');
+    expect(phaseMock).not.toHaveBeenCalled();
     expect(referBackMock).not.toHaveBeenCalled();
   });
 });
