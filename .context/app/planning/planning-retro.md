@@ -60,6 +60,28 @@ way the framework retro does.
 
 ## §B — feature-plan authoring
 
+- **A done-when criterion was signed off four times without being met, and the criterion was also
+  wrong (F7, found deciding open item 8).** [[ryw-phases]] said in four places that the F7 work must
+  extend `voice.test.ts` to the new `Module.config` copy: in the invariant table, in the test
+  strategy, in the t-2 done-when, and in the body. `git log` shows `voice.test.ts` has exactly one
+  commit, from F2. The feature shipped and the criterion was ticked.
+
+  The comfortable reading is "somebody forgot". The uncomfortable one is what a closer look found:
+  **the criterion could not have been met as written.** `Module.config` copy is Rashmir's verbatim
+  content, which legitimately contains nineteen em dashes, so extending I2's em-dash ban to it would
+  have failed on its first run or forced a paraphrase that I11 forbids. The right target was
+  coach-voiced copy _we_ authored, which nobody had guarded at all and which nobody had thought to
+  name.
+
+  **Two lessons, and the second is the one that generalises.** (1) Repetition is not enforcement: a
+  requirement written four times in one plan is still zero tests. Where a plan says "extend guard X",
+  the task is not done until the guard's own file changes, which is a diff-level check a close-out
+  can make mechanically. (2) **A done-when that nobody could satisfy looks exactly like a done-when
+  that nobody got to.** Both present as an unticked box next to shipped code, and only one of them is
+  fixed by doing the work. So when a criterion is found unmet long after the fact, the first question
+  is whether it was _achievable_, not who dropped it — because if it was not, doing it now reproduces
+  the original mistake with more conviction.
+
 - **The feature with the highest stated drift risk was the one built without a written plan, and
   nobody noticed for ten features (F2, found by the v1 close-out audit).** `plan.md` called F2
   `ryw-module` "the highest risk for silent drift, because paraphrase looks like success" — and it is

@@ -177,9 +177,10 @@ export default function LandingPage() {
               About an hour, in one sitting or several
             </h3>
             <p className="text-muted-foreground leading-relaxed font-light">
-              Seven phases: your role and what is on your plate, then your week across the nine
-              areas, then energy, the week you would design, the gap between the two, and one thing
-              to do about it. You can stop and come back. It remembers where you were.
+              Seven phases: your role and what is on your plate, your week across the nine areas,
+              which of those hours give you energy and which take it, the week you would design if
+              you were starting fresh, the gap between that and the week you have, and one thing to
+              do about it. You can stop and come back, and it remembers where you were.
             </p>
           </div>
 
@@ -201,8 +202,8 @@ export default function LandingPage() {
           <div className="space-y-4">
             <h3 className="text-foreground text-lg font-light">What you say stays yours</h3>
             <p className="text-muted-foreground leading-relaxed font-light">
-              Your answers are confidential. Sharing your summary is offered at the end and never
-              required, and nothing goes to anyone unless you choose it. You can ask for everything
+              Your answers are confidential. At the end you are offered the chance to share your
+              summary, and nothing goes to anyone unless you choose it. You can ask for everything
               to be deleted at any time.{' '}
               <Link href="/privacy" className="text-primary underline underline-offset-4">
                 The privacy notice says exactly what is held, and for how long

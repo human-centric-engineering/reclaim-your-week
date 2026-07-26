@@ -47,7 +47,7 @@ parked with a reason. Nothing leaves by being forgotten.
 | P9  | Operator-side trends over the success measures     | —       | ready ▲           | feature   | nobody owns it (see below)  |
 | P10 | Is I4's non-persistence contractual or incidental? | —       | ready ▲           | risk      | —                           |
 | P11 | The upstream-sync playbook                         | —       | ready ▲           | upstream  | 17 open asks                |
-| P12 | The eleven items Rashmir owes                      | Rashmir | waiting: Rashmir  | client    | sign-off, not build         |
+| P12 | The eight items Rashmir owes (was eleven)          | Rashmir | waiting: Rashmir  | client    | sign-off, not build         |
 | P13 | The follow-up email sequence                       | —       | parked            | scope     | Brief §2; seam only in v1   |
 | P14 | User-facing subject-access export                  | —       | parked            | scope     | not asked for in the Brief  |
 | P15 | The parked epics                                   | —       | parked            | scope     | future epics                |
@@ -59,7 +59,7 @@ honest about its own state; those three were not.
 
 **Everything the team owns is now shipped.** P1–P3, P5–P11 and P4's build all landed across two
 branches on 2026-07-26. What remains is the four items nobody here can close alone: **P12** (the
-eleven things Rashmir owes), **P16** (a cost decision about a provider key in CI), and the two parked
+eight things Rashmir owes), **P16** (a cost decision about a provider key in CI), and the two parked
 scope items — plus **P4's copy sign-off**, since the pages exist and the words in them are a draft
 until she reads them.
 
@@ -289,12 +289,20 @@ reflex, because taking upstream's version of the `globalThis` registry fixes bef
 actually fixed them leaves the coach answering while quietly losing its tools and its module context.
 `smoke:reclaim` is the only thing that notices.
 
-### P12 · The eleven items Rashmir owes
+### P12 · The eight items Rashmir owes (was eleven)
 
 Listed in [[plan#Open items Rashmir owes]] with the shipped behaviour named against each, so she can
 see what she is confirming or changing. None blocks building; each blocks sign-off. The two with teeth
 are **item 7** (privacy/IP clauses — F10's aggregate rests on them) and **items 1 & 3** (the palette,
 provisional across every chart).
+
+> **Three of the eleven were decided on 2026-07-26 without her**, on the owner's instruction: take
+> the most defensible reading of her own documents, ship it, and reverse anything she disagrees with.
+> Items **8** (the register), **10** (where the strategy mirror sits) and **11** (the Phase 2
+> coaching signal) are now decided, dated, and carry a "what to ask her" line each. Two of the three
+> needed a fix before they could be decided at all: item 10's config could not express the third
+> option her own hedge names, and item 11's toggle would have shown a leader facilitator instruction
+> voice. See the decisions log in [[plan#Decisions log]].
 
 ### P13 · The follow-up email sequence — parked
 
@@ -310,7 +318,7 @@ here so it is parked rather than merely absent.
 
 ### P12–P15 · Unchanged
 
-The eleven items Rashmir owes, and the three parked scope items, are as described below. P12 is the
+The items Rashmir owes, and the three parked scope items, are as described below. P12 is the
 critical path to launch now that the build is not.
 
 ### P16 · A provider key for CI, or a nightly smoke run

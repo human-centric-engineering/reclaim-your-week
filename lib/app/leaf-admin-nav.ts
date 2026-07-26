@@ -34,6 +34,10 @@ export function initLeafAdminNav(): void {
         label: 'Programme overview',
         icon: LayoutDashboard,
         description: 'Do people come back, and do they tell others',
+        // Exact match, because every other item in this section lives *under* `/admin/programme`.
+        // Without it the sidebar's prefix rule keeps the overview lit on `/clients`, `/shared`, and
+        // the rest — two entries highlighted at once, and the wrong one reads as "you are here".
+        exact: true,
       },
       {
         href: '/admin/programme/clients',
