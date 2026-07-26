@@ -315,9 +315,12 @@ critical path to launch now that the build is not.
 
 ### P16 · A provider key for CI, or a nightly smoke run
 
-Two smokes cannot run in CI without a real model key: `smoke:reclaim` (streams a coach turn) and
-`smoke:reclaim-calendar` (the LLM categorise, and therefore the **end-to-end** proof of I4). P3 gated
-everything that could be gated without one; this is the remainder.
+**One** smoke cannot run in CI without a real model key: `smoke:reclaim-calendar` (the LLM
+categorise, and therefore the **end-to-end** proof of I4).
+
+> **Corrected 2026-07-26.** This item said _two_, and named `smoke:reclaim` as the other. That was
+> wrong — it stubs the LLM with a fake provider and needs no key, which its own file header states.
+> It is now in CI. The remaining decision is smaller than it looked, and it is about one script.
 
 Three options, none obviously right, which is why it is a decision rather than a task:
 
@@ -375,4 +378,4 @@ reverse**, and each is here so reversing it is a decision rather than an archaeo
 | A5  | **The model provider is named as Anthropic** in the privacy notice. True of the build; a provider swap makes it false.                                                                                                                            | `app/(public)/privacy/page.tsx` | One sentence, but it is a factual claim — keep it true.                                          |
 | A6  | **The nudge cadence is 90 days, with a 200-day upper bound.** Brief §2 says "quarterly"; the upper bound is ours, so a dormant leader is not told their audit was "about three months ago" eighteen months later. Both are coach-editable config. | `Module.config`                 | Change the numbers; no deploy.                                                                   |
 | A7  | **The trend timeline reports counts, not rates.** At this cohort size a quarterly rate is noise wearing three significant figures.                                                                                                                | `admin/measures.ts`             | Compute rates in `buildTimeline`; the data supports either.                                      |
-| A8  | **`smoke:reclaim` and `smoke:reclaim-calendar` stay manual** rather than adding a provider key to CI. That is P16, a cost and secret decision.                                                                                                    | CI                              | P16.                                                                                             |
+| A8  | **`smoke:reclaim-calendar` stays manual** rather than adding a provider key to CI. That is P16, a cost and secret decision. (`smoke:reclaim` was in this row until it turned out to need no key; it now runs in CI.)                              | CI                              | P16.                                                                                             |

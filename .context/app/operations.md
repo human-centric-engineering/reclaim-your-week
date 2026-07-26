@@ -63,19 +63,24 @@ unscheduled until it does.
 
 ## Manual gates
 
-Three of the five leaf smokes run in CI. **Two cannot**, because they make real model calls and CI
-holds no provider key ([[planning/post-v1|post-v1]] P3, and P16 for the decision about changing that).
-Until then they are a release checklist rather than a gate, which means someone has to actually run
-them:
+Four of the five leaf smokes run in CI. **One cannot** — `smoke:reclaim-calendar` makes a real model
+call and CI holds no provider key ([[planning/post-v1|post-v1]] P16 is the decision about changing
+that). Until then it is a release checklist item rather than a gate, which means someone has to
+actually run it:
 
 ```bash
-npm run smoke:reclaim            # boot → register → publish → stream one real turn
 npm run smoke:reclaim-calendar   # I4 end-to-end: a real .ics, and no meeting title anywhere after
 ```
 
-**Run both before any release that touches the coach, the calendar path, or the module registration.**
-`smoke:reclaim-calendar` is the one that matters most and the one that has already rotted unnoticed:
-it sat red on `main` for two features after F8 put a consent gate in front of `createRun`.
+**Run it before any release that touches the calendar path.** It is the one that matters most and the
+one that has already rotted unnoticed: it sat red on `main` for two features after F8 put a consent
+gate in front of `createRun`.
+
+> **`smoke:reclaim` was on this list until 2026-07-26 and should never have been.** It stubs the LLM
+> with a fake provider, exactly as `smoke:chat` does, and needs no key — its own header says so. It
+> was assumed to need one because it streams a turn. It now runs in CI, which matters more than the
+> tidiness: it is the only thing that catches a coach that answers but has no tools, the silent
+> failure a careless `globalThis` merge produces (see [[upstream-sync]]).
 
 The structural half of I4 — that nothing in the calendar path can reach a write — is covered by
 `tests/unit/invariants/calendar-privacy.test.ts`, which does run on every PR. What these two add is

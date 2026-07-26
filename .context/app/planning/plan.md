@@ -394,7 +394,11 @@ changing:
    identities this sits under. The teal is also what F6.3's colour collision is against —
    `#1B4965` strategic-planning blue sits close to it.
 4. Page copy for landing, Home, About, FAQs, in the reassurance register of Brief §7 (the Setup
-   Guide's "no one is judging you" wording is the register — [[content-source]] §12).
+   Guide's "no one is judging you" wording is the register — [[content-source]] §12). **Now a draft
+   rather than a blank**: [[post-v1]] P4 shipped all four public pages written in that register, so
+   this is a react-and-correct rather than a write-from-nothing. The reassurance block on the landing
+   page is §12's wording nearly verbatim, which is the part most worth her eye — it is the closest
+   the public surface comes to her voice.
 5. Tester quotes and worked examples.
 6. Invite list for v1.
 7. Privacy and IP clauses (she has offered these). **Shipped against a versioned placeholder**:
