@@ -109,12 +109,10 @@ describe('the quarterly timeline (post-v1 P9)', () => {
     // The whole point of the timeline: "do people come back" is a direction, and the direction is
     // only visible if the second audit lands in the quarter it happened.
     const timeline = buildTimeline({
-      completedRunUserIds: ['ada', 'ada'],
       completions: [
         { userId: 'ada', completedAt: at('2026-02-10T00:00:00Z') }, // Q1 — their first
         { userId: 'ada', completedAt: at('2026-07-10T00:00:00Z') }, // Q3 — the return
       ],
-      clientCount: 1,
       now: NOW,
     });
 
@@ -126,12 +124,10 @@ describe('the quarterly timeline (post-v1 P9)', () => {
 
   it('does not treat two leaders’ first audits as returns', () => {
     const timeline = buildTimeline({
-      completedRunUserIds: ['ada', 'grace'],
       completions: [
         { userId: 'ada', completedAt: at('2026-07-01T00:00:00Z') },
         { userId: 'grace', completedAt: at('2026-07-02T00:00:00Z') },
       ],
-      clientCount: 2,
       now: NOW,
     });
 
@@ -144,12 +140,10 @@ describe('the quarterly timeline (post-v1 P9)', () => {
   it('orders a leader’s completions by date, whatever order the rows arrive in', () => {
     // Prisma gives no ordering guarantee here, and "was this their first?" depends entirely on it.
     const timeline = buildTimeline({
-      completedRunUserIds: ['ada', 'ada'],
       completions: [
         { userId: 'ada', completedAt: at('2026-07-10T00:00:00Z') }, // later row, arrives first
         { userId: 'ada', completedAt: at('2026-02-10T00:00:00Z') },
       ],
-      clientCount: 1,
       now: NOW,
     });
 
@@ -159,9 +153,7 @@ describe('the quarterly timeline (post-v1 P9)', () => {
 
   it('spans eight quarters ending in the current one, oldest first', () => {
     const timeline = buildTimeline({
-      completedRunUserIds: ['ada'],
       completions: [{ userId: 'ada', completedAt: at('2026-07-01T00:00:00Z') }],
-      clientCount: 1,
       now: NOW,
     });
 
@@ -172,9 +164,7 @@ describe('the quarterly timeline (post-v1 P9)', () => {
 
   it('drops activity older than the window rather than misfiling it', () => {
     const timeline = buildTimeline({
-      completedRunUserIds: ['ada'],
       completions: [{ userId: 'ada', completedAt: at('2019-01-01T00:00:00Z') }],
-      clientCount: 1,
       now: NOW,
     });
 
@@ -183,9 +173,7 @@ describe('the quarterly timeline (post-v1 P9)', () => {
 
   it('counts referrals in the quarter they were sent', () => {
     const timeline = buildTimeline({
-      completedRunUserIds: [],
       referralsSentAt: [at('2026-07-04T00:00:00Z'), at('2026-07-20T00:00:00Z')],
-      clientCount: 1,
       now: NOW,
     });
 
@@ -193,7 +181,7 @@ describe('the quarterly timeline (post-v1 P9)', () => {
   });
 
   it('returns an empty timeline when nothing has happened at all', () => {
-    expect(buildTimeline({ completedRunUserIds: [], clientCount: 0, now: NOW })).toEqual([]);
+    expect(buildTimeline({ now: NOW })).toEqual([]);
   });
 
   it('is reachable from computeMeasures without changing the headline figures', () => {

@@ -76,16 +76,26 @@ export interface MeasuresView {
   timeline: MeasurePoint[];
 }
 
-/** The rows `computeMeasures` needs — deliberately the minimum, so tests can build them by hand. */
-export interface MeasureInput {
-  /** One entry per completed run: whose it was. Order irrelevant; repeats are the point. */
-  completedRunUserIds: string[];
-  /** The same completions with their dates, for the timeline. Omit for the point-in-time figures only. */
+/**
+ * The rows the **timeline** needs, and nothing else.
+ *
+ * Its own type rather than a slice of `MeasureInput`: `buildTimeline` never reads the referral
+ * redemption state or the client count, and a function that demands arguments it ignores makes every
+ * caller and every test carry ballast to satisfy a compiler rather than a requirement.
+ */
+export interface TimelineInput {
+  /** Every completion with its date. */
   completions?: Array<{ userId: string; completedAt: Date }>;
   /** When each referral-tier invitation was sent. */
   referralsSentAt?: Date[];
-  /** The end of the window the timeline covers — the caller's clock, so the function stays pure. */
+  /** The end of the window — the caller's clock, so the function stays pure and testable. */
   now?: Date;
+}
+
+/** The rows `computeMeasures` needs — deliberately the minimum, so tests can build them by hand. */
+export interface MeasureInput extends TimelineInput {
+  /** One entry per completed run: whose it was. Order irrelevant; repeats are the point. */
+  completedRunUserIds: string[];
   /** Every referral-tier invite a leader sent. */
   referralInvites: Array<{ redeemedByUserId: string | null }>;
   /** How many leaders have a programme footprint at all. */
@@ -159,7 +169,7 @@ function recentQuarters(now: Date, count = 8): string[] {
  * in time. So a leader who finished audits in Q1 and Q3 contributes one completion to Q1 and both a
  * completion and a return to Q3, which is exactly when the coming-back happened.
  */
-export function buildTimeline(input: MeasureInput): MeasurePoint[] {
+export function buildTimeline(input: TimelineInput): MeasurePoint[] {
   const completions = input.completions ?? [];
   if (completions.length === 0 && (input.referralsSentAt ?? []).length === 0) return [];
 
