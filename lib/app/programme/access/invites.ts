@@ -78,6 +78,12 @@ export interface IssueInviteInput {
   inviterName: string;
   /** The referrer, for a `referral` invite. Null/omitted for an admin-issued one (F8 t-3). */
   invitedByUserId?: string | null;
+  /**
+   * The group link this was claimed through (F11). Set at creation rather than by the caller
+   * afterwards: a second write is a second thing that can fail, and when it does the invite exists
+   * with its provenance lost — which is exactly the row nobody can explain later.
+   */
+  viaLinkId?: string | null;
   /** Rotate the token and resend when an invitation is already pending for this email. */
   resend?: boolean;
 }
@@ -137,6 +143,7 @@ export async function issueInvite(input: IssueInviteInput): Promise<IssueInviteR
             token: tokenHash,
             tier: input.tier,
             invitedByUserId: input.invitedByUserId ?? null,
+            viaLinkId: input.viaLinkId ?? null,
           },
         });
 
@@ -164,14 +171,23 @@ export async function issueInvite(input: IssueInviteInput): Promise<IssueInviteR
     });
   }
 
+  // Record the outcome on the row, so a send that failed is a fact on the admin screen rather than a
+  // line in a log nobody is watching. Written after the send for the obvious reason, and separately
+  // from the row above because the status is not known until the provider has answered.
+  const recorded = await prisma.reclaimInvite.update({
+    where: { id: invite.id },
+    data: { emailStatus: emailResult.status },
+  });
+
   logger.info('Reclaim: invite issued', {
     inviteId: invite.id,
     tier: invite.tier,
     resend: existingInvite !== null,
     referred: invite.invitedByUserId !== null,
+    emailStatus: emailResult.status,
   });
 
-  return { invite, emailStatus: emailResult.status, expiresAt };
+  return { invite: recorded, emailStatus: emailResult.status, expiresAt };
 }
 
 /**
@@ -203,6 +219,8 @@ export interface InviteListItem {
   redeemedByName: string | null;
   /** The group link this was claimed through (F11), or null when Rashmir typed the address. */
   viaLinkLabel: string | null;
+  /** What happened to the invitation email: `sent | failed | disabled`, or null if not recorded. */
+  emailStatus: string | null;
   redeemedAt: string | null;
   createdAt: string;
 }
@@ -256,6 +274,7 @@ export async function listInvites(): Promise<InviteListItem[]> {
     redeemedByName:
       invite.redeemedByUserId === null ? null : (nameById.get(invite.redeemedByUserId) ?? null),
     viaLinkLabel: invite.viaLinkId === null ? null : (labelById.get(invite.viaLinkId) ?? null),
+    emailStatus: invite.emailStatus,
     redeemedAt: invite.redeemedAt?.toISOString() ?? null,
     createdAt: invite.createdAt.toISOString(),
   }));

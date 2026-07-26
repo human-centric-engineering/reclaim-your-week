@@ -23,6 +23,18 @@ interface JoinFormProps {
   token: string;
 }
 
+/**
+ * The heading for each outcome. The body copy is the server's (it is written once, where the decision
+ * is made); only the heading lives here, because it is a property of the screen rather than of the
+ * claim.
+ */
+const HEADING: Record<ClaimResult['outcome'], string> = {
+  invited: 'Check your email',
+  already_claimed: 'Check your email',
+  invited_email_failed: 'Your place is held',
+  already_registered: 'You are already set up',
+};
+
 export function JoinForm({ token }: JoinFormProps) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -52,9 +64,12 @@ export function JoinForm({ token }: JoinFormProps) {
   if (done !== null) {
     return (
       <div className="space-y-4">
-        <h1 className="text-2xl font-semibold">
-          {done.outcome === 'already_registered' ? 'You are already set up' : 'Check your email'}
-        </h1>
+        {/*
+          The heading has to match what actually happened. "Check your email" above a message saying
+          the email could not be sent is worse than either sentence alone, and a heading is what
+          people read when they skim.
+        */}
+        <h1 className="text-2xl font-semibold">{HEADING[done.outcome]}</h1>
         <p className="text-muted-foreground">{done.message}</p>
         {done.outcome === 'already_registered' && (
           <Link href="/login" className="text-primary text-sm underline">

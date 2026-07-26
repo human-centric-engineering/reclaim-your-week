@@ -29,6 +29,14 @@ const PREFIX = 'smoke-reclaim-join';
 const SEATS = 5;
 const EXTRA_CLAIMERS = 5;
 
+/**
+ * A first claim that worked, and a repeat of one, regardless of whether the invitation email got out.
+ * A failed send is a delivery problem the person is told about; it is still a claim, and it still
+ * costs the seat it took.
+ */
+const CLAIMED = new Set(['invited', 'invited_email_failed']);
+const REPEAT = new Set(['already_claimed', 'invited_email_failed']);
+
 function fail(message: string): never {
   throw new Error(message);
 }
@@ -132,8 +140,12 @@ async function main(): Promise<void> {
       email: repeat.toUpperCase(),
       inviterName: 'Smoke',
     });
-    if (first.outcome !== 'invited') fail(`the first claim did not succeed: ${first.outcome}`);
-    if (second.outcome !== 'already_claimed') {
+    // Both outcomes are a successful claim. Which one comes back depends on whether a mail provider
+    // is configured in the environment running this script, and that is not what this step is about —
+    // it is about seats. Asserting `invited` here would make the smoke fail on any machine without
+    // working email, which is most of them.
+    if (!CLAIMED.has(first.outcome)) fail(`the first claim did not succeed: ${first.outcome}`);
+    if (!REPEAT.has(second.outcome)) {
       fail(`a repeat claim was not recognised: ${second.outcome}`);
     }
     spareRow = await prisma.reclaimInviteLink.findUniqueOrThrow({ where: { id: spare.link.id } });

@@ -67,8 +67,17 @@ export function buildJoinUrl(token: string): string {
 /** Why a link would not accept a claim. Each maps to its own sentence on the join page. */
 export type LinkRefusal = 'unknown' | 'revoked' | 'expired' | 'full';
 
-/** What a claim did. `already_registered` is a refusal that costs no seat — see `claimInviteLink`. */
-export type ClaimOutcome = 'invited' | 'already_claimed' | 'already_registered';
+/**
+ * What a claim did.
+ *
+ * `already_registered` is a refusal that costs no seat — see `claimInviteLink`.
+ *
+ * `invited_email_failed` is a **success** that the person must still be told about: they are properly
+ * invited (the row is the entitlement) and their invitation is not going to arrive. Telling them to
+ * check an inbox that will stay empty is the one outcome here that wastes somebody's afternoon.
+ */
+export type ClaimOutcome =
+  'invited' | 'invited_email_failed' | 'already_claimed' | 'already_registered';
 
 export interface ClaimResult {
   outcome: ClaimOutcome;
@@ -293,7 +302,15 @@ export async function claimInviteLink(input: ClaimInviteLinkInput): Promise<Clai
     },
   });
   if (alreadyClaimed !== null) {
-    return { outcome: 'already_claimed' };
+    // Same honesty as a first claim. Somebody re-scanning because nothing arrived is the most likely
+    // person to hit this branch, and "check your email" is exactly the wrong thing to tell them when
+    // the recorded reason nothing arrived is that the send failed.
+    //
+    // `!= null` rather than `!== null`, for the reason `grantExpiresAt` gives: a row selected without
+    // this column yields `undefined`, and absent and null both mean "not recorded" — which is not the
+    // same as failed. Rows issued before the column existed must not be reported as broken.
+    const delivered = alreadyClaimed.emailStatus == null || alreadyClaimed.emailStatus === 'sent';
+    return { outcome: delivered ? 'already_claimed' : 'invited_email_failed' };
   }
 
   await reserveSeat(link.id, new Date());
@@ -304,11 +321,10 @@ export async function claimInviteLink(input: ClaimInviteLinkInput): Promise<Clai
       tier: JOIN_LINK_TIER,
       inviteeName: input.name.trim(),
       inviterName: input.inviterName,
-    });
-
-    await prisma.reclaimInvite.update({
-      where: { id: result.invite.id },
-      data: { viaLinkId: link.id },
+      // Written with the row, not after it. A follow-up update is a second thing that can fail, and
+      // an invite that exists with no link attribution is one the repeat-claim check cannot find —
+      // so the same person claiming again would spend a second seat.
+      viaLinkId: link.id,
     });
 
     logger.info('Reclaim: invite link claimed', {
@@ -316,7 +332,12 @@ export async function claimInviteLink(input: ClaimInviteLinkInput): Promise<Clai
       inviteId: result.invite.id,
       emailStatus: result.emailStatus,
     });
-    return { outcome: 'invited' };
+
+    // The seat is spent and the invitation stands either way. What changes is what we say: a send
+    // that failed or was never configured means no link is coming, and the person needs to know that
+    // now rather than after an hour of watching an inbox.
+    const delivered = result.emailStatus === 'sent' || result.emailStatus === 'pending';
+    return { outcome: delivered ? 'invited' : 'invited_email_failed' };
   } catch (error) {
     await releaseSeat(link.id);
     throw error;

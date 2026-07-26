@@ -118,6 +118,23 @@ describe('JoinForm', () => {
     expect(await screen.findByRole('heading', { name: /check your email/i })).toBeInTheDocument();
   });
 
+  it('does not head a failed send with "check your email"', async () => {
+    const user = userEvent.setup();
+    claimJoinLink.mockResolvedValue({
+      outcome: 'invited_email_failed',
+      message: 'Your place is held, but the email could not be sent.',
+    });
+    render(<JoinForm token="abcdefghijklmnopqrstuv" />);
+
+    await fillAndSubmit(user);
+
+    // A heading is what people read when they skim, so it has to match what happened. "Check your
+    // email" above a message saying the email failed is worse than either sentence alone.
+    expect(await screen.findByRole('heading', { name: /your place is held/i })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /check your email/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/could not be sent/i)).toBeInTheDocument();
+  });
+
   it('shows the server’s own sentence when a link will not serve, and keeps the form', async () => {
     const user = userEvent.setup();
     claimJoinLink.mockRejectedValue(

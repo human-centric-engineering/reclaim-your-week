@@ -29,6 +29,25 @@ const TIER_LABEL: Record<string, string> = {
   free: 'Free — one complete audit',
 };
 
+/**
+ * How the invitation email went. `disabled` (no mail provider configured) is worded separately from
+ * `failed` (the provider refused) because they ask different things of her: one is a deployment
+ * setting somebody needs to fix, the other is an incident that may already be over.
+ */
+const EMAIL_LABEL: Record<string, string> = {
+  sent: 'sent',
+  failed: 'failed',
+  disabled: 'not configured',
+  pending: 'already pending',
+};
+
+const EMAIL_STYLE: Record<string, string> = {
+  sent: 'bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200',
+  failed: 'bg-destructive/15 text-destructive',
+  disabled: 'bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200',
+  pending: 'bg-muted text-muted-foreground',
+};
+
 const STATUS_STYLE: Record<InviteRow['status'], string> = {
   pending: 'bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200',
   redeemed: 'bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200',
@@ -244,6 +263,7 @@ export function InviteManager() {
                   <th className="px-4 py-2.5 font-medium">Status</th>
                   <th className="px-4 py-2.5 font-medium">Referred by</th>
                   <th className="px-4 py-2.5 font-medium">Via</th>
+                  <th className="px-4 py-2.5 font-medium">Email</th>
                   <th className="px-4 py-2.5 font-medium">Redeemed</th>
                   <th className="sr-only px-4 py-2.5 font-medium">Actions</th>
                 </tr>
@@ -266,6 +286,22 @@ export function InviteManager() {
                     {/* Which group link this was claimed through. A dash means she typed the address. */}
                     <td className="text-muted-foreground px-4 py-2.5">
                       {invite.viaLinkLabel ?? '—'}
+                    </td>
+                    {/*
+                      Whether the invitation actually reached them. A failed send does not cost
+                      someone their invitation, which is right, and is exactly why it has to be
+                      visible here: otherwise the row looks identical to one that arrived.
+                    */}
+                    <td className="px-4 py-2.5">
+                      {invite.emailStatus === null ? (
+                        <span className="text-muted-foreground">—</span>
+                      ) : (
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-xs font-medium ${EMAIL_STYLE[invite.emailStatus] ?? 'bg-muted text-muted-foreground'}`}
+                        >
+                          {EMAIL_LABEL[invite.emailStatus] ?? invite.emailStatus}
+                        </span>
+                      )}
                     </td>
                     <td className="text-muted-foreground px-4 py-2.5">
                       {invite.redeemedByName ?? '—'}

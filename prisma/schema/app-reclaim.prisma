@@ -144,6 +144,20 @@ model ReclaimInvite {
   /// invite resolves to nothing at the entitlement gate.
   revokedAt DateTime?
 
+  /// What happened to the invitation email the last time one was attempted: `sent | failed |
+  /// disabled`, or null for a row that predates this column.
+  ///
+  /// **Recorded because an invite whose email never arrived is invisible otherwise.** The row is the
+  /// entitlement and the email is only its delivery, which is the right design — a failed send must
+  /// never cost someone their invitation — but it also means a broken mail provider produces a ledger
+  /// full of people who are perfectly invited and have no idea. This column is what turns that into
+  /// something Rashmir can see and re-send.
+  ///
+  /// `disabled` (no provider configured) is kept distinct from `failed` (the provider refused)
+  /// because they need different things from her: one is a deployment setting, the other is an
+  /// incident.
+  emailStatus String?
+
   /// Which group link this invite was claimed through (F11), or null for one she typed by hand.
   ///
   /// Not just reporting: the claim path reads it to recognise a second submission from the same

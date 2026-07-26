@@ -82,6 +82,7 @@ const invite = (over: Record<string, unknown> = {}) => ({
   redeemedByUserId: null,
   redeemedAt: null,
   revokedAt: null,
+  emailStatus: 'sent',
   // F11: null here is the ordinary case — an invite Rashmir typed rather than one claimed from a
   // group link. `invite-links.test.ts` covers the populated side.
   viaLinkId: null,
@@ -197,6 +198,26 @@ describe('issueInvite', () => {
     expect(result.emailStatus).toBe('failed');
     expect(result.invite.tier).toBe('standard');
   });
+
+  it.each(['sent', 'failed', 'disabled'] as const)(
+    'records an email outcome of %s on the row',
+    async (status) => {
+      sendEmailMock.mockResolvedValue({ success: status === 'sent', status });
+
+      await issueInvite({
+        email: 'leader@example.org',
+        tier: 'standard',
+        inviteeName: 'Priya',
+        inviterName: 'Rashmir',
+      });
+
+      // Without this write the failure exists only in a log, and the admin screen shows a row
+      // indistinguishable from one that arrived — someone perfectly invited who never heard.
+      expect(inviteUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { emailStatus: status } })
+      );
+    }
+  );
 });
 
 describe('findLiveInviteForEmail', () => {

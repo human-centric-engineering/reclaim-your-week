@@ -195,9 +195,11 @@ export function LinkManager() {
         </div>
         <div className="space-y-1.5">
           <span className="flex items-center gap-1.5 text-sm font-medium">
-            <label htmlFor="link-days">Open for</label>
+            {/* The unit belongs in the label, not only in the popover: a bare "7" beside "Open for"
+                is ambiguous, and reading it as weeks or months is a link left open far too long. */}
+            <label htmlFor="link-days">Open for (days)</label>
             <FieldHelp title="How long it stays open">
-              <p>In days, counted from now. After that the link stops working.</p>
+              <p>Counted from now. After that the link stops working.</p>
               <p className="mt-2">
                 This is separate from the invitation itself. Someone who claims a seat on the last
                 day still gets the usual seven days to set up their account.

@@ -188,6 +188,23 @@ describe('POST /api/v1/app/reclaim/join/:token', () => {
       expect((await json(res)).data?.message).toMatch(/already have an account/i);
     });
 
+    it('tells someone plainly when their invitation email could not be sent', async () => {
+      claimMock.mockResolvedValue({ outcome: 'invited_email_failed' });
+
+      const res = await call({ name: 'Priya', email: 'priya@example.org' });
+      const message = (await json(res)).data?.message ?? '';
+
+      // Still a success: their place is held and the invitation exists.
+      expect(res.status).toBe(200);
+      expect(message).toMatch(/your place is held/i);
+      // The failure is ours, said plainly, with no suggestion they mistyped anything (I17) and no
+      // instruction to retry, which would not fix a broken mail provider.
+      expect(message).toMatch(/problem at our end/i);
+      expect(message).toMatch(/will be in touch/i);
+      // And above all, it must not send them to an inbox that will stay empty.
+      expect(message).not.toMatch(/check your email/i);
+    });
+
     it('reads a repeat claim as the same reassurance as the first one', async () => {
       claimMock.mockResolvedValue({ outcome: 'already_claimed' });
 

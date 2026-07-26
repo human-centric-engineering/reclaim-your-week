@@ -312,27 +312,56 @@ describe('claimInviteLink — taking a seat', () => {
         tier: 'standard',
         inviteeName: 'Priya',
         inviterName: 'Rashmir',
+        // Passed to the create, not written afterwards: a follow-up update is a second thing that
+        // can fail, and an invite with no link attribution is one the repeat-claim check cannot
+        // find, so the same person claiming again would spend a second seat.
+        viaLinkId: 'link1',
       })
     );
-    expect(inviteUpdate).toHaveBeenCalledWith({
-      where: { id: 'inv1' },
-      data: { viaLinkId: 'link1' },
-    });
+    expect(inviteUpdate).not.toHaveBeenCalled();
   });
 
-  it('still counts as claimed when the invitation email fails to send', async () => {
-    // `issueInvite` treats the row as the entitlement and the email as its delivery, so a failed
-    // send must not hand the seat back — the person IS invited and can be re-sent.
-    issueInviteMock.mockResolvedValue({
-      invite: { id: 'inv1' },
-      emailStatus: 'failed',
-      expiresAt: FUTURE,
-    });
+  it.each(['failed', 'disabled'] as const)(
+    'keeps the seat and the invitation when the email is %s, but says so',
+    async (emailStatus) => {
+      // `issueInvite` treats the row as the entitlement and the email as its delivery, so a failed
+      // send must not hand the seat back — the person IS invited and can be re-sent.
+      issueInviteMock.mockResolvedValue({ invite: { id: 'inv1' }, emailStatus, expiresAt: FUTURE });
+
+      const result = await claimInviteLink(claim);
+
+      // Not `invited`: telling someone to check an inbox that will stay empty is the one outcome
+      // here that wastes their afternoon.
+      expect(result.outcome).toBe('invited_email_failed');
+      // The seat stays spent: they are invited, and re-sending is Rashmir's job, not a retry theirs.
+      expect(linkUpdate).not.toHaveBeenCalled();
+      expect(issueInviteMock).toHaveBeenCalledWith(expect.objectContaining({ viaLinkId: 'link1' }));
+    }
+  );
+
+  it('reads a repeat claim whose email failed as a failure, not as reassurance', async () => {
+    // The likeliest person to re-scan is someone for whom nothing arrived, so this branch must not
+    // send them back to the same empty inbox.
+    inviteFindFirst.mockResolvedValue({ id: 'inv1', emailStatus: 'failed' });
 
     const result = await claimInviteLink(claim);
 
-    expect(result.outcome).toBe('invited');
-    expect(linkUpdate).not.toHaveBeenCalled();
+    expect(result.outcome).toBe('invited_email_failed');
+    expect(linkUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it('reads a repeat claim whose email was sent as an ordinary repeat', async () => {
+    inviteFindFirst.mockResolvedValue({ id: 'inv1', emailStatus: 'sent' });
+
+    expect((await claimInviteLink(claim)).outcome).toBe('already_claimed');
+  });
+
+  it('treats an unrecorded email status on a repeat claim as delivered', async () => {
+    // Rows issued before the column existed. Absent is not the same as failed, and claiming
+    // otherwise would tell people their invitation is broken when we simply do not know.
+    inviteFindFirst.mockResolvedValue({ id: 'inv1', emailStatus: null });
+
+    expect((await claimInviteLink(claim)).outcome).toBe('already_claimed');
   });
 
   it('hands the seat back when issuing throws', async () => {

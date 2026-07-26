@@ -32,6 +32,7 @@ import {
   claimInviteLink,
   InviteLinkRefused,
   JOIN_TOKEN_PATTERN,
+  type ClaimOutcome,
   type LinkRefusal,
 } from '@/lib/app/programme/access/invite-links';
 
@@ -84,7 +85,7 @@ export const POST = async (
     // do no work.
     if (body.website !== undefined && body.website !== '') {
       log.warn('Reclaim join honeypot triggered');
-      return successResponse({ outcome: 'invited', message: CONFIRMATION });
+      return successResponse({ outcome: 'invited', message: OUTCOME_MESSAGE.invited });
     }
 
     // The invitation email says who it is from. A group link's sender is whoever minted it, which is
@@ -112,7 +113,7 @@ export const POST = async (
 
     return successResponse({
       outcome: result.outcome,
-      message: result.outcome === 'already_registered' ? ALREADY_REGISTERED : CONFIRMATION,
+      message: OUTCOME_MESSAGE[result.outcome],
     });
   } catch (error) {
     if (error instanceof InviteLinkRefused) {
@@ -130,11 +131,24 @@ export const POST = async (
 };
 
 /**
- * The same sentence for a first claim and a repeat one. A second tap should read as reassurance
- * rather than as an error, and the person's inbox is in the same state either way.
+ * What each outcome says to the person in front of it.
+ *
+ * A first claim and a repeat one share a sentence: a second tap should read as reassurance rather
+ * than as an error, and their inbox is in the same state either way.
+ *
+ * `invited_email_failed` is the one that earns its own wording. Their place is held and their
+ * invitation exists; what has gone wrong is ours, so the sentence says so plainly, does not ask them
+ * to do anything they cannot do (retrying will not fix a broken mail provider), and does not imply
+ * they mistyped their address. They are told they will hear from us, which is a promise Rashmir can
+ * keep because the failure is now recorded against their invitation on the access screen.
  */
-const CONFIRMATION =
-  'Check your email. There is an invitation waiting, and the link in it will set up your account.';
-
-const ALREADY_REGISTERED =
-  'You already have an account with this address, so there is nothing to claim here. Sign in and you are all set.';
+const OUTCOME_MESSAGE: Record<ClaimOutcome, string> = {
+  invited:
+    'Check your email. There is an invitation waiting, and the link in it will set up your account.',
+  already_claimed:
+    'Check your email. There is an invitation waiting, and the link in it will set up your account.',
+  invited_email_failed:
+    'Your place is held, but the email could not be sent because of a problem at our end. We are looking into it and will be in touch as soon as it is fixed. There is nothing you need to do.',
+  already_registered:
+    'You already have an account with this address, so there is nothing to claim here. Sign in and you are all set.',
+};

@@ -25,6 +25,7 @@ const inviteRowSchema = z.object({
   invitedByName: z.string().nullable(),
   redeemedByName: z.string().nullable(),
   viaLinkLabel: z.string().nullable(),
+  emailStatus: z.string().nullable(),
   redeemedAt: z.string().nullable(),
   createdAt: z.string(),
 });
@@ -55,7 +56,7 @@ const inviteLinkListSchema = z.object({
 const mintLinkResultSchema = z.object({ link: inviteLinkRowSchema, message: z.string() });
 
 const claimResultSchema = z.object({
-  outcome: z.enum(['invited', 'already_claimed', 'already_registered']),
+  outcome: z.enum(['invited', 'invited_email_failed', 'already_claimed', 'already_registered']),
   message: z.string(),
 });
 

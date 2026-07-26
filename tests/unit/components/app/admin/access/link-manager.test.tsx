@@ -52,6 +52,14 @@ describe('LinkManager', () => {
     expect(screen.getByLabelText(/open for/i)).toHaveValue(7);
   });
 
+  it('names the unit in the expiry label, not only in its popover', async () => {
+    render(<LinkManager />);
+
+    // A bare "7" beside "Open for" is ambiguous, and the popover holding the unit takes a click to
+    // open. Reading days as weeks is a link left open twelve times longer than intended.
+    await waitFor(() => expect(screen.getByLabelText(/open for \(days\)/i)).toBeInTheDocument());
+  });
+
   it('caps the seat input at the configured ceiling', async () => {
     render(<LinkManager />);
 
