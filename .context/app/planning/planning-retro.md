@@ -60,6 +60,20 @@ way the framework retro does.
 
 ## §B — feature-plan authoring
 
+- **A read that has no consumer has no evidence it works — and the first consumer is where the bug
+  surfaces, one feature at a time (F9, the whole shape of it).** `getSlotHistory` was built in F1 t-2
+  specifically so a repeat audit could read run 1 beside run 2, and then sat **unused for nine
+  features** because nothing repeated a run yet. In that gap, `readRunAnswers` did the natural thing
+  with the tools that _were_ being used — filter `getSlotHeads` by `provenance.runId` — which is
+  correct for exactly as long as every leader has one run, and silently empties the first audit the
+  moment they have two. It took F9's planning read to notice, and the damage would have landed on
+  F7's public share link. **Two lessons, and the second is the general one.** (1) When a plan defers a
+  capability to a later feature, the seam built for it is untested inference until that feature
+  arrives; treat "built early, consumed later" as a standing item to re-verify at consumption, not as
+  done. (2) More broadly: **when a feature introduces the _second_ of something the system has only
+  ever had one of** — run, tenant, workspace, version — re-read every query that scopes to it. The
+  bug is never in the new instance; it is in the old code's assumption that there was only ever one.
+
 - **Check what the tier below already built before sizing a feature — and then check whether it does
   the thing your done-when actually claims (F10, both caught at planning).** Two halves of one
   lesson, and they pull in opposite directions. First half: `plan.md` sized F10 as five build-it-
