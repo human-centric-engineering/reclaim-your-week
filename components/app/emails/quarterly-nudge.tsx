@@ -69,7 +69,7 @@ export default function QuarterlyNudgeEmail({
           </Text>
 
           <Text style={text}>
-            A second audit sits alongside your first, so you can see what has shifted and what has
+            A second audit sits alongside your first, so you can see what has changed and what has
             not. There is no right answer to that, and nothing to catch up on.
           </Text>
 

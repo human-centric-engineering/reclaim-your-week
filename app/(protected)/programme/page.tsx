@@ -10,7 +10,7 @@ import { ProgrammeShell } from '@/components/app/reclaim/programme-shell';
 export const metadata: Metadata = {
   title: 'Your audit',
   description:
-    'A quiet look at where your time goes, and what a next level of leadership might ask.',
+    'An honest look at where your time goes, and what a next level of leadership might ask.',
 };
 
 export default function ProgrammePage() {

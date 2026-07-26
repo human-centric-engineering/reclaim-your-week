@@ -41,7 +41,7 @@ export function BeginAudit({ onStarted }: { onStarted: () => void }) {
         Reclaim your week
       </p>
       <h1 className="text-foreground mt-6 text-4xl leading-tight font-light text-balance sm:text-5xl">
-        A quiet look at where your time really goes.
+        An honest look at where your time really goes.
       </h1>
       <p className="text-muted-foreground mx-auto mt-6 max-w-md text-[1.05rem] leading-relaxed">
         Not to do more, but to lead with more ease. Take it at your own pace; you can leave and come
