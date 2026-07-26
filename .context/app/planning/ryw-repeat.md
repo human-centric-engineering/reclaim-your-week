@@ -327,6 +327,78 @@ test; an opted-out leader and a mid-audit leader are never selected, with tests;
 works without a session and is idempotent; the tick has its own sub-cap; the email carries no pitch.
 _Gates:_ full loop (`/security-review` — an unauthenticated token route plus an outbound mail path).
 
+## What the build changed about this plan
+
+Recorded here rather than silently edited above, because a plan that quietly rewrites itself to match
+the code stops being a check on the code. (`ryw-admin.md` carries the same two sections; this file
+went without them until the v1 close-out audit noticed — [[post-v1]] P8.)
+
+- **D1 shipped ahead of the feature, as its own PR (#45).** The plan said to split the read fix out if
+  t-1 ran long; it was split out because it stood on its own merit — a correctness fix to F7's public
+  share links should not wait behind a chart. The regression test the plan asked for exists, and was
+  **verified to fail against the old behaviour** (5 of 10 assertions) before being kept.
+- **D2's answer: a stateful in-memory slot fake, plus `smoke:reclaim-run` extended to a second run.**
+  Both landed as planned. The smoke's step 8 is the only place the fix meets real `supersededAt`
+  behaviour.
+- **D3 held exactly.** t-4 collapsed into t-1: labels are per-user and already carried. Three tasks.
+- **D4 held.** `EmailPropsMap` is closed; the nudge renders its own template and calls `sendEmail`
+  directly. Filed as sunrise#468.
+- **D5 held on both halves.** No scheduled-job seam (sunrise#469) and no unsubscribe mechanism
+  anywhere, so t-3 built its own one-click, no-login opt-out.
+- **D6's ruling shipped as written**, with one addition the gates forced: the window needed an **upper**
+  bound too. Without it the first tick after deploy would have mailed every dormant leader a note
+  claiming their audit was "about three months ago". Both ends are now coach-editable config.
+- **D7 is the one to keep watching.** The comparison and the trends present both numbers and a signed
+  difference and nothing else. The component tests assert it structurally — a fall and a rise must
+  render with identical markup — rather than by grepping for the word "red", so a restyle cannot
+  quietly reintroduce a verdict.
+
+### The pre-flight check the plan asked for, answered
+
+> _"Re-verify that `provenance.runId` is actually populated on every historical slot version, not just
+> recent ones."_
+
+**Structurally guaranteed, and that is a better answer than a count.** `saveAnswer` has stamped
+`runId` since F4 t-2 and is the **only** writer of slot values in the leaf — asserted on every PR by
+`tests/unit/invariants/write-path.test.ts` (I3). So every value the product has ever written carries
+one by construction; there is no era of unstamped rows to migrate.
+
+The single exception is already documented and filed: the coach agent's `fill_slot` writes carry no
+`runId` at all, because the framework builds that provenance without one and no caller can supply it
+(daybreak#167). Those values are deliberately excluded from both the trends and the run-scoped reads.
+
+An empirical count would have proved less: at the time of writing no slot values exist outside test
+runs, so a query would have returned zero of zero and looked like a pass.
+
+## What the gates found
+
+`/security-review` returned **no findings at threshold** — the unauthenticated opt-out page (
+subtractive, idempotent, no identity leak, `noindex`), 244-bit tokens, the admin-key escalation path,
+and `userId` server-derived on all three new reads were all traced and sound. One below-threshold note
+actioned: the admin export no longer carries the live unsubscribe token.
+
+`/code-review` found **nine**, and two were features that did not work as described:
+
+- **The comparison's Now/Change columns could never populate.** Phase 1 keeps hours in local state and
+  only persists on submit, at which point it advances and unmounts — so reading the server for "Now"
+  left both columns dashed for the whole phase the panel lives in. It takes the live hours as a prop
+  now, which is what "beside the new one **as it fills in**" actually requires.
+- **The nudge had no upper bound** (see D6 above).
+
+And a duplication finding that had already caused a third bug: **four implementations of "hours per
+bucket"** had drifted, two having lost the conditional-bucket guard — so a leader who said fundraising
+was irrelevant and then uploaded a calendar saw "Fundraising · 0h", because `persistComposite` writes a
+literal `0` for absent buckets. Consolidated into one exported `bucketHours()`.
+
+The rest: the "at most one nudge per cycle" claim was a read-then-write two overlapping ticks would
+both pass (now a conditional `updateMany`, with only a unique violation swallowed); one leader's
+database failure abandoned the rest of the cohort mid-loop; **Postgres sorts NULLs first on `desc`**, so
+a completed run with no `completedAt` outranked every real one and showed the _oldest_ audit as "last
+time"; the shortcut prefilled three parent booleans but not the conditional text beneath them; the
+prefill clobbered whatever the leader had already typed; `enoughData` let the panel render fully built
+and empty; and "working around 55 per week" — the source's `[hours]` is shorthand for a phrase, fixed
+at the interpolation rather than in the guarded constant.
+
 ## Notes / deferrals
 
 - **F9 closes the epic.** With it, RYW v1 is complete: the leader's audit (F1–F7), the door (F8), the

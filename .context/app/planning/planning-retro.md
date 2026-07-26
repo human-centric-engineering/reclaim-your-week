@@ -60,6 +60,16 @@ way the framework retro does.
 
 ## §B — feature-plan authoring
 
+- **The feature with the highest stated drift risk was the one built without a written plan, and
+  nobody noticed for ten features (F2, found by the v1 close-out audit).** `plan.md` called F2
+  `ryw-module` "the highest risk for silent drift, because paraphrase looks like success" — and it is
+  the only one of the ten with no `ryw-*.md`. Nothing went wrong: the I11 two-hop guard, the voice
+  test and the slot-sensitivity test all landed with the content they guard and have held ever since.
+  But the absence was found by an audit rather than by anyone reaching for the document, which is the
+  uncomfortable part — **a missing record does not announce itself, because the only person who needs
+  it is the next person, and they do not know it should exist.** The check is mechanical and belongs
+  at close-out: every shipped feature has a `detail:` link on the board, or a reason it does not.
+
 - **A read that has no consumer has no evidence it works — and the first consumer is where the bug
   surfaces, one feature at a time (F9, the whole shape of it).** `getSlotHistory` was built in F1 t-2
   specifically so a repeat audit could read run 1 beside run 2, and then sat **unused for nine

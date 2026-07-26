@@ -210,7 +210,7 @@ _Done when:_ `git diff --stat` shows one framework file; boundary + type-check g
 
 ### F2 · `ryw-module` — module, content, slots, voice
 
-_Owner:_ John · _Status:_ **shipped** (t-1 #19 · t-2/t-3 #20 · t-4 #21) · _Depends on:_ F1 (shipped #17) · _~4 tasks_
+_Owner:_ John · _Status:_ **shipped** (t-1 #19 · t-2/t-3 #20 · t-4 #21) · _Depends on:_ F1 (shipped #17) · _4 tasks_ · detail: [[ryw-module]] (written retrospectively — [[post-v1]] P7)
 
 Where Rashmir's IP enters the codebase. Highest risk for silent drift, because paraphrase looks like
 success. Load content, don't author it (I11).
