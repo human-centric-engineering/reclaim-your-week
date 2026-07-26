@@ -22,6 +22,8 @@
 import { z } from 'zod';
 import type { ModuleDefinition } from '@/lib/framework/modules';
 import { reclaimSlotDefinitions } from '@/lib/app/programme/slots';
+import { RECLAIM_MODULE_SLUG, RECLAIM_COACH_ROLE } from '@/lib/app/programme/identity';
+import { ReclaimRecordAnswersCapability } from '@/lib/app/programme/coach/capabilities/record-answers';
 import {
   RECLAIM_GOVERNING_FRAME,
   RECLAIM_DEEP_WORK_NOTE,
@@ -32,12 +34,12 @@ import {
   RECLAIM_CONSULTATION_EMAIL,
 } from '@/lib/app/programme/content';
 
-/** The module's stable slug — the storage key everywhere (`Module.slug`). Never changes (I7 sibling). */
-export const RECLAIM_MODULE_SLUG = 'reclaim-audit';
-
-/** The agent seat this module offers. `reclaimCoachAgent` (`./agent.ts`, F2 t-4) is authored for it;
- *  F3 t-1 seeds that agent and binds it into this seat. */
-export const RECLAIM_COACH_ROLE = 'coach';
+/**
+ * The stable identifiers, defined in `./identity.ts` and re-exported here so every existing import
+ * site is unchanged. They live in their own file because `slots/write.ts` needs the slug, and the
+ * coach's capabilities are declared on the module below, which would otherwise be a cycle.
+ */
+export { RECLAIM_MODULE_SLUG, RECLAIM_COACH_ROLE } from '@/lib/app/programme/identity';
 
 /**
  * One of the nine buckets (`content-source.md` §1). The `slug` is the canonical
@@ -242,4 +244,9 @@ export const reclaimAuditModule: ModuleDefinition = {
   configSchema: reclaimConfigSchema,
   slotDefinitions: reclaimSlotDefinitions,
   agentRoles: [RECLAIM_COACH_ROLE],
+  // The coach's own tools. Declaring them here rather than through `initAppCapabilities()` is what
+  // gets each one both halves at boot: the dispatcher handler and the `ai_capability` row an agent
+  // must be granted against. The framework namespaces them (`reclaim_audit__record_answers`) and
+  // refuses any dispatch whose scope pins a different module.
+  capabilities: [new ReclaimRecordAnswersCapability()],
 };

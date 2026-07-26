@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { reclaimCoachAgent } from '@/lib/app/programme/agent';
+import { reclaimCoachAgent, RECLAIM_RECORD_ANSWERS_SLUG } from '@/lib/app/programme/agent';
 import {
   reclaimAuditModule,
   RECLAIM_MODULE_SLUG,
@@ -41,14 +41,18 @@ describe('reclaimCoachAgent authored content', () => {
 });
 
 describe('reclaimCoachAgent capability grants', () => {
-  it('grants four capabilities, one per slug (no duplicates)', () => {
+  it('grants five capabilities, one per slug (no duplicates)', () => {
     const slugs = reclaimCoachAgent.capabilities.map((c) => c.slug);
-    expect(slugs).toHaveLength(4);
-    expect(new Set(slugs).size).toBe(4);
+    expect(slugs).toHaveLength(5);
+    expect(new Set(slugs).size).toBe(5);
   });
 
-  it('attaches an exposure config only to fill_slot', () => {
+  it('attaches an exposure config to both writes and to neither read', () => {
+    // The reads are unrestricted; every write carries an allowlist. `agent-caps.test.ts` asserts
+    // what each allowlist contains — here we only care that no write escaped without one.
     const withConfig = reclaimCoachAgent.capabilities.filter((c) => c.customConfig !== undefined);
-    expect(withConfig.map((c) => c.slug)).toEqual(['fill_slot']);
+    expect(withConfig.map((c) => c.slug).sort()).toEqual(
+      ['fill_slot', RECLAIM_RECORD_ANSWERS_SLUG].sort()
+    );
   });
 });

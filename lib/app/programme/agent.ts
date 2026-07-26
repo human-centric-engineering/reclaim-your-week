@@ -30,7 +30,9 @@
  */
 
 import type { ExposureConfig } from '@/lib/framework/data-slots/capabilities/exposure';
-import { RECLAIM_MODULE_SLUG, RECLAIM_COACH_ROLE } from '@/lib/app/programme/module';
+import { moduleCapabilitySlug } from '@/lib/framework/modules/capabilities/namespace';
+import { RECLAIM_MODULE_SLUG, RECLAIM_COACH_ROLE } from '@/lib/app/programme/identity';
+import { COACH_WRITABLE_GROUPS } from '@/lib/app/programme/coach/writable-slots';
 
 /**
  * The banned lexicon (`content-source.md` §5b, the machine-checkable list). The single source
@@ -111,11 +113,31 @@ const BRAND_VOICE_INSTRUCTIONS = `Speak in plain, warm, direct, and conversation
 Never use this language, or any corporate-consultant framing: ${RECLAIM_BANNED_LEXICON.join(', ')}. Do not open with filler such as "Certainly", "Absolutely", "Great question", "Of course", or "I'd be happy to". Do not use em dashes; use a comma, a full stop, or a restructured sentence instead. Do not use bullet points in conversation; save any structured formatting for the visual artifacts and the summary document. The tone should feel like a thoughtful human coach, not an AI assistant.`;
 
 /**
- * The coach agent. Reads only, with one deliberately narrow write: the exposure allowlist locks
- * `fill_slot` to the run-independent `reclaim_profile` group, so a hallucinated `contextKey`
- * can never write one run's answers into another (I6). No `request_transition` (the server owns
- * transitions), and no unrestricted `fill_slot` (the application writes run-carrying answers via
- * `saveAnswer`, I3).
+ * The module's own capture tool, under the namespaced identifier the framework gives it
+ * (`reclaim_audit__record_answers`). Derived rather than written out, so renaming the tool cannot
+ * leave the grant pointing at a slug that no longer exists.
+ */
+export const RECLAIM_RECORD_ANSWERS_SLUG = moduleCapabilitySlug(
+  RECLAIM_MODULE_SLUG,
+  'record_answers'
+);
+
+/**
+ * The coach agent, and the two writes it holds (I6).
+ *
+ * `fill_slot` stays locked to the run-independent `reclaim_profile` group. It selects its run from
+ * `contextKey`, an argument the *model* supplies, so a hallucinated value there could write one
+ * leader's run into another's — which is why it may only ever touch slots that belong to no run.
+ *
+ * `record_answers` is the conversational capture path and may write the audit itself, because it
+ * takes the run from the server-issued dispatch scope instead of from an argument. There is nothing
+ * for the model to get wrong. Its allowlist is the same one the capability enforces in code
+ * (`coach/writable-slots.ts`), stated here as data so the framework's `facetAllows` checks it a
+ * second time at a different layer: reflections, sharing consent and the computed calendar lanes are
+ * absent from this list and therefore refused.
+ *
+ * Still no `request_transition`. The server owns phase transitions, and the leader decides when to
+ * move on.
  */
 export const reclaimCoachAgent: ReclaimCoachAgentDefinition = {
   slug: 'reclaim-coach',
@@ -133,10 +155,15 @@ export const reclaimCoachAgent: ReclaimCoachAgentDefinition = {
     { slug: 'get_next_steps' },
     { slug: 'get_state' },
     {
-      // The only write. Locked to the run-independent profile group; every run-carrying group
-      // (reclaim_current, reclaim_ideal, …) is refused by `facetAllows` (I6).
+      // Model-selected run, so it may only touch slots that belong to no run (I6).
       slug: 'fill_slot',
       customConfig: { write: { groups: ['reclaim_profile'] } },
+    },
+    {
+      // Server-selected run, so it may write the audit. The allowlist mirrors the one the
+      // capability enforces in code; the three refused groups are absent by construction.
+      slug: RECLAIM_RECORD_ANSWERS_SLUG,
+      customConfig: { write: { groups: [...COACH_WRITABLE_GROUPS] } },
     },
   ],
 };

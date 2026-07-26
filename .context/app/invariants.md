@@ -174,19 +174,63 @@ the guard.
 
 ---
 
-## I6 — The agent reads; it does not write or transition
+## I6 — The agent never selects the run, and never transitions
 
-Granted capabilities: `get_journey_state`, `get_next_steps`, `get_state`. That is the whole list.
+Granted capabilities: `get_journey_state`, `get_next_steps`, `get_state`, `fill_slot`,
+`reclaim_audit__record_answers`.
 
-**Never** `request_transition` — the server owns phase transitions. **Never** `fill_slot` for any
-run-carrying group. The agent may write only `reclaim_profile_*`, which is run-independent,
-enforced by the exposure allowlist in `AiAgentCapability.customConfig`.
+**Never** `request_transition`. The server owns phase transitions and the leader decides when to
+move on.
 
-**Why:** `contextKey` is an LLM-supplied optional argument
-(`lib/framework/guidance/capabilities/shared.ts:18-21`). The model can pass any string. Trusting it
-for run selection would let a hallucinated key write one run's answers into another.
+**The rule is about where the run id comes from, not about writing.** A capability that selects its
+run from an argument the model supplies may only touch slots belonging to no run. A capability that
+takes the run from the server may write the audit.
 
-**Test:** `tests/unit/invariants/agent-caps.test.ts` asserts the exposure config refuses `reclaim_current_*`.
+| Capability                      | Run comes from                                 | May write              |
+| ------------------------------- | ---------------------------------------------- | ---------------------- |
+| `fill_slot`                     | `contextKey`, an LLM-supplied argument         | `reclaim_profile` only |
+| `reclaim_audit__record_answers` | `CapabilityContext.scope`, issued by the route | the allowlist below    |
+
+**Why the distinction.** `contextKey` is an optional argument on the framework's own tools
+(`lib/framework/guidance/capabilities/shared.ts:18-21`) and the model can pass any string, so
+trusting it for run selection would let a hallucinated key write one leader's answers into another
+leader's audit. `ChatRequest.scope` is a `Record<string, string>` built by the route and threaded
+verbatim into every dispatch (`lib/orchestration/chat/types.ts:41-49`); the model never sees it and
+cannot influence it. So the hazard is removed by construction rather than by prohibition, and the
+capability that carries the run this way is safe to grant where `fill_slot` is not.
+
+**Was this loosened?** The original rule read "the agent reads; it does not write". It was written
+when the audit was captured entirely by forms and no conversational path existed. Making the phases
+conversational means the coach must record what it hears or the conversation captures nothing. What
+the rule was actually protecting — that a model can never decide which run it is writing into — is
+unchanged and now enforced structurally.
+
+**Write allowlist** for `record_answers`, stated twice on purpose: as data on the capability grant
+(`AiAgentCapability.customConfig`, enforced by the framework's `facetAllows`) and in code
+(`lib/app/programme/coach/writable-slots.ts`, which can also explain the refusal to the model).
+
+Permitted: `reclaim_profile`, `reclaim_setup`, `reclaim_current`, `reclaim_energy`, `reclaim_ideal`,
+`reclaim_gap`, `reclaim_action`.
+
+Refused, and each for its own reason:
+
+- **`reclaim_reflection`** — these are the phase gate (see I9). A coach that can write one can open
+  its own gate, and "asking before telling" stops meaning anything. The coach may propose the words
+  on screen; the leader's confirmation is what writes.
+- **`reclaim_share`** — `reclaim_share_with_coach` and `reclaim_share_quotable` decide whether a
+  leader's words may be republished. An agent that can write consent can manufacture it.
+- **`reclaim_calendar`, `reclaim_composite`** — computed lanes whose privacy story (I4, I-composite)
+  is that they hold deterministic per-bucket totals. Model-derived numbers there make that false.
+
+**Typed slots need typed values.** `record_answers` refuses a `number`, `boolean`, `date` or `json`
+slot that arrives with prose alone. Nine bucket hour slots feed the charts, the benchmarks, the gap
+arithmetic and the cross-audit trends; "about eight" satisfies none of them and fails silently
+because the chart still renders. The coach's way through the refusal is to offer a figure and let
+the leader confirm it, which also satisfies I17.
+
+**Test:** `tests/unit/invariants/agent-caps.test.ts` — the grant set, the absence of
+`request_transition`, both exposure allowlists, and the three refused groups checked against the
+real slot definitions.
 
 ---
 

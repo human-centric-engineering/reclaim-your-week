@@ -14,5 +14,8 @@
  * Full guide + example: CUSTOMIZATION.md §4 · .context/orchestration/capabilities.md
  */
 export function initAppCapabilities(): void {
-  // No app capabilities by default.
+  // Nothing here. The reclaim coach's tools are declared on the module instead
+  // (`reclaimAuditModule.capabilities` in `lib/app/programme/module.ts`), which is the seam that
+  // both registers the handler and projects its `ai_capability` row at boot. This file is for a
+  // capability that belongs to the app rather than to a module.
 }
