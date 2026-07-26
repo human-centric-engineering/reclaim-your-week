@@ -42,14 +42,58 @@ export interface ReferralConversion {
   completionRate: number | null;
 }
 
+/**
+ * One quarter on the timeline (post-v1 P9).
+ *
+ * F9 deferred operator-side trends to F10's history reads; F10 deferred them to F9's. Both shipped,
+ * so nobody owned it — the measures were point-in-time only, which is the one shape that cannot
+ * answer the question Brief §1 actually asks. "Do people come back" is not a number, it is a
+ * direction, and a single figure taken today cannot tell you whether it is moving.
+ */
+export interface MeasurePoint {
+  /** Calendar quarter label, e.g. `2026 Q3` — the cadence the product itself runs on. */
+  period: string;
+  /** Audits completed in that quarter. */
+  completions: number;
+  /** Leaders completing their **second or later** audit in that quarter — a return, as it happened. */
+  returns: number;
+  /** Referral-tier invitations sent by leaders in that quarter. */
+  referralsSent: number;
+}
+
 export interface MeasuresView {
   returnRate: ReturnRate;
   referral: ReferralConversion;
   totals: { clients: number; runsCompleted: number };
+  /**
+   * The last eight quarters, oldest first, or fewer where the product is younger than that.
+   *
+   * **Deliberately counts events in a period rather than restating the headline rate per period.**
+   * A quarterly return *rate* over a cohort of eleven leaders is three significant figures of noise;
+   * "two people came back this quarter" is a fact. I12's discipline applies to Rashmir's dashboard as
+   * much as to a leader's chart: report what happened, and leave the reading to her.
+   */
+  timeline: MeasurePoint[];
+}
+
+/**
+ * The rows the **timeline** needs, and nothing else.
+ *
+ * Its own type rather than a slice of `MeasureInput`: `buildTimeline` never reads the referral
+ * redemption state or the client count, and a function that demands arguments it ignores makes every
+ * caller and every test carry ballast to satisfy a compiler rather than a requirement.
+ */
+export interface TimelineInput {
+  /** Every completion with its date. */
+  completions?: Array<{ userId: string; completedAt: Date }>;
+  /** When each referral-tier invitation was sent. */
+  referralsSentAt?: Date[];
+  /** The end of the window — the caller's clock, so the function stays pure and testable. */
+  now?: Date;
 }
 
 /** The rows `computeMeasures` needs — deliberately the minimum, so tests can build them by hand. */
-export interface MeasureInput {
+export interface MeasureInput extends TimelineInput {
   /** One entry per completed run: whose it was. Order irrelevant; repeats are the point. */
   completedRunUserIds: string[];
   /** Every referral-tier invite a leader sent. */
@@ -97,18 +141,91 @@ export function computeMeasures(input: MeasureInput): MeasuresView {
       completionRate: ratio(completed.length, accepted.length),
     },
     totals: { clients: input.clientCount, runsCompleted: input.completedRunUserIds.length },
+    timeline: buildTimeline(input),
   };
+}
+
+/** `2026 Q3` from a date. The product's own cadence, and the one Rashmir thinks in. */
+export function quarterOf(date: Date): string {
+  return `${date.getUTCFullYear()} Q${Math.floor(date.getUTCMonth() / 3) + 1}`;
+}
+
+/** The eight quarters ending in the one containing `now`, oldest first. */
+function recentQuarters(now: Date, count = 8): string[] {
+  const out: string[] = [];
+  for (let back = count - 1; back >= 0; back -= 1) {
+    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - back * 3, 1));
+    out.push(quarterOf(d));
+  }
+  return out;
+}
+
+/**
+ * Events per quarter. Pure, and it counts **events as they happened** rather than recomputing the
+ * headline rate per period — see `MeasuresView.timeline` for why that is the honest shape at this
+ * cohort size.
+ *
+ * A "return" is a completion that was not that leader's first, decided by ordering their completions
+ * in time. So a leader who finished audits in Q1 and Q3 contributes one completion to Q1 and both a
+ * completion and a return to Q3, which is exactly when the coming-back happened.
+ */
+export function buildTimeline(input: TimelineInput): MeasurePoint[] {
+  const completions = input.completions ?? [];
+  if (completions.length === 0 && (input.referralsSentAt ?? []).length === 0) return [];
+
+  const now = input.now ?? new Date();
+  const periods = recentQuarters(now);
+  const index = new Map(periods.map((p, i) => [p, i]));
+
+  const points: MeasurePoint[] = periods.map((period) => ({
+    period,
+    completions: 0,
+    returns: 0,
+    referralsSent: 0,
+  }));
+
+  // Order each leader's completions so "was this their first?" is answerable per event.
+  const byUser = new Map<string, Date[]>();
+  for (const c of completions) {
+    const list = byUser.get(c.userId) ?? [];
+    list.push(c.completedAt);
+    byUser.set(c.userId, list);
+  }
+  for (const list of byUser.values()) list.sort((a, b) => a.getTime() - b.getTime());
+
+  for (const [, dates] of byUser) {
+    dates.forEach((date, nth) => {
+      const at = index.get(quarterOf(date));
+      if (at === undefined) return; // older than the window
+      const point = points[at];
+      if (point === undefined) return;
+      point.completions += 1;
+      if (nth > 0) point.returns += 1;
+    });
+  }
+
+  for (const sentAt of input.referralsSentAt ?? []) {
+    const at = index.get(quarterOf(sentAt));
+    if (at === undefined) continue;
+    const point = points[at];
+    if (point !== undefined) point.referralsSent += 1;
+  }
+
+  return points;
 }
 
 /** Read the rows and compute. Four batched queries; nothing per-row. */
 export async function readMeasures(): Promise<MeasuresView> {
   const [completedRuns, referralInvites, grants, runs] = await Promise.all([
-    prisma.reclaimAuditRun.findMany({ where: { status: 'complete' }, select: { userId: true } }),
+    prisma.reclaimAuditRun.findMany({
+      where: { status: 'complete' },
+      select: { userId: true, completedAt: true, startedAt: true },
+    }),
     // A referral is an invite a *leader* sent — `invitedByUserId` is null for everything Rashmir
     // issues from the admin screen, which is what separates word of mouth from her own outreach.
     prisma.reclaimInvite.findMany({
       where: { invitedByUserId: { not: null } },
-      select: { redeemedByUserId: true },
+      select: { redeemedByUserId: true, createdAt: true },
     }),
     prisma.reclaimGrant.findMany({ select: { userId: true }, distinct: ['userId'] }),
     prisma.reclaimAuditRun.findMany({ select: { userId: true }, distinct: ['userId'] }),
@@ -120,6 +237,13 @@ export async function readMeasures(): Promise<MeasuresView> {
 
   return computeMeasures({
     completedRunUserIds: completedRuns.map((r) => r.userId),
+    // `completedAt` is set by `completeRun`; fall back to the start for any row predating it, the
+    // same way the trends and the nudge do.
+    completions: completedRuns.map((r) => ({
+      userId: r.userId,
+      completedAt: r.completedAt ?? r.startedAt,
+    })),
+    referralsSentAt: referralInvites.map((i) => i.createdAt),
     referralInvites,
     clientCount: clientIds.size,
   });

@@ -122,11 +122,15 @@ describe('readMeasures', () => {
           completionRate: null,
         },
         totals: { clients: 3, runsCompleted: 0 },
+        timeline: [],
       })
     );
 
     const measures = await readMeasures();
     expect(measures.returnRate.rate).toBeNull();
+    // A young product has no timeline yet, and that must survive parsing as an empty list rather
+    // than failing the envelope — the panel decides whether there is enough to draw.
+    expect(measures.timeline).toEqual([]);
   });
 });
 

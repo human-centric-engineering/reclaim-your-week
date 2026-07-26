@@ -84,12 +84,28 @@ describe('lib/app/ bootstrap defaults are no-ops', () => {
     expect(new Set(hrefs).size).toBe(hrefs.length);
   });
 
-  it('public-nav overrides are all null by default (= use platform defaults)', () => {
-    // A stray non-null list here would silently replace the marketing nav for
-    // every install (issue #347 ships these unset).
-    expect(publicNavItems).toBeNull();
+  it('public-nav overrides point only at pages this app actually has', () => {
+    // These were `null` (platform defaults) until post-v1 P4 replaced the starter-template public
+    // pages. The seam is now used deliberately — the platform default is Home / About / Contact, and
+    // for an invite-only audit the privacy notice belongs in the header rather than the fine print,
+    // because a leader deciding whether to be honest with a tool wants to know where the answers go.
+    //
+    // What still earns an assertion is that nothing here points somewhere that does not exist: a
+    // nav item to a 404 is the kind of thing nobody notices until a real visitor does.
+    // Only the HEADER is overridden — it gains Privacy, because for an invite-only audit the notice
+    // is part of the pitch rather than fine print. Both footer clusters stay `null`: the platform
+    // defaults already point at the pages we have, and overriding with an identical list would read
+    // as intent while carrying none.
     expect(footerNavItems).toBeNull();
     expect(footerLegalItems).toBeNull();
+
+    const routes = new Set(['/', '/about', '/privacy', '/terms', '/contact']);
+    expect(publicNavItems).not.toBeNull();
+    for (const item of publicNavItems ?? []) {
+      expect(routes.has(item.href), `${item.href} is not a page this app has`).toBe(true);
+      expect(item.label.length).toBeGreaterThan(0);
+    }
+    expect(publicNavItems?.map((i) => i.href)).toContain('/privacy');
   });
 
   it('overrides only the invitation email, leaving every other kind on the platform template', () => {

@@ -60,6 +60,16 @@ way the framework retro does.
 
 ## §B — feature-plan authoring
 
+- **The feature with the highest stated drift risk was the one built without a written plan, and
+  nobody noticed for ten features (F2, found by the v1 close-out audit).** `plan.md` called F2
+  `ryw-module` "the highest risk for silent drift, because paraphrase looks like success" — and it is
+  the only one of the ten with no `ryw-*.md`. Nothing went wrong: the I11 two-hop guard, the voice
+  test and the slot-sensitivity test all landed with the content they guard and have held ever since.
+  But the absence was found by an audit rather than by anyone reaching for the document, which is the
+  uncomfortable part — **a missing record does not announce itself, because the only person who needs
+  it is the next person, and they do not know it should exist.** The check is mechanical and belongs
+  at close-out: every shipped feature has a `detail:` link on the board, or a reason it does not.
+
 - **A read that has no consumer has no evidence it works — and the first consumer is where the bug
   surfaces, one feature at a time (F9, the whole shape of it).** `getSlotHistory` was built in F1 t-2
   specifically so a repeat audit could read run 1 beside run 2, and then sat **unused for nine
@@ -254,9 +264,14 @@ refuting them is a deliberate act rather than a silent drift.
 - **Paraphrase looks like success (I11) — but it is now machine-caught, in one direction.**
   `npm run leaf:content-diff` compares every blockquote in `content-source.md` against
   `.context/app/sources/` and is tamper-tested to catch a five-word reordering ("IP creation" →
-  "creating IP"). Trust it for that hop. **The second hop is still unbuilt**: F2 t-3 must assert the
-  `Module.config` defaults match the extract. Until that lands, config content genuinely does need a
-  human diff — which was the original form of this expectation, written when neither hop existed.
+  "creating IP"). Trust it for that hop. ~~**The second hop is still unbuilt**~~ — **resolved: F2 t-3
+  built it** (`tests/unit/app/programme/content.test.ts` asserts the `Module.config` defaults are
+  character-identical to the extract), so both hops now run in `leaf:checks` on every PR. **And F10
+  t-4 surfaced a third hop nobody had thought of:** once Rashmir edits content in the admin UI, what
+  users read lives in `Module.config` **in the database**, where neither guard reaches. Answered by a
+  new paragraph in [[invariants]] I11 plus a per-field "matches the source / edited" marker, so a
+  legitimate revision is visible and a paraphrase cannot pass as original. The lesson generalises: a
+  chain-of-custody guard is only as long as the last place the content can change.
 - **`/code-review` pays for itself on data-model and UI-over-backend tasks.** The framework build found
   this repeatedly (its retro §B). F4's schema + cascades and F6's charts are where to expect real
   findings.

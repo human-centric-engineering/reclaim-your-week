@@ -296,7 +296,7 @@ jobs:
   # DATABASE_URL. The drift check is the backstop for a `migrate dev` that
   # silently committed a DROP for one of those objects; /pre-pr catches it first.
   smoke:
-    name: Smoke — real-DB invariants (erasure + migration drift)
+    name: Smoke — real-DB invariants (erasure, drift, reclaim lifecycle/access)
     runs-on: ubuntu-latest
     needs: config
     if: needs.config.outputs.code == 'true'
@@ -333,6 +333,22 @@ jobs:
       - name: Drift check — Prisma-unmodelled DB objects
         run: npx tsx scripts/db/check-drift.ts
       - run: npx tsx scripts/smoke/erasure.ts
+
+      # Leaf (Reclaim Your Week) smokes — the three that need only Postgres + the seed.
+      #
+      # These were local-only until 2026-07-26, which cost us: `smoke:reclaim-calendar` sat red on
+      # `main` for two features after F8 put a consent gate in front of `createRun`, and nothing
+      # re-ran it. Two of the five make real model calls and so cannot run here (see the note below);
+      # these three do not, and two of them back claims the product makes to its users.
+      #
+      # `db:seed` above already materialises the reclaim module, map and coach agent — the seed
+      # runner walks subdirectories, so `prisma/seeds/app-reclaim/**` is included.
+      - name: Smoke — reclaim run lifecycle (incl. the repeat-audit read regression)
+        run: npx tsx scripts/smoke/reclaim-run.ts
+      - name: Smoke — reclaim GDPR erasure (app_reclaim_* + framework_slot_value)
+        run: npx tsx scripts/smoke/reclaim-erasure.ts
+      - name: Smoke — reclaim access gate (one grant per invite, concurrent first-runs)
+        run: npx tsx scripts/smoke/reclaim-access.ts
 
   docker:
     name: Docker Build

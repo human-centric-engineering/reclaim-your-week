@@ -11,7 +11,7 @@ export const metadata: Metadata = {
     default: BRAND.name,
   },
   description:
-    'A production-ready Next.js starter template designed for rapid application development',
+    'A guided time audit for leaders carrying more than they can sustain. Designed by Rashmir Balasubramaniam. Open by invitation.',
 };
 
 /**
