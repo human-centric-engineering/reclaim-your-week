@@ -32,6 +32,7 @@ import { prisma } from '@/lib/db/client';
 import { readRunAnswers } from '@/lib/app/programme/runs/answers';
 import { readReclaimShortcutConfig } from '@/lib/app/programme/config';
 import { RECLAIM_BUCKETS, bucketToken } from '@/lib/app/programme/content';
+import { bucketHours } from '@/lib/app/programme/chart/series';
 import { readBucketLabels } from '@/lib/app/programme/buckets/labels';
 
 /** The context slots the shortcut offers back for confirmation. All `standard` sensitivity. */
@@ -45,6 +46,13 @@ export const SHORTCUT_SLOTS = [
   'reclaim_setup_weekly_hours',
   'reclaim_setup_priorities',
   'reclaim_setup_in_transition',
+  // The three conditional detail fields, carried WITH the flags that reveal them. Prefilling
+  // "distributed team: yes" without the "how does that affect how you lead" answer beneath it leaves
+  // an empty textarea under copy that says everything is filled in — and confirming then drops data
+  // run 1 had, on the path whose whole purpose is not re-asking.
+  'reclaim_profile_distributed_impact',
+  'reclaim_setup_transition_detail',
+  'reclaim_setup_fundraising_support',
 ] as const;
 
 export interface BucketComparison {
@@ -78,13 +86,6 @@ export interface ShortcutView {
   answers: Record<string, string>;
 }
 
-const num = (a: { value: string; valueJson: unknown } | undefined): number | null => {
-  if (a === undefined) return null;
-  if (typeof a.valueJson === 'number' && Number.isFinite(a.valueJson)) return a.valueJson;
-  const parsed = Number.parseFloat(a.value);
-  return Number.isFinite(parsed) ? parsed : null;
-};
-
 /** Round to one decimal, matching the chart — so a comparison never disagrees with the bars above it. */
 const round1 = (n: number): number => Math.round(n * 10) / 10;
 
@@ -99,7 +100,11 @@ async function previousCompletedRun(
       status: 'complete',
       ...(exceptRunId !== undefined ? { id: { not: exceptRunId } } : {}),
     },
-    orderBy: [{ completedAt: 'desc' }, { startedAt: 'desc' }],
+    // `nulls: 'last'` is load-bearing. Postgres sorts NULLs FIRST on a descending order, so a
+    // `complete` row with no `completedAt` would outrank every real one and become "last time" — the
+    // OLDEST audit shown as the most recent. Both this file and the nudge tick defensively fall back
+    // to `startedAt`, which concedes such rows exist.
+    orderBy: [{ completedAt: { sort: 'desc', nulls: 'last' } }, { startedAt: 'desc' }],
     select: { id: true, quarter: true, completedAt: true, startedAt: true },
   });
   if (run === null) return null;
@@ -108,18 +113,6 @@ async function previousCompletedRun(
     quarter: run.quarter,
     completedAt: (run.completedAt ?? run.startedAt).toISOString(),
   };
-}
-
-/** The hours a run recorded per bucket — composite where it reconciled a calendar, else self-report. */
-function hoursByBucket(answers: Record<string, { value: string; valueJson: unknown }>) {
-  const out = new Map<string, number | null>();
-  for (const bucket of RECLAIM_BUCKETS) {
-    const token = bucketToken(bucket.slug);
-    const composite = num(answers[`reclaim_composite_hours__${token}`]);
-    const current = num(answers[`reclaim_current_hours__${token}`]);
-    out.set(bucket.slug, composite ?? current);
-  }
-  return out;
 }
 
 /**
@@ -136,8 +129,11 @@ export async function readComparison(userId: string, runId: string): Promise<Com
     readBucketLabels(userId),
   ]);
 
-  const before = hoursByBucket(previousAnswers);
-  const now = hoursByBucket(currentAnswers);
+  // One reading of "hours per bucket", shared with the chart and the trends (F9's consolidation).
+  // It is what drops a conditional bucket the leader was never asked about, rather than showing the
+  // literal `0` that `persistComposite` stores for it.
+  const before = bucketHours(previousAnswers);
+  const now = bucketHours(currentAnswers);
 
   const buckets = RECLAIM_BUCKETS.map((bucket) => {
     const previousHours = before.get(bucket.slug) ?? null;
@@ -159,16 +155,39 @@ export async function readComparison(userId: string, runId: string): Promise<Com
   return { previous, buckets };
 }
 
-/** Interpolate the §4 confirm line. A missing answer leaves the placeholder's own wording out. */
+/**
+ * Interpolate the §4 confirm line.
+ *
+ * The placeholders are shorthand for phrases, not for bare values: `[hours]` in "working around
+ * [hours] per week" stands for "55 hours", not "55". Filling them literally produced "working around
+ * 55 per week", which reads as though a machine assembled it — on the one line in the product whose
+ * job is to sound like someone remembering you. Fixed here at the interpolation rather than in the
+ * constant, which stays verbatim under the I11 guard.
+ *
+ * The quotation marks around the source sentence are stripped for the same reason: in the system
+ * prompt they marked what the coach should say, and reproducing them on screen would make the product
+ * look like it is quoting somebody.
+ *
+ * `replaceAll` with a function replacement, so a `$&` or `$'` sequence inside a leader's own answer
+ * is inserted literally rather than re-expanding part of the template.
+ */
 export function fillConfirmLine(
   template: string,
   values: { role?: string; organisation?: string; hours?: string; priorities?: string }
 ): string {
+  const hours = values.hours?.trim();
+  const filled: Record<string, string> = {
+    '[role]': values.role ?? 'a leader',
+    '[organisation]': values.organisation ?? 'your organisation',
+    // A bare number becomes "55 hours"; anything already wordy is left as the leader wrote it.
+    '[hours]': hours === undefined ? 'the same' : /^[\d.]+$/.test(hours) ? `${hours} hours` : hours,
+    '[priorities]': values.priorities ?? 'the priorities you named',
+  };
+
   return template
-    .replace('[role]', values.role ?? 'a leader')
-    .replace('[organisation]', values.organisation ?? 'your organisation')
-    .replace('[hours]', values.hours ?? 'the same')
-    .replace('[priorities]', values.priorities ?? 'the priorities you named');
+    .replace(/\[(role|organisation|hours|priorities)\]/g, (match) => filled[match] ?? match)
+    .replace(/^"|"$/g, '')
+    .trim();
 }
 
 /**

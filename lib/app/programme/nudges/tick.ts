@@ -21,11 +21,9 @@ import { logger } from '@/lib/logging';
 import { env } from '@/lib/env';
 import { sendEmail } from '@/lib/email/send';
 import QuarterlyNudgeEmail from '@/components/app/emails/quarterly-nudge';
-import {
-  decideNudges,
-  NUDGE_AFTER_DAYS,
-  type NudgeCandidate,
-} from '@/lib/app/programme/nudges/select';
+import { decideNudges, type NudgeCandidate } from '@/lib/app/programme/nudges/select';
+import { readReclaimNudgeConfig } from '@/lib/app/programme/config';
+import { isUniqueViolation } from '@/lib/app/programme/access/grants';
 
 /** 244 bits of randomness, the same shape as the F7 share token. */
 function mintToken(): string {
@@ -39,8 +37,48 @@ function appUrl(): string {
 export interface NudgeTickResult {
   considered: number;
   sent: number;
+  /** Leaders whose claim could not be written. Surfaced so a silent partial run is visible. */
+  failed: number;
   /** Why the rest were skipped, counted by reason — operator diagnostics, never leader-facing. */
   skipped: Record<string, number>;
+}
+
+/**
+ * Claim the right to nudge this leader about this audit, returning their unsubscribe token — or
+ * `null` when somebody else already claimed it.
+ *
+ * `updateMany` guarded on `lastNudgedForRunId: { not: runId }` is the atomic part: two concurrent
+ * ticks race on the same row and exactly one gets `count === 1`. The `create` path handles a leader
+ * who has never been nudged, and a unique-violation there means a concurrent tick created it first,
+ * which is also "somebody else claimed it".
+ */
+async function claimNudge(userId: string, runId: string, now: Date): Promise<string | null> {
+  const existing = await prisma.reclaimNudge.findUnique({
+    where: { userId },
+    select: { token: true },
+  });
+
+  if (existing === null) {
+    try {
+      const created = await prisma.reclaimNudge.create({
+        data: { userId, token: mintToken(), lastNudgedForRunId: runId, lastNudgedAt: now },
+        select: { token: true },
+      });
+      return created.token;
+    } catch (error: unknown) {
+      // Only a unique violation means "a concurrent tick created it first" — the winner is sending
+      // and we are not. Anything else is a real failure and must surface: swallowing every error
+      // here would turn a database outage into a silent no-op that reports a clean run.
+      if (isUniqueViolation(error)) return null;
+      throw error;
+    }
+  }
+
+  const claimed = await prisma.reclaimNudge.updateMany({
+    where: { userId, lastNudgedForRunId: { not: runId } },
+    data: { lastNudgedForRunId: runId, lastNudgedAt: now },
+  });
+  return claimed.count === 1 ? existing.token : null;
 }
 
 /**
@@ -100,19 +138,31 @@ async function gatherCandidates(): Promise<NudgeCandidate[]> {
 }
 
 /**
- * Run the tick: decide, send, record.
+ * Run the tick: claim, send, count.
  *
- * **The record is written before the send is awaited's outcome is known, and deliberately so.** If
- * the mail provider fails, the leader has still been marked as nudged for this audit — because the
- * failure mode to avoid is a retry loop that emails somebody four times, not a leader who misses one
- * gentle reminder. "At most one" is the promise; "at least one" is not.
+ * **The claim is a conditional write, not a read-then-write.** `decideNudges` reads state and decides
+ * in memory, which is fine for the cheap exclusions — but "at most one per audit cycle" cannot rest on
+ * that alone: two overlapping cron ticks would both read the old `lastNudgedForRunId`, both decide to
+ * send, and both write. So the actual claim is an `updateMany` guarded on the row NOT already naming
+ * this audit, and the send happens only when it reports `count === 1`. Exactly the shape
+ * `linkRunConversation` uses in the run service, for exactly the same reason.
+ *
+ * **The claim is written before the send is attempted**, deliberately: if the mail provider fails, the
+ * leader stays marked as nudged for this audit. The failure to avoid is a retry loop that emails
+ * somebody four times, not a leader who misses one gentle reminder. "At most one" is the promise;
+ * "at least one" is not.
+ *
+ * **Each candidate is isolated.** A database blip on one leader must not abandon the rest of the
+ * cohort mid-loop and take the summary log with it, which is a bad way to find out about it — an
+ * operator running a cron gets a 500 and no diagnostics.
  */
 export async function runNudgeTick(now: Date = new Date()): Promise<NudgeTickResult> {
-  const candidates = await gatherCandidates();
-  const decisions = decideNudges(candidates, now, NUDGE_AFTER_DAYS);
+  const [candidates, config] = await Promise.all([gatherCandidates(), readReclaimNudgeConfig()]);
+  const decisions = decideNudges(candidates, now, config.nudgeAfterDays, config.nudgeUntilDays);
 
   const skipped: Record<string, number> = {};
   let sent = 0;
+  let failed = 0;
 
   for (const decision of decisions) {
     if (!decision.send) {
@@ -121,46 +171,51 @@ export async function runNudgeTick(now: Date = new Date()): Promise<NudgeTickRes
     }
 
     const { candidate } = decision;
-    // Claim the send first. `upsert` on the unique `userId` mints the token on first contact and
-    // stamps the audit this nudge is about, which is what makes a re-run a no-op.
-    const nudge = await prisma.reclaimNudge.upsert({
-      where: { userId: candidate.userId },
-      create: {
-        userId: candidate.userId,
-        token: mintToken(),
-        lastNudgedForRunId: candidate.lastCompletedRunId,
-        lastNudgedAt: now,
-      },
-      update: { lastNudgedForRunId: candidate.lastCompletedRunId, lastNudgedAt: now },
-      select: { token: true },
-    });
+    try {
+      const token = await claimNudge(candidate.userId, candidate.lastCompletedRunId, now);
+      if (token === null) {
+        // Another tick got there first. Not an error — it is the guarantee working.
+        skipped['already_nudged_for_this_audit'] =
+          (skipped['already_nudged_for_this_audit'] ?? 0) + 1;
+        continue;
+      }
 
-    const base = appUrl();
-    const result = await sendEmail({
-      to: candidate.email,
-      subject: 'Your last time audit was about three months ago',
-      react: QuarterlyNudgeEmail({
-        firstName: candidate.name?.split(' ')[0] ?? null,
-        programmeUrl: `${base}/programme`,
-        unsubscribeUrl: `${base}/nudges/off/${nudge.token}`,
-      }),
-    }).catch((error: unknown) => {
-      logger.warn('Reclaim: nudge email failed', {
+      const base = appUrl();
+      const result = await sendEmail({
+        to: candidate.email,
+        subject: 'Your last time audit was about three months ago',
+        react: QuarterlyNudgeEmail({
+          firstName: candidate.name?.split(' ')[0] ?? null,
+          programmeUrl: `${base}/programme`,
+          unsubscribeUrl: `${base}/nudges/off/${token}`,
+        }),
+      }).catch((error: unknown) => {
+        logger.warn('Reclaim: nudge email failed', {
+          userId: candidate.userId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return null;
+      });
+
+      if (result?.success === true) sent += 1;
+    } catch (error: unknown) {
+      // One leader's failure is one leader's failure. Carry on with the cohort and let the summary
+      // below still reach the operator.
+      failed += 1;
+      logger.warn('Reclaim: could not claim a nudge', {
         userId: candidate.userId,
         error: error instanceof Error ? error.message : String(error),
       });
-      return null;
-    });
-
-    if (result?.success === true) sent += 1;
+    }
   }
 
   logger.info('Reclaim: nudge tick complete', {
     considered: candidates.length,
     sent,
+    failed,
     skipped,
   });
-  return { considered: candidates.length, sent, skipped };
+  return { considered: candidates.length, sent, failed, skipped };
 }
 
 /**

@@ -134,6 +134,76 @@ describe('buildTrends', () => {
     expect(view.enoughData).toBe(false);
     expect(view.buckets).toEqual([]);
   });
+
+  it('reports not-enough-data when no bucket has two points to draw a line between', () => {
+    // A leader who completed a second audit without filling in any hours would otherwise get nine
+    // bucket names, nine dashes and no lines, under a heading promising a history.
+    const view = buildTrends(
+      [run('r1', 'Q1'), run('r2', 'Q2')],
+      [row('r1', 'reclaim_current_hours__deep_work', 10)]
+    );
+
+    expect(view.buckets).toHaveLength(1);
+    expect(view.enoughData).toBe(false);
+  });
+
+  it('does not plot the conditional bucket for a leader who was never asked about it', () => {
+    // `persistComposite` writes all nine composite slots including a literal 0 for the absent ones,
+    // so without the relevance flag this drew a flat zero line for an area the audit deliberately
+    // never showed them.
+    const view = buildTrends(
+      [run('r1', 'Q1'), run('r2', 'Q2')],
+      [
+        row('r1', 'reclaim_current_hours__deep_work', 10),
+        row('r2', 'reclaim_current_hours__deep_work', 8),
+        {
+          runId: 'r1',
+          slotSlug: 'reclaim_setup_fundraising_relevant',
+          value: 'No',
+          valueJson: false,
+          version: 1,
+        },
+        {
+          runId: 'r2',
+          slotSlug: 'reclaim_setup_fundraising_relevant',
+          value: 'No',
+          valueJson: false,
+          version: 2,
+        },
+        row('r1', 'reclaim_composite_hours__fundraising_capital', 0),
+        row('r2', 'reclaim_composite_hours__fundraising_capital', 0),
+      ]
+    );
+
+    expect(view.buckets.map((b) => b.bucketSlug)).toEqual(['deep-work']);
+  });
+
+  it('does plot it for a leader it IS relevant to', () => {
+    const view = buildTrends(
+      [run('r1', 'Q1'), run('r2', 'Q2')],
+      [
+        {
+          runId: 'r1',
+          slotSlug: 'reclaim_setup_fundraising_relevant',
+          value: 'Yes',
+          valueJson: true,
+          version: 1,
+        },
+        {
+          runId: 'r2',
+          slotSlug: 'reclaim_setup_fundraising_relevant',
+          value: 'Yes',
+          valueJson: true,
+          version: 2,
+        },
+        row('r1', 'reclaim_current_hours__fundraising_capital', 6),
+        row('r2', 'reclaim_current_hours__fundraising_capital', 3),
+      ]
+    );
+
+    expect(view.buckets.map((b) => b.bucketSlug)).toEqual(['fundraising-capital']);
+    expect(view.buckets[0]?.hours).toEqual([6, 3]);
+  });
 });
 
 describe('readTrends', () => {

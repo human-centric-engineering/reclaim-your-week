@@ -86,11 +86,11 @@ export function ProgrammeShell() {
     // F9 t-1: a returning leader sees where they have been before being invited to begin again.
     // `TrendLines` renders nothing until there are two completed audits to compare, so a first-time
     // leader's page is unchanged.
+    // `TrendLines` returns null until there are two audits with something to plot, and it carries its
+    // own wrapper so a first-time leader's page has no empty container in it either.
     return (
       <>
-        <div className="mx-auto max-w-3xl px-4 pt-10">
-          <TrendLines />
-        </div>
+        <TrendLines />
         <BeginAudit onStarted={() => void load()} />
       </>
     );

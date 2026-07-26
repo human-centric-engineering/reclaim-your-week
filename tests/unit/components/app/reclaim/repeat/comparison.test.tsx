@@ -105,6 +105,50 @@ describe('Comparison', () => {
     expect(words.test(panel?.textContent ?? '')).toBe(false);
   });
 
+  it('fills the Now column from what the leader is typing, not from the database', async () => {
+    // The bug this pins: Phase 1 keeps hours in local state and only persists on submit, at which
+    // point it advances and unmounts. Reading the server for "Now" left that column permanently
+    // dashed for the whole phase this panel lives in.
+    readComparison.mockResolvedValue({
+      previous: PREVIOUS,
+      buckets: [
+        {
+          bucketSlug: 'deep-work',
+          title: 'Deep work',
+          previousHours: 10,
+          currentHours: null,
+          differenceHours: null,
+        },
+      ],
+    });
+
+    render(<Comparison runId="run-2" liveHours={{ 'deep-work': 4 }} />);
+
+    expect(await screen.findByText('4h')).toBeInTheDocument();
+    expect(screen.getByText('−6h')).toBeInTheDocument();
+  });
+
+  it('falls back to the saved value for a bucket not touched this session', async () => {
+    // A resumed audit: Phase 1 was filled in on a previous visit, so nothing is in local state yet.
+    readComparison.mockResolvedValue({
+      previous: PREVIOUS,
+      buckets: [
+        {
+          bucketSlug: 'deep-work',
+          title: 'Deep work',
+          previousHours: 10,
+          currentHours: 7,
+          differenceHours: -3,
+        },
+      ],
+    });
+
+    render(<Comparison runId="run-2" liveHours={{ 'deep-work': null }} />);
+
+    expect(await screen.findByText('7h')).toBeInTheDocument();
+    expect(screen.getByText('−3h')).toBeInTheDocument();
+  });
+
   it('says “no change” rather than 0h, and dashes an unknown side', async () => {
     readComparison.mockResolvedValue({
       previous: PREVIOUS,

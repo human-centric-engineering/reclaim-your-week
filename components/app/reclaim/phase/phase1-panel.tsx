@@ -69,6 +69,16 @@ export function Phase1Panel({ runId, onAdvanced }: { runId: string; onAdvanced: 
 
   const anyHours = Object.values(hours).some((v) => v.trim().length > 0);
 
+  /** The live hours keyed by canonical bucket slug, for the comparison beside the cards (F9 t-2). */
+  const liveHours = useMemo(() => {
+    const out: Record<string, number | null> = {};
+    for (const bucket of RECLAIM_BUCKETS) {
+      const typed = hours[bucketToken(bucket.slug)];
+      out[bucket.slug] = typed !== undefined && isHours(typed) ? parseHours(typed) : null;
+    }
+    return out;
+  }, [hours]);
+
   const relabel = useCallback(async (slug: string, token: string, label: string) => {
     setLabels((p) => ({ ...p, [token]: label }));
     await saveLabel(slug, label);
@@ -157,7 +167,7 @@ export function Phase1Panel({ runId, onAdvanced }: { runId: string; onAdvanced: 
     <div className="space-y-10">
       {/* F9 t-2: on a repeat audit, the previous one sits above the cards being filled in. Renders
           nothing on a first audit — absent rather than empty. */}
-      <Comparison runId={runId} />
+      <Comparison runId={runId} liveHours={liveHours} />
 
       <div className="space-y-8">
         {visible.map((b) => {

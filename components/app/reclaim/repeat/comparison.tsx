@@ -26,7 +26,22 @@ function periodLabel(previous: NonNullable<ComparisonView['previous']>): string 
   });
 }
 
-export function Comparison({ runId }: { runId: string }) {
+export function Comparison({
+  runId,
+  liveHours,
+}: {
+  runId: string;
+  /**
+   * This audit's hours as the leader is typing them, keyed by canonical bucket slug.
+   *
+   * The "Now" column cannot come from the server while Phase 1 is open: the panel keeps every entry
+   * in local state and only persists on submit, at which point it advances and unmounts. Reading the
+   * database for it meant the column was permanently blank — the comparison showed "Then 12h / Now —"
+   * for every row, for the whole of the phase it lives in. The plan's promise is that the previous
+   * audit sits beside the new one **as it fills in**, so the live state is what has to feed it.
+   */
+  liveHours?: Record<string, number | null>;
+}) {
   const [view, setView] = useState<ComparisonView | null>(null);
 
   useEffect(() => {
@@ -46,7 +61,22 @@ export function Comparison({ runId }: { runId: string }) {
 
   if (view === null || view.previous === null || view.buckets.length === 0) return null;
 
-  const anyCurrent = view.buckets.some((b) => b.currentHours !== null);
+  // Live typing wins over the persisted value; the server's answer stands for a bucket not yet
+  // touched this session (a resumed audit, where Phase 1 was filled in on a previous visit).
+  const rows = view.buckets.map((bucket) => {
+    const live = liveHours?.[bucket.bucketSlug];
+    const currentHours = live !== undefined && live !== null ? live : bucket.currentHours;
+    return {
+      ...bucket,
+      currentHours,
+      differenceHours:
+        bucket.previousHours !== null && currentHours !== null
+          ? Math.round((currentHours - bucket.previousHours) * 10) / 10
+          : null,
+    };
+  });
+
+  const anyCurrent = rows.some((b) => b.currentHours !== null);
 
   return (
     <section className="border-border/60 bg-muted/20 rounded-lg border p-5">
@@ -69,7 +99,7 @@ export function Comparison({ runId }: { runId: string }) {
           </tr>
         </thead>
         <tbody>
-          {view.buckets.map((bucket) => (
+          {rows.map((bucket) => (
             <tr key={bucket.bucketSlug} className="border-b last:border-0">
               <td className="py-2 pr-4">{bucket.title}</td>
               <td className="text-muted-foreground py-2 pr-4 text-right tabular-nums">

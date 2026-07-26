@@ -82,10 +82,22 @@ describe('decideNudge', () => {
     expect(decideNudge(messy, NOW).reason).toBe('opted_out');
   });
 
-  it('honours a coach-set cadence rather than hard-coding a quarter', () => {
+  it('does not send once the audit is long past — the copy says "about three months"', () => {
+    // Without an upper bound, the first tick after this ships would mail every dormant leader a note
+    // claiming their audit was about three months ago. Past the window the honest thing is silence.
+    expect(decideNudge(candidate({ lastCompletedAt: daysAgo(500) }), NOW)).toMatchObject({
+      send: false,
+      reason: 'too_long_ago',
+    });
+  });
+
+  it('honours a coach-set window at both ends', () => {
+    // Both ends come from `Module.config` (`nudgeAfterDays` / `nudgeUntilDays`), read by the tick —
+    // so this is a capability the product has, not one the test invents.
     const c = candidate({ lastCompletedAt: daysAgo(40) });
-    expect(decideNudge(c, NOW, 30).send).toBe(true);
-    expect(decideNudge(c, NOW, 60).send).toBe(false);
+    expect(decideNudge(c, NOW, 30, 200).send).toBe(true);
+    expect(decideNudge(c, NOW, 60, 200).send).toBe(false);
+    expect(decideNudge(c, NOW, 30, 35).send).toBe(false);
   });
 });
 

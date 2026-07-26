@@ -29,6 +29,10 @@ describe('EXPORTED_SOURCES', () => {
     }
   });
 
+  it('covers app_reclaim_nudge — a leader\u2019s reminder preference is data about them', () => {
+    expect(EXPORTED_SOURCES).toContain('app_reclaim_nudge');
+  });
+
   it('covers framework_slot_value, where the audit answers actually live', () => {
     // The eight leaf tables are bookkeeping about a leader. This is what they said.
     expect(EXPORTED_SOURCES).toContain('framework_slot_value');

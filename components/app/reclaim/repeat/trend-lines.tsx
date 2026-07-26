@@ -120,7 +120,7 @@ export function TrendLines() {
   if (failed || view === null || !view.enoughData) return null;
 
   return (
-    <section className="border-border/60 mb-12 border-b pb-10">
+    <section className="border-border/60 mx-auto mb-12 max-w-3xl border-b px-4 pt-10 pb-10">
       <h2 className="text-foreground text-lg font-light">Across your audits</h2>
       <p className="text-muted-foreground mt-2 text-sm leading-relaxed">
         Hours a week in each area, {view.runs.map(runLabel).join(' then ')}. What the movement means

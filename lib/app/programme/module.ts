@@ -107,6 +107,17 @@ export const reclaimConfigSchema = z.object({
    * change them without a deploy.
    */
   recentAuditWithinDays: z.number().int().min(1).max(365).default(31),
+
+  /**
+   * F9 t-3 — the quarterly nudge's window, in days after a completed audit.
+   *
+   * Brief §2: "the natural cadence is quarterly … gentle and quarterly rather than frequent". Both
+   * ends are Rashmir's to move, and the upper one matters as much as the lower: past it the product
+   * says nothing, rather than mailing a dormant cohort a note claiming their audit was "about three
+   * months ago".
+   */
+  nudgeAfterDays: z.number().int().min(7).max(365).default(90),
+  nudgeUntilDays: z.number().int().min(14).max(730).default(200),
   /** Where the once-at-the-end consultation invitation points. Operator-set; seeded from §10. */
   consultationEmail: z.string().default(RECLAIM_CONSULTATION_EMAIL),
   /**

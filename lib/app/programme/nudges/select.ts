@@ -39,11 +39,27 @@ export interface NudgeDecision {
   candidate: NudgeCandidate;
   send: boolean;
   /** Why not, for the log. Never surfaced to a leader — this is operator diagnostics. */
-  reason: 'due' | 'opted_out' | 'audit_in_progress' | 'already_nudged_for_this_audit' | 'too_soon';
+  reason:
+    | 'due'
+    | 'opted_out'
+    | 'audit_in_progress'
+    | 'already_nudged_for_this_audit'
+    | 'too_soon'
+    | 'too_long_ago';
 }
 
 /** How long after a completed audit the nudge falls due, in days. A quarter, give or take. */
 export const NUDGE_AFTER_DAYS = 90;
+
+/**
+ * …and how long after which it is no longer worth sending.
+ *
+ * Without an upper bound, the first tick after this ships would mail the entire dormant backlog a
+ * message whose subject line says "about three months ago" — false for someone eighteen months gone,
+ * and a mass mailing on day one for a cohort that has moved on. A nudge is a nudge because it is
+ * timely; past this window the honest thing is silence.
+ */
+export const NUDGE_UNTIL_DAYS = 200;
 
 /**
  * Decide one leader's case. Ordered so the reason returned is the *most meaningful* one: a leader who
@@ -52,7 +68,8 @@ export const NUDGE_AFTER_DAYS = 90;
 export function decideNudge(
   candidate: NudgeCandidate,
   now: Date,
-  afterDays: number = NUDGE_AFTER_DAYS
+  afterDays: number = NUDGE_AFTER_DAYS,
+  untilDays: number = NUDGE_UNTIL_DAYS
 ): NudgeDecision {
   const decision = (send: boolean, reason: NudgeDecision['reason']): NudgeDecision => ({
     candidate,
@@ -70,6 +87,7 @@ export function decideNudge(
 
   const ageDays = (now.getTime() - candidate.lastCompletedAt.getTime()) / 86_400_000;
   if (ageDays < afterDays) return decision(false, 'too_soon');
+  if (ageDays > untilDays) return decision(false, 'too_long_ago');
 
   return decision(true, 'due');
 }
@@ -78,7 +96,8 @@ export function decideNudge(
 export function decideNudges(
   candidates: NudgeCandidate[],
   now: Date,
-  afterDays: number = NUDGE_AFTER_DAYS
+  afterDays: number = NUDGE_AFTER_DAYS,
+  untilDays: number = NUDGE_UNTIL_DAYS
 ): NudgeDecision[] {
-  return candidates.map((candidate) => decideNudge(candidate, now, afterDays));
+  return candidates.map((candidate) => decideNudge(candidate, now, afterDays, untilDays));
 }

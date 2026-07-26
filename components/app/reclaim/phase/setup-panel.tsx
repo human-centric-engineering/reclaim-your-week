@@ -98,6 +98,17 @@ function prefillFrom(answers: Record<string, string>): Partial<SetupState> {
     ...(answers['reclaim_setup_priorities'] !== undefined && {
       priorities: answers['reclaim_setup_priorities'],
     }),
+    // The conditional detail beneath each flag, so a revealed textarea is not left empty under copy
+    // promising everything is filled in.
+    ...(answers['reclaim_profile_distributed_impact'] !== undefined && {
+      distributedImpact: answers['reclaim_profile_distributed_impact'],
+    }),
+    ...(answers['reclaim_setup_transition_detail'] !== undefined && {
+      transitionDetail: answers['reclaim_setup_transition_detail'],
+    }),
+    ...(answers['reclaim_setup_fundraising_support'] !== undefined && {
+      fundraisingSupport: answers['reclaim_setup_fundraising_support'],
+    }),
     // Deliberately NOT carried: `keepingMeUp` and `whyNow`. They are the two `sensitive` prose slots,
     // they are the most likely things to have changed since last time, and F7's refer-back returns
     // them verbatim later in this audit — pre-filling them would put last quarter's worry in this
@@ -157,12 +168,25 @@ export function SetupPanel({ runId, onAdvanced }: { runId: string; onAdvanced: (
   useEffect(() => {
     let cancelled = false;
     void readShortcut()
+      .catch(() => null)
       .then((shortcut) => {
-        if (cancelled || shortcut.previous === null) return;
-        setS((p) => ({ ...p, ...prefillFrom(shortcut.answers) }));
+        if (cancelled || shortcut === null || shortcut.previous === null) return;
+        const prefill = prefillFrom(shortcut.answers);
+        // Fill only what the leader has not already touched. The fetch resolves after the form is
+        // interactive, so on a slow connection someone can be typing their name while it lands —
+        // spreading last quarter's answers over the top would silently replace what they just wrote.
+        setS((p) => {
+          const next = { ...p };
+          for (const [key, value] of Object.entries(prefill) as [
+            keyof SetupState,
+            SetupState[keyof SetupState],
+          ][]) {
+            if (p[key] === EMPTY[key]) Object.assign(next, { [key]: value });
+          }
+          return next;
+        });
         setConfirmLine(shortcut.confirmLine);
-      })
-      .catch(() => undefined);
+      });
     return () => {
       cancelled = true;
     };

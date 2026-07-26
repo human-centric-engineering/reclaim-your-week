@@ -21,6 +21,7 @@
 import { prisma } from '@/lib/db/client';
 import { z } from 'zod';
 import { RECLAIM_BUCKETS, bucketToken } from '@/lib/app/programme/content';
+import { bucketHours, type Answers } from '@/lib/app/programme/chart/series';
 import { readBucketLabels } from '@/lib/app/programme/buckets/labels';
 
 const provenanceRunIdSchema = z.object({ runId: z.string() });
@@ -53,18 +54,15 @@ export interface TrendView {
 
 /** The slugs a trend reads: the composite where a calendar was reconciled, else the self-report. */
 function hoursSlugs(): string[] {
-  return RECLAIM_BUCKETS.flatMap((b) => {
-    const token = bucketToken(b.slug);
-    return [`reclaim_composite_hours__${token}`, `reclaim_current_hours__${token}`];
-  });
-}
-
-/** A slot value as a number, or `null` — the same coercion the chart and the aggregate use. */
-function numeric(row: { value: string; valueJson: unknown } | undefined): number | null {
-  if (row === undefined) return null;
-  if (typeof row.valueJson === 'number' && Number.isFinite(row.valueJson)) return row.valueJson;
-  const parsed = Number.parseFloat(row.value);
-  return Number.isFinite(parsed) ? parsed : null;
+  return [
+    // Read the relevance flag alongside the hours: `bucketHours` needs it to tell "answered zero"
+    // from "never asked" for the conditional bucket.
+    'reclaim_setup_fundraising_relevant',
+    ...RECLAIM_BUCKETS.flatMap((b) => {
+      const token = bucketToken(b.slug);
+      return [`reclaim_composite_hours__${token}`, `reclaim_current_hours__${token}`];
+    }),
+  ];
 }
 
 /** One slot version, reduced to what a trend needs. */
@@ -98,23 +96,37 @@ export function buildTrends(
     if (held === undefined || row.version > held.version) latest.set(key, row);
   }
 
-  const buckets: TrendBucket[] = [];
-  for (const bucket of RECLAIM_BUCKETS) {
-    const token = bucketToken(bucket.slug);
-    const hours = runs.map((run) => {
-      // I-composite: prefer the composite where that audit reconciled a calendar, matching what the
-      // leader was actually shown at the time. Per audit, not per leader — one audit may have had a
-      // calendar and the next not.
-      const composite = latest.get(`${run.runId}::reclaim_composite_hours__${token}`);
-      const current = latest.get(`${run.runId}::reclaim_current_hours__${token}`);
-      return numeric(composite) ?? numeric(current);
-    });
-
-    if (hours.every((h) => h === null)) continue;
-    buckets.push({ bucketSlug: bucket.slug, title: labels[token] ?? bucket.title, hours });
+  // Reduce each run to the shared "hours per bucket" reading (F9's consolidation with the chart and
+  // the comparison). It is what keeps a conditional bucket the leader was never asked about out of
+  // the series, rather than plotting the literal `0` that `persistComposite` stores for it.
+  const byRun = new Map<string, Map<string, number | null>>();
+  for (const run of runs) {
+    const answers: Answers = {};
+    for (const [key, row] of latest) {
+      const [runId, slug] = key.split('::');
+      if (runId !== run.runId || slug === undefined) continue;
+      answers[slug] = { value: row.value, valueJson: row.valueJson };
+    }
+    byRun.set(run.runId, bucketHours(answers));
   }
 
-  return { runs, buckets, enoughData: runs.length >= 2 && buckets.length > 0 };
+  const buckets: TrendBucket[] = [];
+  for (const bucket of RECLAIM_BUCKETS) {
+    const hours = runs.map((run) => byRun.get(run.runId)?.get(bucket.slug) ?? null);
+
+    if (hours.every((h) => h === null)) continue;
+    buckets.push({
+      bucketSlug: bucket.slug,
+      title: labels[bucketToken(bucket.slug)] ?? bucket.title,
+      hours,
+    });
+  }
+
+  // "Enough data" means there is a LINE to draw, not merely two audits. A leader who completed a
+  // second audit without filling in any hours would otherwise get nine bucket names, nine dashes and
+  // no lines under a heading promising a history.
+  const plottable = buckets.some((b) => b.hours.filter((h) => h !== null).length >= 2);
+  return { runs, buckets, enoughData: runs.length >= 2 && plottable };
 }
 
 /**

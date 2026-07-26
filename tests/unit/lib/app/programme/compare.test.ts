@@ -117,6 +117,25 @@ describe('readComparison', () => {
     expect(deep?.previousHours).toBe(13);
   });
 
+  it('does not show a conditional bucket the leader was never asked about', async () => {
+    // A calendar upload writes a literal 0 into every composite slot, including fundraising for a
+    // leader who said it was irrelevant. Showing "Fundraising & capital · 0h" would be a row about
+    // an area the audit deliberately never put in front of them.
+    mocks.readRunAnswers
+      .mockResolvedValueOnce({
+        reclaim_setup_fundraising_relevant: { value: 'No', valueJson: false },
+        reclaim_current_hours__deep_work: hours(10),
+        reclaim_composite_hours__fundraising_capital: hours(0),
+      })
+      .mockResolvedValueOnce({
+        reclaim_setup_fundraising_relevant: { value: 'No', valueJson: false },
+        reclaim_current_hours__deep_work: hours(8),
+      });
+
+    const view = await readComparison('u1', 'run-2');
+    expect(view.buckets.map((b) => b.bucketSlug)).toEqual(['deep-work']);
+  });
+
   it('labels both columns with the leader’s CURRENT name for the bucket (I7)', async () => {
     mocks.readBucketLabels.mockResolvedValue({ deep_work: 'Thinking time' });
     mocks.readRunAnswers
@@ -127,6 +146,18 @@ describe('readComparison', () => {
       (b) => b.bucketSlug === 'deep-work'
     );
     expect(deep?.title).toBe('Thinking time');
+  });
+});
+
+describe('previousCompletedRun ordering', () => {
+  it('asks Postgres for NULLS LAST — a null completedAt must not outrank a real one', async () => {
+    mocks.readRunAnswers.mockResolvedValue({});
+    await readComparison('u1', 'run-2');
+
+    // Postgres sorts NULLs FIRST on a descending order, so without this a `complete` row with no
+    // `completedAt` becomes "last time" — the OLDEST audit shown as the most recent.
+    const args = mocks.runFindFirst.mock.calls[0]?.[0] as { orderBy: unknown[] };
+    expect(args.orderBy[0]).toEqual({ completedAt: { sort: 'desc', nulls: 'last' } });
   });
 });
 
@@ -146,7 +177,13 @@ describe('readShortcut', () => {
     const shortcut = await readShortcut('u1');
     expect(shortcut.previous).not.toBeNull();
     expect(shortcut.confirmLine).toContain('you are CEO at Nonprofit');
-    expect(shortcut.confirmLine).toContain('around 55 per week');
+    // "55 hours per week", not "55 per week" — the source's `[hours]` is shorthand for a phrase, and
+    // filling it literally made the one line meant to sound like someone remembering you read as
+    // machine-assembled.
+    expect(shortcut.confirmLine).toContain('around 55 hours per week');
+    // And not wrapped in the source's own quotation marks, which marked coach speech in a system
+    // prompt and would read on screen as the product quoting somebody.
+    expect(shortcut.confirmLine?.startsWith('"')).toBe(false);
     expect(shortcut.answers['reclaim_profile_role']).toBe('CEO');
   });
 
@@ -191,14 +228,30 @@ describe('readShortcut', () => {
 });
 
 describe('fillConfirmLine', () => {
-  it('interpolates the leader’s own context', () => {
+  it('interpolates the leader’s own context, and reads as a sentence', () => {
     const filled = fillConfirmLine('you are [role] at [organisation], [hours], [priorities]', {
       role: 'CEO',
       organisation: 'Nonprofit',
       hours: '55',
       priorities: 'Grow the team',
     });
-    expect(filled).toBe('you are CEO at Nonprofit, 55, Grow the team');
+    expect(filled).toBe('you are CEO at Nonprofit, 55 hours, Grow the team');
+  });
+
+  it('leaves an already-worded hours answer alone', () => {
+    // Some leaders type "about 50-55" rather than a number. Appending "hours" to that would be worse
+    // than leaving it, so only a bare number gets the unit.
+    expect(fillConfirmLine('[hours]', { hours: 'about 50-55 most weeks' })).toBe(
+      'about 50-55 most weeks'
+    );
+  });
+
+  it('inserts a leader’s answer literally, even one containing a replacement pattern', () => {
+    // `$&` and friends are special to `String.replace` with a string replacement. A function
+    // replacement keeps them literal, so a leader whose priorities mention "$&" see exactly that.
+    expect(fillConfirmLine('[priorities]', { priorities: 'ship $& survive' })).toBe(
+      'ship $& survive'
+    );
   });
 
   it('never leaves a raw placeholder on screen when an answer is missing', () => {

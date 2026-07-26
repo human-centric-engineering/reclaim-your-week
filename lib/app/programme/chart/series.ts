@@ -42,6 +42,48 @@ function num(a: SlotAnswer): number {
   return Number.isFinite(raw) ? Math.max(0, raw) : 0;
 }
 
+/**
+ * One canonical reading of "hours per bucket, for this run's answers" (F9, consolidating four).
+ *
+ * By F9 there were four implementations of this — the chart, the comparison, the trends and the admin
+ * aggregate — and they had already drifted apart in two ways that mattered:
+ *
+ *   - only two of them dropped a **conditional** bucket the leader was never asked about. That is not
+ *     cosmetic: `persistComposite` writes all nine composite slots including `0` for the absent ones,
+ *     so a leader who said fundraising was irrelevant and then uploaded a calendar had a real `0`
+ *     stored — and a reader without the guard showed "Fundraising & capital · 0h" for an area the
+ *     audit deliberately never put in front of them;
+ *   - the numeric coercion disagreed on negatives (`num` clamps, the others did not).
+ *
+ * Returns `null` for "not asked / not answered" and a number for an answered value, so callers can
+ * keep the distinction the plan insists on: a gap is not a zero.
+ */
+export function bucketHours(answers: Answers): Map<string, number | null> {
+  const fundraisingRelevant = truthy(answers['reclaim_setup_fundraising_relevant']);
+  const out = new Map<string, number | null>();
+
+  for (const bucket of RECLAIM_BUCKETS) {
+    const token = bucketToken(bucket.slug);
+    const composite = answers[`reclaim_composite_hours__${token}`];
+    const current = answers[`reclaim_current_hours__${token}`];
+
+    // A conditional bucket that the leader was never shown is absent, not zero — whatever is stored.
+    if (bucket.conditional && !fundraisingRelevant) {
+      out.set(bucket.slug, null);
+      continue;
+    }
+    if (composite === undefined && current === undefined) {
+      out.set(bucket.slug, null);
+      continue;
+    }
+
+    // I-composite: prefer the composite where this run reconciled a calendar, matching what the
+    // leader was shown at the time.
+    out.set(bucket.slug, num(composite !== undefined ? composite : current));
+  }
+  return out;
+}
+
 /** Read a boolean slot answer (yes/no fields) from either the typed `valueJson` or the prose value. */
 export function truthy(a: SlotAnswer): boolean {
   if (a === undefined) return false;
