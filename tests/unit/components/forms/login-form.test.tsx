@@ -14,6 +14,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { LoginForm } from '@/components/forms/login-form';
+import { appAuthLandingRoute } from '@/lib/app/auth-landing';
 
 // Mock dependencies
 vi.mock('@/lib/auth/client', () => ({
@@ -296,7 +297,7 @@ describe('components/forms/login-form', () => {
       });
     });
 
-    it('should redirect to dashboard on successful login', async () => {
+    it('should redirect to the app landing route on successful login', async () => {
       // Arrange
       const user = userEvent.setup();
       const { authClient } = await import('@/lib/auth/client');
@@ -323,7 +324,7 @@ describe('components/forms/login-form', () => {
 
       // Assert
       await waitFor(() => {
-        expect(mockRouter.push).toHaveBeenCalledWith('/dashboard');
+        expect(mockRouter.push).toHaveBeenCalledWith(appAuthLandingRoute);
       });
     });
 

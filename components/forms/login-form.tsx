@@ -9,6 +9,7 @@ import { signInSchema, type SignInInput } from '@/lib/validations/auth';
 import { useAnalytics, EVENTS } from '@/lib/analytics';
 import { isRecord } from '@/lib/utils';
 import { safeCallbackUrl } from '@/lib/security';
+import { appAuthLandingRoute } from '@/lib/app/auth-landing';
 import { Button } from '@/components/ui/button';
 import { Loader2, CheckCircle2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
@@ -34,7 +35,7 @@ import { OAuthButtons } from '@/components/forms/oauth-buttons';
 export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const callbackUrl = safeCallbackUrl(searchParams.get('callbackUrl'), '/dashboard');
+  const callbackUrl = safeCallbackUrl(searchParams.get('callbackUrl'), appAuthLandingRoute);
   const { track, identify } = useAnalytics();
 
   const [isLoading, setIsLoading] = useState(false);

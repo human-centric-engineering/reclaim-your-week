@@ -10,6 +10,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AcceptInviteForm } from '@/components/forms/accept-invite-form';
+import { appAuthLandingRoute } from '@/lib/app/auth-landing';
 
 // Mock dependencies
 vi.mock('@/lib/api/client', () => ({
@@ -593,7 +594,7 @@ describe('components/forms/accept-invite-form', () => {
       });
     });
 
-    it('should redirect to dashboard after success', async () => {
+    it('should redirect to the app landing route after success', async () => {
       // Arrange
       const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 
@@ -619,7 +620,7 @@ describe('components/forms/accept-invite-form', () => {
 
       // Assert
       await waitFor(() => {
-        expect(mockPush).toHaveBeenCalledWith('/dashboard');
+        expect(mockPush).toHaveBeenCalledWith(appAuthLandingRoute);
       });
     });
 

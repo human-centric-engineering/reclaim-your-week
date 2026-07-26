@@ -15,6 +15,7 @@ import { setSecurityHeaders } from '@/lib/security/headers';
 import { applyRateLimit } from '@/lib/security/rate-limit-middleware';
 import { classifySurface } from '@/lib/app/surface';
 import { appProtectedRoutes } from '@/lib/app/protected-routes';
+import { appAuthLandingRoute } from '@/lib/app/auth-landing';
 
 /**
  * Next.js Proxy
@@ -248,7 +249,7 @@ export async function proxy(request: NextRequest): Promise<NextResponse | Respon
 
   // Redirect authenticated users away from auth pages
   if (isAuthRoute && authenticated) {
-    const redirectResponse = NextResponse.redirect(new URL('/dashboard', request.url));
+    const redirectResponse = NextResponse.redirect(new URL(appAuthLandingRoute, request.url));
     redirectResponse.headers.set('x-request-id', requestId);
     return setVisitorCookie(redirectResponse);
   }

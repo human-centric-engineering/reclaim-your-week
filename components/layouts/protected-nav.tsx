@@ -16,8 +16,9 @@ import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { useSession } from '@/lib/auth/client';
 import { LayoutDashboard, User, Settings, Shield } from 'lucide-react';
+import { protectedNavItems } from '@/lib/app/protected-nav';
 
-const navItems = [
+const DEFAULT_PROTECTED_NAV = [
   {
     href: '/dashboard',
     label: 'Dashboard',
@@ -43,6 +44,10 @@ const navItems = [
     adminOnly: true,
   },
 ];
+
+// App override (a non-null array) replaces the platform default wholesale — the same model as
+// `public-nav.tsx`. See `lib/app/protected-nav.ts` (local shim for sunrise#473).
+const navItems = protectedNavItems ?? DEFAULT_PROTECTED_NAV;
 
 export function ProtectedNav() {
   const pathname = usePathname();
