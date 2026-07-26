@@ -25,8 +25,10 @@ import { BRAND } from '@/lib/brand';
  * `Module.config` should be bumped from `draft-1` when that lands, which re-asks everyone for consent.
  * That is the mechanism working, not a nuisance.
  *
- * The controller name comes from `BRAND.legalName` (`NEXT_PUBLIC_LEGAL_NAME`), which currently falls
- * back to the product name — see the post-v1 board for the environment note.
+ * The controller name comes from `BRAND.legalName` (`NEXT_PUBLIC_LEGAL_NAME`), which must be set to
+ * **Nsansa Ltd** — the entity named in the copyright line of the source content
+ * ("© Rashmir Balasubramaniam / Nsansa Ltd"). Left unset it falls back to the product name, which
+ * would put a product rather than a legal person in the controller field. See [[operations]].
  */
 
 const description =
