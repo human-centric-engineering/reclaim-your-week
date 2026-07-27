@@ -106,6 +106,16 @@ const unit: SeedUnit = {
     // symptom is a coach that cannot record what it was just told it may. But "the authored rule and
     // the enforced rule silently disagree" is the thing this unit exists to prevent, so it belongs
     // here, where `hashInputs` already folds in `agent.ts`.
+    //
+    // **It reconciles the config and leaves `isEnabled` alone on an existing row**, which is the
+    // difference between this loop and `002`'s. `002` writes `isEnabled: true` too, and gets away
+    // with it because it has no `hashInputs` and so re-runs about never. Doing the same here would
+    // re-run on **every** edit to `agent.ts` — a persona tweak, a typo — and each one would quietly
+    // re-enable a capability an operator had switched off in the admin UI. That switch is the
+    // supported way to revoke a grant (the header above is entirely about why `isEnabled: false` is
+    // the state that means revoked); a seed that overrides it hands the operator a control that
+    // silently stops working. So: `create` enables, because a missing row is permissive and an
+    // authored capability should start on; `update` touches the config only.
     for (const grant of reclaimCoachAgent.capabilities) {
       const capability = await prisma.aiCapability.findUnique({
         where: { slug: grant.slug },
@@ -120,7 +130,7 @@ const unit: SeedUnit = {
       const customConfig = grant.customConfig ?? Prisma.JsonNull;
       await prisma.aiAgentCapability.upsert({
         where: { agentId_capabilityId: { agentId: agent.id, capabilityId: capability.id } },
-        update: { isEnabled: true, customConfig },
+        update: { customConfig },
         create: { agentId: agent.id, capabilityId: capability.id, isEnabled: true, customConfig },
       });
     }

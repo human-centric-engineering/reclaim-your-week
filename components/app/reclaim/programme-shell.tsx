@@ -71,9 +71,30 @@ export function ProgrammeShell() {
    */
   const [signposts, setSignposts] = useState<PhaseSignpost[] | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setFailed(false);
+  /**
+   * Read the run state.
+   *
+   * **`quiet` carries more weight than it looks.** Raising the loading state swaps the entire shell
+   * for the "Gathering your audit…" frame, which *unmounts the conversation* — and the transcript is
+   * component state, so it goes with it. Every mid-phase refresh went through here: the coach's turn
+   * ends, `onTurnComplete` re-reads the run, and the answer a leader was part-way through reading
+   * vanished mid-sentence, then reappeared a moment later from the rehydrated transcript. It looked
+   * like the coach had been cut off. (It reads as mid-sentence because the typing animation lags the
+   * stream on purpose: the turn completes while only the first line has been spoken.)
+   *
+   * A quiet read keeps its failure to itself for the same reason. The state already on screen is
+   * still good, and there is nothing to gain from replacing a conversation in progress with "we
+   * could not load your audit" because one background refresh missed — that is the same disappearing
+   * transcript by another route.
+   *
+   * Only the very first read has nothing to show. Every later one keeps what is on screen and swaps
+   * the data underneath it.
+   */
+  const load = useCallback(async (quiet = false) => {
+    if (!quiet) {
+      setLoading(true);
+      setFailed(false);
+    }
     try {
       const res = await fetch('/api/v1/app/reclaim/runs/current');
       const json: unknown = await res.json();
@@ -82,9 +103,9 @@ export function ProgrammeShell() {
       if (!res.ok || !parsed.success) throw new Error('bad response');
       setState(parsed.data);
     } catch {
-      setFailed(true);
+      if (!quiet) setFailed(true);
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   }, []);
 
@@ -199,7 +220,10 @@ export function ProgrammeShell() {
               signposts={signposts ?? undefined}
               conversationId={state.run.conversationId}
               coachOpenings={state.run.coachOpenings}
-              onAdvanced={() => void load()}
+              // Quiet, and this is the call site the flag exists for: it fires after *every* coach
+              // turn, not only when the phase moves, so a loud reload would unmount the transcript
+              // mid-answer each time the coach finished speaking.
+              onAdvanced={() => void load(true)}
               onSwitchToForm={() => setPhaseMode('form')}
             />
           ) : (
@@ -218,7 +242,9 @@ export function ProgrammeShell() {
                   runId={state.run.id}
                   conversationId={state.run.conversationId}
                   coachOpenings={state.run.coachOpenings}
-                  onAdvanced={() => void load()}
+                  // Quiet for the same reason: phase 6's close carries a conversation too, and the
+                  // form panels hold their own in-progress field state.
+                  onAdvanced={() => void load(true)}
                 />
                 {currentPhase.key !== FINAL_PHASE_KEY && (
                   <button

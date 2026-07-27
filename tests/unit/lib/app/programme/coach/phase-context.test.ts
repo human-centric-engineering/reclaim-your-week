@@ -423,3 +423,131 @@ describe('buildCoachPhaseContext — the close', () => {
     expect(block).toContain('do not record it again');
   });
 });
+
+/**
+ * Phase 1's two branches into other surfaces: the calendar, and the picture.
+ *
+ * Both are data-gated rather than gated on the model's sense of "have we finished", and both were
+ * uncovered while the block was being changed for the conversational surface — which is how a beat
+ * ends up offered halfway through the areas, or a chart described with figures that are not on the
+ * leader's screen. What is asserted is the gate, not the prose.
+ */
+describe('buildCoachPhaseContext — the branches out of phase 1', () => {
+  /** Every visible area with a figure, which is what opens both beats. */
+  function everyAreaAnswered(): Record<
+    string,
+    { value: string; valueJson: unknown; sourceType: string; confidence: number }
+  > {
+    const areas = [
+      'deep_work',
+      'learning_development',
+      'strategic_planning',
+      'team_development',
+      'organisational_oversight',
+      'relationship_building',
+      'delivery_operations',
+      'recovery_white_space',
+    ];
+    const answers: Record<
+      string,
+      { value: string; valueJson: unknown; sourceType: string; confidence: number }
+    > = {};
+    for (const area of areas) {
+      answers[`reclaim_current_hours__${area}`] = { ...direct('5'), valueJson: 5 };
+    }
+    return answers;
+  }
+
+  beforeEach(() => {
+    loadPhaseProgress.mockResolvedValue({ phases: [], currentPhaseKey: 'phase-1-current' });
+  });
+
+  it('does not offer the calendar until every area has a figure', async () => {
+    readRunAnswers.mockResolvedValue({
+      reclaim_current_hours__deep_work: { ...direct('5'), valueJson: 5 },
+    });
+
+    expect(await buildCoachPhaseContext('u1')).not.toContain('calendar branch is offered');
+  });
+
+  it('offers the calendar once they do, with the two questions to ask first', async () => {
+    readRunAnswers.mockResolvedValue(everyAreaAnswered());
+
+    const block = await buildCoachPhaseContext('u1');
+
+    expect(block).toContain('calendar branch is offered');
+    expect(block).toContain('reclaim_calendar_completeness');
+    expect(block).toContain('reclaim_calendar_period');
+    // Never the better option: the audit is worth doing without it.
+    expect(block).toContain('optional');
+  });
+
+  it('stops asking the two questions once they have been answered', async () => {
+    readRunAnswers.mockResolvedValue({
+      ...everyAreaAnswered(),
+      reclaim_calendar_completeness: direct('It holds about half of it'),
+    });
+
+    expect(await buildCoachPhaseContext('u1')).toContain('rather than asking again');
+  });
+
+  it('reads a reconciled calendar as information, never as a correction', async () => {
+    readRunAnswers.mockResolvedValue({
+      ...everyAreaAnswered(),
+      reclaim_calendar_uploaded: { ...direct('Yes'), valueJson: true },
+      reclaim_calendar_completeness: direct('Most meetings, no thinking time'),
+    });
+
+    const block = await buildCoachPhaseContext('u1');
+
+    expect(block).toContain('never evidence that they were wrong');
+    expect(block).toContain('Most meetings, no thinking time');
+    // The offer is withdrawn once a calendar has been reconciled.
+    expect(block).not.toContain('calendar branch is offered');
+  });
+
+  it('hands the coach the figures on the leader’s screen, and tells it to stop after one question', async () => {
+    readRunAnswers.mockResolvedValue(everyAreaAnswered());
+
+    const block = await buildCoachPhaseContext('u1');
+
+    expect(block).toContain('per cent of the week');
+    expect(block).toContain('Total: 40 hours a week.');
+    expect(block).toContain('what stands out to you here?');
+    expect(block).toContain('Do not interpret');
+  });
+});
+
+/**
+ * The gap lines refuse to invent arithmetic.
+ *
+ * A leader can answer "about ten-ish" to an ideal-hours question through the conversation, and the
+ * typed-value rule only bites on the slots that declare a type. What must never happen is the coach
+ * being handed a computed delta derived from a number nobody gave.
+ */
+describe('buildCoachPhaseContext — the gap refuses to compute what it was not given', () => {
+  beforeEach(() => {
+    loadPhaseProgress.mockResolvedValue({ phases: [], currentPhaseKey: 'phase-4-gap' });
+  });
+
+  it('reports an unusable ideal as what the leader said, with no delta', async () => {
+    readRunAnswers.mockResolvedValue({
+      reclaim_current_hours__deep_work: { ...direct('4'), valueJson: 4 },
+      reclaim_ideal_hours__deep_work: direct('as much as I can get'),
+    });
+
+    const block = await buildCoachPhaseContext('u1');
+
+    expect(block).toContain('ideal recorded as "as much as I can get"');
+    expect(block).not.toContain('wanted,');
+  });
+
+  it('says no change rather than zero hours more', async () => {
+    readRunAnswers.mockResolvedValue({
+      reclaim_current_hours__deep_work: { ...direct('6'), valueJson: 6 },
+      reclaim_ideal_hours__deep_work: { ...direct('6'), valueJson: 6 },
+    });
+
+    expect(await buildCoachPhaseContext('u1')).toContain('6h wanted, no change');
+  });
+});

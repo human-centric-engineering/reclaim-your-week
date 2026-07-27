@@ -26,6 +26,7 @@
  */
 
 import { Raleway } from 'next/font/google';
+import { MaintenanceWrapperWithAdminNotice } from '@/components/maintenance-wrapper';
 
 const raleway = Raleway({
   subsets: ['latin'],
@@ -36,10 +37,19 @@ const raleway = Raleway({
 
 export default function ProgrammeLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div
-      className={`${raleway.variable} bg-background text-foreground flex h-[100dvh] flex-col overflow-hidden [font-family:var(--font-raleway)]`}
-    >
-      {children}
-    </div>
+    /*
+     * Maintenance mode is applied here because it is applied per route group and nowhere else —
+     * `(protected)` and `(public)` each wrap their own subtree, and there is no proxy-level gate. So
+     * a new top-level group silently opts out of it, which is what happened when the audit moved and
+     * is the one thing this move could have quietly taken away: a maintenance window that closed the
+     * whole product except the forty-minute conversation.
+     */
+    <MaintenanceWrapperWithAdminNotice>
+      <div
+        className={`${raleway.variable} bg-background text-foreground flex h-[100dvh] flex-col overflow-hidden [font-family:var(--font-raleway)]`}
+      >
+        {children}
+      </div>
+    </MaintenanceWrapperWithAdminNotice>
   );
 }

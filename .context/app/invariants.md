@@ -277,9 +277,15 @@ replace the blanket refusal, and the first two are what stop the coach walking t
 1. **The phase comes from the server.** A reflection may only be written for the phase in the
    dispatch scope, which the route reads from the journey (`buildCoachScope`). A conversation in
    phase 2 cannot write phase 4's reflection, and cannot clear five gates in one call.
-2. **Never inferred.** `sourceType: 'inferred'` is refused for a reflection slug. It has to be
-   recorded as something the leader said, and the coach is instructed to offer the words back before
-   recording them.
+2. **Never inferred** — a discipline, not a boundary, and the difference matters. `sourceType:
+'inferred'` is refused for a reflection slug, but **the model chooses that value**, so a
+   reflection it invented and labelled `direct` passes. It keeps the documented path the honest one
+   and tells a well-behaved coach what is expected; it is not a control and nothing should be built
+   on it as one. (The leader-facing `answers` route takes a `confirming` **boolean** rather than a
+   client-chosen `sourceType` for exactly this reason: a caller naming its own provenance is not
+   evidence.) What it leaves is bounded by guard 1 and visible through guard 3 — the worst case is
+   the current phase's reflection recorded unprompted, in the leader's own run, on a screen that
+   shows it to them.
 3. **Visible and editable.** The recorded reflection is shown in the captured panel under "In your
    words", where a change writes over the top through the ordinary leader path. This is the one that
    makes "the leader owns their reflection" still true of a reflection the coach typed, and it is why

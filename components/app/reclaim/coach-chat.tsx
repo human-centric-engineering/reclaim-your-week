@@ -387,10 +387,21 @@ export function CoachChat({
           ) : (
             turns.map((turn, i) => {
               if (turn.role === 'leader') {
+                // `bg-accent`, not `bg-muted`. Full-strength cream is this app's *section band* —
+                // the signpost, the phase-4 panel, the calendar review, the summary all wear it — so
+                // dressing the leader's own words in it made their speech look like another card the
+                // app was showing them, directly under a signpost of exactly the same colour. The
+                // low-chroma teal tint is the one other surface token the brand defines in both
+                // modes, and cool-against-warm separates at a glance.
+                //
+                // `w-fit` is the other half. A `<p>` is a block, so "hello" was drawn as an
+                // 85%-wide band with the text stranded at its left edge — a section, not an
+                // utterance. Short answers are most of a time audit ("3", "about 5"), so this is
+                // the common case, not the edge one. `max-w` still caps a long answer.
                 return (
                   <p
                     key={i}
-                    className="bg-muted text-foreground ml-auto max-w-[85%] rounded-2xl rounded-tr-sm px-4 py-3 text-[0.95rem] leading-relaxed"
+                    className="bg-accent text-foreground ml-auto w-fit max-w-[85%] rounded-2xl rounded-tr-sm px-4 py-3 text-[0.95rem] leading-relaxed"
                   >
                     {turn.text}
                   </p>

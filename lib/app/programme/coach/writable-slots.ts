@@ -27,18 +27,24 @@
  * `reclaim_reflection_p<N>` exists for this run. Only the *writer* moved. Three narrower guards stand
  * in place of the blanket refusal:
  *
- * 1. **The phase, from the server.** A reflection may only be written for the phase in the dispatch
- *    scope, which the route derives from the journey (`buildCoachScope`) and the model never sees. A
- *    conversation in phase 2 cannot record phase 4's reflection, and cannot record five of them at
- *    once to clear the gates ahead.
- * 2. **Never inferred.** `sourceType: 'inferred'` is refused for a reflection. It must be recorded as
- *    something the leader said (`direct`, `unprompted`, `emerged_naturally`, `built_across_turns`,
- *    `user_confirmed`), and the coach's instructions require it to offer the words back before
- *    recording them.
+ * 1. **The phase, from the server** — the one that is genuinely enforced. A reflection may only be
+ *    written for the phase in the dispatch scope, which the route derives from the journey
+ *    (`buildCoachScope`) and the model never sees. A conversation in phase 2 cannot record phase 4's
+ *    reflection, and cannot record five of them at once to clear the gates ahead. This is what bounds
+ *    the change: whatever the coach does, it does it in the phase the leader is sitting in.
+ * 2. **Never inferred** — a discipline, not a boundary, and it is worth being exact about which.
+ *    `sourceType: 'inferred'` is refused for a reflection, but the **model chooses that value**, so a
+ *    reflection it made up and labelled `direct` passes this check. What the rule buys is that the
+ *    documented path is the honest one and a well-behaved coach is told plainly what is expected;
+ *    what it does not buy is a control. Compare the leader-facing `answers` route, which takes a
+ *    `confirming` **boolean** rather than a client-chosen `sourceType` for exactly this reason: a
+ *    caller naming its own provenance is not evidence. The residual risk is bounded and
+ *    self-affecting — the worst case is the current phase's reflection recorded unprompted, in the
+ *    leader's own run, where guard 3 puts it in front of them. **Do not lean on this as enforcement.**
  * 3. **Visible and editable.** The recorded reflection is shown to the leader in their own words, in
  *    the captured panel, where changing it writes over the top. That is the same honesty mechanism an
- *    inferred reading already gets, and it is what makes "the leader owns their reflection" true of a
- *    reflection the coach typed.
+ *    inferred reading already gets, and — given exactly what guard 2 is not — it is the real backstop:
+ *    a sentence the leader can see and replace is a sentence they still own.
  *
  * ## The two layers, and what each actually holds
  *

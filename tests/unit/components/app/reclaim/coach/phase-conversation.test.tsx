@@ -186,3 +186,157 @@ describe('PhaseConversation', () => {
     ).toBeInTheDocument();
   });
 });
+
+/**
+ * Phase 1's beats, now that they live in the conversation rather than stacked underneath it.
+ *
+ * The order these appear in is the product: the calendar branch is offered on the data (every area
+ * has a figure), the reveal waits for the leader to ask, and the chart appears only after they have.
+ * I12 is the reason the last two are separate — a chart that draws itself as the figures arrive means
+ * the leader met their week one bar at a time and there is no reveal left to have.
+ */
+describe('PhaseConversation — the beats of phase 1', () => {
+  const AREAS = [
+    'deep_work',
+    'learning_development',
+    'strategic_planning',
+    'team_development',
+    'organisational_oversight',
+    'relationship_building',
+    'delivery_operations',
+    'recovery_white_space',
+  ];
+
+  const everyArea = (): Record<string, unknown> =>
+    Object.fromEntries(
+      AREAS.map((a) => [
+        `reclaim_current_hours__${a}`,
+        { value: '5', valueJson: 5, sourceType: 'direct', confidence: 10 },
+      ])
+    );
+
+  const phase1 = {
+    ...props,
+    phaseKey: 'phase-1-current',
+    phaseIndex: 1,
+    phaseLabel: 'Current reality',
+  };
+
+  it('offers no calendar branch until every area has a figure', async () => {
+    readAnswers.mockResolvedValue(captured);
+    render(<PhaseConversation {...phase1} />);
+    await waitFor(() => expect(readAnswers).toHaveBeenCalled());
+
+    expect(screen.queryByRole('link', { name: /Look at my calendar/ })).not.toBeInTheDocument();
+  });
+
+  it('offers it once they do, pointing at the step that was unreachable for two features', async () => {
+    readAnswers.mockResolvedValue(everyArea());
+    render(<PhaseConversation {...phase1} />);
+
+    const link = await screen.findByRole('link', { name: /Look at my calendar/ });
+    expect(link).toHaveAttribute('href', '/programme/calendar');
+  });
+
+  it('withdraws the offer once a calendar has been reconciled', async () => {
+    readAnswers.mockResolvedValue({
+      ...everyArea(),
+      reclaim_calendar_uploaded: {
+        value: 'Yes',
+        valueJson: true,
+        sourceType: 'direct',
+        confidence: 10,
+      },
+    });
+    render(<PhaseConversation {...phase1} />);
+    await waitFor(() => expect(readAnswers).toHaveBeenCalled());
+
+    expect(screen.queryByRole('link', { name: /Look at my calendar/ })).not.toBeInTheDocument();
+  });
+
+  it('shows no chart until the leader asks for it (I12)', async () => {
+    readAnswers.mockResolvedValue(everyArea());
+    render(<PhaseConversation {...phase1} />);
+
+    // Ready, so the invitation is there — and the picture is not.
+    expect(
+      await screen.findByRole('button', { name: /Show me where the week is going/ })
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+  });
+
+  it('will not move on from phase 1 until the picture has been looked at', async () => {
+    readAnswers.mockResolvedValue({
+      ...everyArea(),
+      reclaim_reflection_p1: {
+        value: 'Too much delivery',
+        valueJson: null,
+        sourceType: 'direct',
+        confidence: 9,
+      },
+    });
+    render(<PhaseConversation {...phase1} />);
+
+    expect(await screen.findByText(/shape of your week before moving on/i)).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /Continue to the next phase/ })
+    ).not.toBeInTheDocument();
+  });
+
+  it('draws the picture once they ask, and then offers the move', async () => {
+    readAnswers.mockResolvedValue({
+      ...everyArea(),
+      reclaim_reflection_p1: {
+        value: 'Too much delivery',
+        valueJson: null,
+        sourceType: 'direct',
+        confidence: 9,
+      },
+    });
+    render(<PhaseConversation {...phase1} />);
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /Show me where the week is going/ })
+    );
+
+    expect(
+      await screen.findByRole('button', { name: /Continue to the next phase/ })
+    ).toBeInTheDocument();
+  });
+});
+
+/** The panel has no column of its own on a narrow screen, so it has to be reachable another way. */
+describe('PhaseConversation — the captured panel on a narrow screen', () => {
+  it('opens and closes the drawer, and says how much has been noted', async () => {
+    render(<PhaseConversation {...props} />);
+
+    const trigger = await screen.findByRole('button', { name: /of \d+ noted/ });
+    await userEvent.click(trigger);
+
+    // Two copies now — the always-there column and the drawer — which is the point: the drawer is the
+    // same panel, not a summary of it.
+    expect(screen.getAllByLabelText('What the coach has recorded').length).toBeGreaterThan(1);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(screen.getAllByLabelText('What the coach has recorded')).toHaveLength(1);
+  });
+
+  it('closes on the backdrop too, which is where a thumb lands first', async () => {
+    render(<PhaseConversation {...props} />);
+
+    await userEvent.click(await screen.findByRole('button', { name: /of \d+ noted/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Close what the coach has noted' }));
+
+    expect(screen.getAllByLabelText('What the coach has recorded')).toHaveLength(1);
+  });
+
+  it('offers the form path from inside the drawer, not only from the column', async () => {
+    render(<PhaseConversation {...props} />);
+
+    await userEvent.click(await screen.findByRole('button', { name: /of \d+ noted/ }));
+    const switches = screen.getAllByRole('button', { name: /fill this in myself/ });
+    await userEvent.click(switches[switches.length - 1]);
+
+    expect(props.onSwitchToForm).toHaveBeenCalled();
+  });
+});

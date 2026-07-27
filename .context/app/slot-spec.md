@@ -227,6 +227,13 @@ correction creates a version too, and the perception-vs-reality chart needs both
 **These are the enforcement point for the unskippable reflection.** The phase transition route
 returns `422 REFLECTION_REQUIRED` when the slot for the phase being left is absent.
 
+**Who writes them changed on 2026-07-27.** The coach asks the closing question and records the
+answer, which the write allowlist used to refuse outright; the gate above is unchanged. Three
+conditions replace that refusal: the phase comes from the server-issued dispatch scope (so only the
+phase the leader is on can be written), `sourceType: 'inferred'` is refused, and the sentence is shown
+back in the captured panel where the leader can replace it. See [[invariants]] I6 and
+[[planning/ryw-chat-ux]].
+
 | Slug                    | dataType | Sensitivity | Meaning (`description`) — the pause this follows           |
 | ----------------------- | -------- | ----------- | ---------------------------------------------------------- |
 | `reclaim_reflection_p1` | `text`   | `sensitive` | Phase 1 visual. "What stands out to you here?"             |
