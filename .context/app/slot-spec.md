@@ -234,8 +234,20 @@ returns `422 REFLECTION_REQUIRED` when the slot for the phase being left is abse
 | `reclaim_reflection_p3` | `text`   | `sensitive` | Phase 3 ideal week                                         |
 | `reclaim_reflection_p4` | `text`   | `sensitive` | Phase 4 gap analysis. "What are you noticing?"             |
 | `reclaim_reflection_p5` | `text`   | `sensitive` | Phase 5 action plan. "What are you taking away from this?" |
+| `reclaim_reflection_p6` | `text`   | `sensitive` | The takeaway, asked before the Phase 6 summary is produced |
 
 There is deliberately no `reclaim_reflection_p0`. Phase 0 is a form, not a reveal.
+
+**`p6` is not a transition gate**, unlike the five above it. `reflectionSlugForLeaving` deliberately
+does not return it: phase 6 is the end of the audit, and gating the finish button on a reflection
+would be a refusal nobody asked for. What it gates is the **summary appearing**, which is the beat
+the source actually describes — "ask 'what are you taking away from this?' before producing the final
+summary, one final moment of reflection before the written output".
+
+It exists because the product was asking that question in the wrong place and of the wrong people:
+the answer landed in `ReclaimFeedback.text`, after the artifact, and only for the subset of leaders
+who chose to share their results. Everyone is asked now, and the sharing step reuses what they wrote
+rather than asking a near-identical question a second time.
 
 ---
 
@@ -268,9 +280,9 @@ aggregate picture, not as profiling. Every one carries a "prefer not to say" opt
 | `reclaim_ideal`      | 12 (9 per-bucket + 3 fixed)      |
 | `reclaim_gap`        | 6                                |
 | `reclaim_action`     | 6                                |
-| `reclaim_reflection` | 5                                |
+| `reclaim_reflection` | 6                                |
 | `reclaim_share`      | 6                                |
-| **Total**            | **105**                          |
+| **Total**            | **106**                          |
 
 The earlier estimate of "~45" undercounted because it did not expand the per-bucket slots. The count
 rose from 91 to **95** when the coverage audit added four slots: `reclaim_calendar_switch_frequency`,
@@ -283,3 +295,7 @@ enforced by none of them: `reclaim_current_*` holds the estimate, `reclaim_calen
 calendar, and the composite of the two had nowhere to live. That is the second time a gap has hidden
 in the space _between_ documents that each looked complete on their own — the first was the verbatim
 chain (see `sources/README.md`). Cross-reads catch what section-by-section reviews do not.
+
+It rose to **106** on 2026-07-27, with `reclaim_reflection_p6` — the takeaway the source asks for
+before the summary is produced. Same shape of gap a third time: the question was being asked, in the
+sharing form, so nothing looked missing until the _order_ was read against the source.

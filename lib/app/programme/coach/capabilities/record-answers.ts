@@ -38,8 +38,12 @@ import type {
 import { redactedString } from '@/lib/security/redact';
 import { SLOT_SOURCE_TYPE } from '@/lib/framework/data-slots/vocabulary';
 import { saveAnswerWithRetry } from '@/lib/app/programme/slots/write';
+import {
+  exposureConfigSchema,
+  facetAllows,
+} from '@/lib/framework/data-slots/capabilities/exposure';
 import { readCoachScope } from '@/lib/app/programme/coach/scope';
-import { checkSlotWrite } from '@/lib/app/programme/coach/writable-slots';
+import { checkSlotWrite, slotDefinitionFor } from '@/lib/app/programme/coach/writable-slots';
 
 /** The most answers one turn may record. Generous for a rich answer, bounded against a runaway. */
 const MAX_ANSWERS_PER_CALL = 12;
@@ -186,12 +190,43 @@ export class ReclaimRecordAnswersCapability extends BaseCapability<
       );
     }
 
+    // The operator-tunable outer bound: which slot groups this grant permits at all. It is read from
+    // the binding rather than re-queried, and it is the layer I6 claimed for a year without anything
+    // running it — `facetAllows` is called by the framework's own `fill_slot` and `get_state`, and by
+    // nobody else, so a module capability that does not call it has an `ExposureConfig` that enforces
+    // nothing. Malformed config fails closed: a grant we cannot read is not a grant.
+    const exposure = exposureConfigSchema.safeParse(context.customConfig ?? {});
+    if (!exposure.success) {
+      return this.error(
+        'This capability is not configured correctly, so nothing was recorded.',
+        'exposure_invalid'
+      );
+    }
+    const writeFacet = exposure.data.write;
+
     const recorded: RecordedAnswer[] = [];
     const refused: RefusedAnswer[] = [];
 
     // Sequential on purpose. These are separate slugs so they do not contend with each other, and a
     // serial loop keeps the version numbers legible in the provenance archive an operator reads.
     for (const answer of args.answers) {
+      // Both layers, ANDed. The grant says which groups; the code says which slugs within them and
+      // enforces the typed-value rule. Neither is redundant: the grant is what an operator can
+      // tighten without a deploy, and the code is the product rule that must hold whatever the grant
+      // says.
+      // `scope` is passed as null: every reclaim slot is registered without one, and the grant's
+      // facet names no `scopes`, so scope plays no part in this decision. Passing the definition's
+      // absent field would say the same thing less plainly.
+      const definition = slotDefinitionFor(answer.slotSlug);
+      if (definition !== undefined && !facetAllows(writeFacet, definition.group ?? null, null)) {
+        refused.push({
+          slotSlug: answer.slotSlug,
+          code: 'group_refused',
+          message: `"${answer.slotSlug}" is outside what this conversation is permitted to record.`,
+        });
+        continue;
+      }
+
       const check = checkSlotWrite(answer.slotSlug, answer.valueJson);
       if (!check.ok) {
         refused.push({

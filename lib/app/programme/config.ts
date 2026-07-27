@@ -38,6 +38,25 @@ export interface ReclaimUiConfig {
    * all just because a config row could not be read.
    */
   phaseSignposts: PhaseSignpost[];
+  calendarExportSteps: ReclaimCalendarExport[];
+}
+
+/** One service's export walkthrough, shown on the upload screen. */
+export interface ReclaimCalendarExport {
+  service: string;
+  steps: string[];
+}
+
+/**
+ * The calendar export walkthroughs, as the operator currently has them.
+ *
+ * Read at the upload step rather than injected into the conversation, which is where the content
+ * extract puts them: a list of menu clicks is something a leader scans while tabbing to another
+ * window. It also keeps them out of a model's recall, which matters here more than usual — the
+ * transcription audit found the Outlook steps had once been invented outright.
+ */
+export async function readReclaimCalendarExports(): Promise<ReclaimCalendarExport[]> {
+  return (await readReclaimConfig()).calendarExportSteps;
 }
 
 /** The subset the entitlement gate and consent gate need (F8). */
@@ -124,9 +143,12 @@ async function readReclaimConfig(): Promise<ReclaimConfig> {
 export async function readReclaimUiConfig(userId: string): Promise<ReclaimUiConfig> {
   const config = await readReclaimConfig();
   const phaseSignposts = config.phaseSignposts;
-  if (config.strategyMirrorMode === 'off') return { strategyMirror: false, phaseSignposts };
-  if (config.strategyMirrorMode === 'always') return { strategyMirror: true, phaseSignposts };
-  return { strategyMirror: await hasCompletedAudit(userId), phaseSignposts };
+  const calendarExportSteps = config.calendarExportSteps;
+  if (config.strategyMirrorMode === 'off')
+    return { strategyMirror: false, phaseSignposts, calendarExportSteps };
+  if (config.strategyMirrorMode === 'always')
+    return { strategyMirror: true, phaseSignposts, calendarExportSteps };
+  return { strategyMirror: await hasCompletedAudit(userId), phaseSignposts, calendarExportSteps };
 }
 
 /**

@@ -16,12 +16,17 @@ import {
   type CalendarReview,
 } from '@/components/app/reclaim/calendar/types';
 import { FieldHelp } from '@/components/ui/field-help';
+import { RECLAIM_CALENDAR_HANDOFF } from '@/lib/app/programme/content';
+import type { CalendarExportView } from '@/components/app/reclaim/calendar/types';
 
 export function CalendarUpload({
   runId,
+  exports,
   onReviewed,
 }: {
   runId: string;
+  /** The export walkthroughs as the operator has them. Empty renders no help rather than stale help. */
+  exports: CalendarExportView[];
   onReviewed: (review: CalendarReview) => void;
 }) {
   const [fileName, setFileName] = useState<string | null>(null);
@@ -109,6 +114,33 @@ export function CalendarUpload({
         <p className="text-muted-foreground text-sm" role="status">
           {error} You can try again, or skip this step.
         </p>
+      )}
+
+      {/*
+        How to get the file. Held here rather than narrated by the coach, which is where the content
+        extract puts it too: this is a list you scan while tabbing to another window, and the
+        transcription audit found the Outlook steps had once been invented outright, so a model
+        recalling them is the exact failure to avoid.
+      */}
+      {exports.length > 0 && (
+        <details className="border-border/70 rounded-lg border px-4 py-3">
+          <summary className="text-foreground cursor-pointer text-sm font-medium">
+            How do I export my calendar?
+          </summary>
+          <div className="mt-4 space-y-5">
+            {exports.map((walkthrough) => (
+              <div key={walkthrough.service} className="space-y-2">
+                <p className="text-foreground text-sm font-medium">{walkthrough.service}</p>
+                <ol className="text-muted-foreground list-decimal space-y-1 pl-5 text-sm">
+                  {walkthrough.steps.map((step, i) => (
+                    <li key={i}>{step}</li>
+                  ))}
+                </ol>
+              </div>
+            ))}
+            <p className="text-muted-foreground text-sm">{RECLAIM_CALENDAR_HANDOFF}</p>
+          </div>
+        </details>
       )}
 
       {/* The two privacy promises (I4) — at the control, not in a tooltip. */}

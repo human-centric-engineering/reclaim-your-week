@@ -33,6 +33,7 @@ import {
   RECLAIM_BUCKETS,
   RECLAIM_HOUR_BANDS,
   RECLAIM_CONSULTATION_EMAIL,
+  RECLAIM_CALENDAR_EXPORT_STEPS,
 } from '@/lib/app/programme/content';
 
 /**
@@ -125,6 +126,15 @@ export const reclaimConfigSchema = z.object({
    * sentence about a source document, and this copy has none.
    */
   phaseSignposts: z.array(phaseSignpostSchema).default(RECLAIM_PHASE_SIGNPOSTS),
+
+  /**
+   * The calendar export walkthroughs, shown on the upload screen where the extract says they belong.
+   * Rashmir's, verbatim, and config because these are the fields most likely to need changing without
+   * a deploy: they describe somebody else's menus, and those move.
+   */
+  calendarExportSteps: z
+    .array(z.object({ service: z.string(), steps: z.array(z.string()) }))
+    .default(RECLAIM_CALENDAR_EXPORT_STEPS),
 
   /**
    * F9 t-2 — the recent-audit shortcut's confirm line (§4). Verbatim, interpolated at render.

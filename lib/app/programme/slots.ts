@@ -533,6 +533,29 @@ const reflectionSlots: SlotDefinitionInput[] = [
     dataType: 'text',
     sensitivity: 'sensitive',
   },
+  {
+    /**
+     * The takeaway, asked before the summary is produced.
+     *
+     * The source is specific about the order: ask "what are you taking away from this?" **before**
+     * producing the final summary, "one final moment of reflection before the written output". Until
+     * now the product asked something very like it *after* the artifact, and only of the subset of
+     * leaders who chose to share their results — so most people were never asked at all, and the
+     * answer landed in a table about sharing rather than in the audit.
+     *
+     * A reflection rather than a share field, which puts it in the group the coach may never write
+     * (I6): the coach asks and may offer words back, the leader saves. Deliberately **not** returned
+     * by `reflectionSlugForLeaving` — this phase is the end of the audit, and gating the finish
+     * button on a reflection would be a new refusal nobody asked for. It gates the summary appearing,
+     * which is the beat the source actually describes.
+     */
+    slug: 'reclaim_reflection_p6',
+    group: 'reclaim_reflection',
+    description:
+      'The takeaway, asked before the Phase 6 summary is produced: what they are taking away from the audit.',
+    dataType: 'text',
+    sensitivity: 'sensitive',
+  },
 ];
 
 /**

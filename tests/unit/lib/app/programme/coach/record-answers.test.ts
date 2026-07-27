@@ -422,3 +422,106 @@ describe('provenance redaction', () => {
     expect(serialised).toContain('direct');
   });
 });
+
+describe('the grant is enforced at run time, not merely stated on the binding', () => {
+  /**
+   * For a version, I6 and two docblocks all said the write allowlist was "enforced a second time" by
+   * the framework's `facetAllows`. It was not: `facetAllows` runs inside the framework's own
+   * `fill_slot` and `get_state`, and a module capability that never calls it has an `ExposureConfig`
+   * that enforces nothing. The writes were still constrained by `checkSlotWrite`, so nothing was
+   * broken — but a rule documented as held twice and held once is worse than one held once and known
+   * to be. These are the tests that would have caught it.
+   */
+  it('refuses a write outside the groups the grant permits', async () => {
+    const result = await capability.execute(
+      {
+        answers: [
+          {
+            slotSlug: 'reclaim_current_hours__deep_work',
+            value: '9',
+            valueJson: 9,
+            confidence: 9,
+            sourceType: 'direct' as const,
+            reasoningNote: 'They said nine hours.',
+          },
+        ],
+      },
+      { ...dispatchContext, customConfig: { write: { groups: ['reclaim_profile'] } } }
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.data?.recorded).toEqual([]);
+    expect(result.data?.refused[0]).toMatchObject({
+      slotSlug: 'reclaim_current_hours__deep_work',
+      code: 'group_refused',
+    });
+    // The point of the test: nothing reached the store.
+    expect(store.has('reclaim_current_hours__deep_work')).toBe(false);
+  });
+
+  it('still records a write the grant does permit', async () => {
+    const result = await capability.execute(
+      {
+        answers: [
+          {
+            slotSlug: 'reclaim_current_hours__deep_work',
+            value: '9',
+            valueJson: 9,
+            confidence: 9,
+            sourceType: 'direct' as const,
+            reasoningNote: 'They said nine hours.',
+          },
+        ],
+      },
+      { ...dispatchContext, customConfig: { write: { groups: ['reclaim_current'] } } }
+    );
+
+    expect(result.data?.refused).toEqual([]);
+    expect(result.data?.recorded).toHaveLength(1);
+  });
+
+  it('fails closed on a grant it cannot read, rather than writing anyway', async () => {
+    const result = await capability.execute(
+      {
+        answers: [
+          {
+            slotSlug: 'reclaim_current_hours__deep_work',
+            value: '9',
+            valueJson: 9,
+            confidence: 9,
+            sourceType: 'direct' as const,
+            reasoningNote: 'They said nine hours.',
+          },
+        ],
+      },
+      { ...dispatchContext, customConfig: { write: { groups: 'not-a-list' } } }
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toMatchObject({ code: 'exposure_invalid' });
+    expect(store.has('reclaim_current_hours__deep_work')).toBe(false);
+  });
+
+  it('treats an absent grant as unrestricted, matching the framework convention', async () => {
+    // `facetAllows(undefined, …)` is true throughout the framework, and the code rule still applies.
+    // Asserted so that a future change to fail closed here is a deliberate act rather than a
+    // surprise: it would silently stop every write on a binding seeded before this field existed.
+    const result = await capability.execute(
+      {
+        answers: [
+          {
+            slotSlug: 'reclaim_current_hours__deep_work',
+            value: '9',
+            valueJson: 9,
+            confidence: 9,
+            sourceType: 'direct' as const,
+            reasoningNote: 'They said nine hours.',
+          },
+        ],
+      },
+      dispatchContext
+    );
+
+    expect(result.data?.recorded).toHaveLength(1);
+  });
+});

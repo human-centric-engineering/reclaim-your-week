@@ -17,6 +17,8 @@ const {
   loadPhaseProgress,
   readCoachContent,
   readSignposts,
+  grantFindFirst,
+  hasCompletedAudit,
 } = vi.hoisted(() => ({
   findFirst: vi.fn(),
   readRunAnswers: vi.fn(),
@@ -24,9 +26,14 @@ const {
   loadPhaseProgress: vi.fn(),
   readCoachContent: vi.fn(),
   readSignposts: vi.fn(),
+  grantFindFirst: vi.fn(),
+  hasCompletedAudit: vi.fn(),
 }));
 
-vi.mock('@/lib/db/client', () => ({ prisma: { reclaimAuditRun: { findFirst } } }));
+vi.mock('@/lib/db/client', () => ({
+  prisma: { reclaimAuditRun: { findFirst }, reclaimGrant: { findFirst: grantFindFirst } },
+}));
+vi.mock('@/lib/app/programme/compare', () => ({ hasCompletedAudit }));
 vi.mock('@/lib/app/programme/runs/answers', () => ({ readRunAnswers }));
 vi.mock('@/lib/app/programme/buckets/labels', () => ({ readBucketLabels }));
 vi.mock('@/lib/app/programme/runs/journey', () => ({ loadPhaseProgress }));
@@ -76,6 +83,8 @@ beforeEach(() => {
   // The signpost cards. Defaults to none, so the existing assertions keep testing the capture block
   // rather than the card echo; the tests that care about the card supply their own.
   readSignposts.mockResolvedValue([]);
+  grantFindFirst.mockResolvedValue({ tier: 'standard' });
+  hasCompletedAudit.mockResolvedValue(false);
   readCoachContent.mockResolvedValue(content);
 });
 
@@ -199,10 +208,16 @@ describe('buildCoachPhaseContext', () => {
     expect(readRunAnswers).not.toHaveBeenCalled();
   });
 
-  it('is empty in the summary phase, which captures nothing conversationally', async () => {
+  it('speaks in the summary phase even though it captures nothing there', async () => {
+    // It used to return '' here, on the reading that a phase with no capture slots has nothing to
+    // say. That was true while phase 6 was a document; it is not true of a close, which branches on
+    // the leader's tier, on whether they have done this before, and on their own takeaway.
     loadPhaseProgress.mockResolvedValue({ phases: [], currentPhaseKey: 'phase-6-summary' });
+    grantFindFirst.mockResolvedValue({ tier: 'standard' });
 
-    expect(await buildCoachPhaseContext('u1')).toBe('');
+    const block = await buildCoachPhaseContext('u1');
+    expect(block).toContain('phase 6 of 6');
+    expect(block).toContain('This is the close');
   });
 
   it('still builds when the leader has never relabelled anything', async () => {
@@ -305,5 +320,75 @@ describe('buildCoachPhaseContext — the gap, in the leader’s own figures', ()
     });
 
     expect(await buildCoachPhaseContext('u1')).not.toContain('Do not recalculate these');
+  });
+});
+
+describe('buildCoachPhaseContext — the close', () => {
+  beforeEach(() => {
+    loadPhaseProgress.mockResolvedValue({ phases: [], currentPhaseKey: 'phase-6-summary' });
+  });
+
+  const takeaway = {
+    value: 'That I have been hiding in delivery work.',
+    valueJson: null,
+    sourceType: 'direct',
+    confidence: 10,
+  };
+
+  it('holds the summary back until the leader has said what they are taking away', async () => {
+    readRunAnswers.mockResolvedValue({});
+
+    const block = await buildCoachPhaseContext('u1');
+
+    expect(block).toContain('the summary does not appear until they');
+    expect(block).toContain('not produce a summary of the audit yourself');
+  });
+
+  it('answers their takeaway in their own words once they have written it', async () => {
+    readRunAnswers.mockResolvedValue({ reclaim_reflection_p6: takeaway });
+
+    const block = await buildCoachPhaseContext('u1');
+
+    expect(block).toContain('hiding in delivery work');
+    expect(block).toContain('Do not improve on it');
+  });
+
+  it('invites a client to share ahead of their next session rather than offering a consultation', async () => {
+    readRunAnswers.mockResolvedValue({ reclaim_reflection_p6: takeaway });
+    grantFindFirst.mockResolvedValue({ tier: 'client' });
+
+    const block = await buildCoachPhaseContext('u1');
+
+    expect(block).toContain('already working with Rashmir');
+    expect(block).not.toContain('first completed audit');
+  });
+
+  it('leaves the door open once, on a first audit', async () => {
+    readRunAnswers.mockResolvedValue({ reclaim_reflection_p6: takeaway });
+    hasCompletedAudit.mockResolvedValue(false);
+
+    expect(await buildCoachPhaseContext('u1')).toContain('first completed audit');
+  });
+
+  it('does not offer again to someone who has finished an audit before', async () => {
+    // "The 30-minute consultation offer should only appear once — not on every audit." Derived from
+    // the leader's completed runs rather than from a stored flag: the current run is still in
+    // progress here, so it never counts itself, and there is no new state to keep true.
+    readRunAnswers.mockResolvedValue({ reclaim_reflection_p6: takeaway });
+    hasCompletedAudit.mockResolvedValue(true);
+
+    const block = await buildCoachPhaseContext('u1');
+
+    expect(block).toContain('Do not offer it again');
+    expect(block).not.toContain('first completed audit');
+  });
+
+  it('never asks the coach to record anything in this phase', async () => {
+    readRunAnswers.mockResolvedValue({ reclaim_reflection_p6: takeaway });
+
+    const block = await buildCoachPhaseContext('u1');
+
+    expect(block).toContain('Nothing here is captured by you');
+    expect(block).not.toContain('record_answers');
   });
 });

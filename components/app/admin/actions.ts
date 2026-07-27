@@ -121,6 +121,19 @@ const contentFieldSchema = z.object({
   label: z.string(),
   value: z.string(),
   matchesSource: z.boolean(),
+  /**
+   * Who wrote the field originally, which decides what "edited" claims. `rashmir` compares against a
+   * source document; `authored` compares against the shipped wording, because this app wrote it and
+   * there is no source document to differ from.
+   */
+  sourceKind: z.enum(['rashmir', 'authored']),
+});
+
+const contentSignpostSchema = z.object({
+  phaseKey: z.string(),
+  involves: contentFieldSchema,
+  duration: contentFieldSchema,
+  opening: z.array(contentFieldSchema),
 });
 
 const contentBucketSchema = z.object({
@@ -134,6 +147,7 @@ const contentViewSchema = z.object({
   buckets: z.array(contentBucketSchema),
   bands: z.array(z.object({ id: z.string(), label: contentFieldSchema })),
   prose: z.array(contentFieldSchema),
+  signposts: z.array(contentSignpostSchema),
   rules: z.array(contentFieldSchema.extend({ min: z.number(), max: z.number() })),
   editedCount: z.number(),
   /** The config version this view was built from — echoed back on save (optimistic concurrency). */

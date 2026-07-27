@@ -23,8 +23,22 @@
  */
 
 import { reclaimConfigSchema, type ReclaimConfig } from '@/lib/app/programme/module';
+import { RECLAIM_PROCESS_OUTLINE } from '@/lib/app/programme/content';
 
-/** One editable string, and whether it still matches the source document. */
+/**
+ * Who wrote a field originally, which decides what "edited" is a statement about.
+ *
+ * `rashmir` — her words, pinned to `sources/` by the I11 guard. A difference here means she has
+ * revised herself, and the marker should say so plainly because that is the fact worth surfacing.
+ *
+ * `authored` — copy this app wrote: the phase signposts, the calendar orientation. It has no source
+ * document, so "differs from source" would be a claim about a thing that does not exist, and worse,
+ * it would quietly attribute our writing to her on her own editing screen. That is the inverse of
+ * what I11 protects, which is why the distinction is data rather than a comment.
+ */
+export type ContentSourceKind = 'rashmir' | 'authored';
+
+/** One editable string, and whether it still matches what it started as. */
 export interface ContentField {
   /** Dotted path into the config — `buckets.0.title`, `footnote`. The save posts these back. */
   key: string;
@@ -32,6 +46,7 @@ export interface ContentField {
   value: string;
   /** False once the stored value differs from the code default the I11 guard pins to `sources/`. */
   matchesSource: boolean;
+  sourceKind: ContentSourceKind;
 }
 
 export interface ContentBucketView {
@@ -42,9 +57,19 @@ export interface ContentBucketView {
   benchmarkNote: ContentField;
 }
 
+export interface ContentSignpostView {
+  phaseKey: string;
+  involves: ContentField;
+  duration: ContentField;
+  /** One field per opening beat, so a paragraph of hers stays separately comparable from ours. */
+  opening: ContentField[];
+}
+
 export interface ContentView {
   buckets: ContentBucketView[];
   bands: Array<{ id: string; label: ContentField }>;
+  /** How each phase opens itself, before anyone speaks. */
+  signposts: ContentSignpostView[];
   /** The standalone prose fields — the governing frame, the deep-work note, the footnote. */
   prose: ContentField[];
   /**
@@ -66,13 +91,31 @@ function sourceDefaults(): ReclaimConfig {
   return reclaimConfigSchema.parse({});
 }
 
+/**
+ * Whether a signpost's opening beat started life as Rashmir's writing.
+ *
+ * Exactly one does: phase 0's second paragraph is her process outline, guarded verbatim by I11
+ * hop 2. Everything else in a signpost is our orientation copy.
+ *
+ * **Asked of the shipped default, never of the stored value.** Authorship is a fact about which
+ * field this is, not about whether it has since been edited — so her outline stays marked as hers
+ * after she revises it, which is what keeps it in the diverged count that heads the page. Derived
+ * from the defaults rather than pinned to an index, so inserting a beat before hers cannot silently
+ * re-point the marker at one of ours.
+ */
+function isRashmirBeat(defaults: ReclaimConfig, phaseKey: string, beat: number): boolean {
+  const signpost = defaults.phaseSignposts.find((s) => s.phaseKey === phaseKey);
+  return signpost?.opening[beat] === RECLAIM_PROCESS_OUTLINE;
+}
+
 function field(
   key: string,
   label: string,
   value: string,
-  source: string | undefined
+  source: string | undefined,
+  sourceKind: ContentSourceKind = 'rashmir'
 ): ContentField {
-  return { key, label, value, matchesSource: value === source };
+  return { key, label, value, matchesSource: value === source, sourceKind };
 }
 
 /**
@@ -127,13 +170,48 @@ export function buildContentView(stored: ReclaimConfig): ContentView {
     ),
   ];
 
+  // How each phase opens itself. Mostly ours, with one exception: phase 0's second beat is Rashmir's
+  // process outline, and it is marked as hers so the screen tells the truth about which paragraph is
+  // whose. That is exactly why `opening` is an array — the two are separate fields, comparable
+  // separately, rather than one paragraph with her sentence buried in it.
+  const signposts = stored.phaseSignposts.map((signpost, index) => {
+    const source = defaults.phaseSignposts.find((s) => s.phaseKey === signpost.phaseKey);
+    return {
+      phaseKey: signpost.phaseKey,
+      involves: field(
+        `phaseSignposts.${index}.involves`,
+        'What this phase involves',
+        signpost.involves,
+        source?.involves,
+        'authored'
+      ),
+      duration: field(
+        `phaseSignposts.${index}.duration`,
+        'Roughly how long',
+        signpost.duration,
+        source?.duration,
+        'authored'
+      ),
+      opening: signpost.opening.map((paragraph, beat) =>
+        field(
+          `phaseSignposts.${index}.opening.${beat}`,
+          signpost.opening.length > 1 ? `Opening, part ${beat + 1}` : 'Opening',
+          paragraph,
+          source?.opening[beat],
+          isRashmirBeat(defaults, signpost.phaseKey, beat) ? 'rashmir' : 'authored'
+        )
+      ),
+    } satisfies ContentSignpostView;
+  });
+
   const rules = [
     {
       ...field(
         'abandonedAfterDays',
         'Days of silence before an audit reads as stalled',
         String(stored.abandonedAfterDays),
-        String(defaults.abandonedAfterDays)
+        String(defaults.abandonedAfterDays),
+        'authored'
       ),
       min: 1,
       max: 365,
@@ -143,7 +221,8 @@ export function buildContentView(stored: ReclaimConfig): ContentView {
         'aggregateMinimumCohort',
         'Smallest group an aggregate figure may be shown for',
         String(stored.aggregateMinimumCohort),
-        String(defaults.aggregateMinimumCohort)
+        String(defaults.aggregateMinimumCohort),
+        'authored'
       ),
       min: 2,
       max: 100,
@@ -154,9 +233,15 @@ export function buildContentView(stored: ReclaimConfig): ContentView {
     ...buckets.flatMap((b) => [b.title, b.description, b.benchmarkNote]),
     ...bands.map((b) => b.label),
     ...prose,
+    ...signposts.flatMap((s) => [s.involves, s.duration, ...s.opening]),
   ];
 
-  return { buckets, bands, prose, rules, editedCount: all.filter((f) => !f.matchesSource).length };
+  // Counted over Rashmir's fields only. The number heads the page as "n fields differ from the
+  // source documents", and an edit to our own orientation copy differs from no source document at
+  // all — folding it in would make that sentence false and the count useless as a review signal.
+  const editedCount = all.filter((f) => !f.matchesSource && f.sourceKind === 'rashmir').length;
+
+  return { buckets, bands, prose, signposts, rules, editedCount };
 }
 
 /**
@@ -174,9 +259,27 @@ export function applyContentEdits(
     ...stored,
     buckets: stored.buckets.map((b) => ({ ...b, benchmark: { ...b.benchmark } })),
     hourBands: stored.hourBands.map((b) => ({ ...b })),
+    phaseSignposts: stored.phaseSignposts.map((s) => ({ ...s, opening: [...s.opening] })),
   };
 
   for (const [key, value] of Object.entries(edits)) {
+    const signpost = /^phaseSignposts\.(\d+)\.(involves|duration|opening\.(\d+))$/.exec(key);
+    if (signpost !== null) {
+      const target = next.phaseSignposts[Number(signpost[1])];
+      if (target !== undefined) {
+        if (signpost[2] === 'involves') target.involves = value;
+        else if (signpost[2] === 'duration') target.duration = value;
+        else {
+          // An opening beat. Only an existing index is written: a save must not be able to grow the
+          // array, because a beat with no default behind it has nothing to compare against and would
+          // render as permanently diverged copy nobody wrote.
+          const beat = Number(signpost[3]);
+          if (beat < target.opening.length) target.opening[beat] = value;
+        }
+      }
+      continue;
+    }
+
     const bucket = /^buckets\.(\d+)\.(title|description|benchmarkNote)$/.exec(key);
     if (bucket !== null) {
       const target = next.buckets[Number(bucket[1])];

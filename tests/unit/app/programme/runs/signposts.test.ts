@@ -46,15 +46,18 @@ describe('RECLAIM_PHASE_SIGNPOSTS', () => {
     expect(setup!.opening).toContain(RECLAIM_PROCESS_OUTLINE);
   });
 
-  it('opens every phase but the summary, which is the panel that opens itself', () => {
+  it('opens every phase, the summary included', () => {
+    // Phase 6 opened on its heading alone until the close was built. It now carries the takeaway
+    // question, which the source asks *before* the summary is produced rather than after it.
     for (const phase of RECLAIM_PHASES) {
       const opening = signpostFor(phase.key)!.opening;
-      if (phase.key === 'phase-6-summary') {
-        expect(opening).toEqual([]);
-      } else {
-        expect(opening.length, `no opening for ${phase.key}`).toBeGreaterThan(0);
-      }
+      expect(opening.length, `no opening for ${phase.key}`).toBeGreaterThan(0);
     }
+  });
+
+  it('asks the takeaway on the summary card, where the question is the same every time', () => {
+    const summary = signpostFor('phase-6-summary');
+    expect(summary!.opening.join(' ')).toContain('taking away');
   });
 
   it('returns null for a phase the config no longer defines', () => {

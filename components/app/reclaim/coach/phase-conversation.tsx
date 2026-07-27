@@ -24,11 +24,13 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { buildChartData } from '@/lib/app/programme/chart/series';
+import Link from 'next/link';
+import { buildChartData, truthy } from '@/lib/app/programme/chart/series';
 import {
   CHART_REVEAL_MOMENT,
   CHART_REVEAL_PHASE,
   chartRevealState,
+  everyVisibleAreaHasHours,
 } from '@/lib/app/programme/chart/reveal';
 import type { CoachOpeningMoment } from '@/lib/app/programme/coach/opening';
 import { phaseCaptureSlots } from '@/lib/app/programme/coach/phase-slots';
@@ -164,6 +166,14 @@ export function PhaseConversation({
 
   const chart = revealed ? buildChartData(answers, labels) : null;
 
+  // Offered once every area has a figure, and withdrawn once a calendar has been reconciled. Not
+  // gated on the reveal: a leader should be able to take the branch before seeing the picture, which
+  // is the order the source runs them in.
+  const offerCalendar =
+    phaseKey === CHART_REVEAL_PHASE &&
+    everyVisibleAreaHasHours(answers) &&
+    !truthy(answers['reclaim_calendar_uploaded']);
+
   // The moment the coach opens, or `null` for a phase the leader leads. Only a moment that is due and
   // absent from the run's ledger is passed down, so the common case never troubles the server.
   const openMoment = openMomentFor(phaseKey, coachOpenings, revealing);
@@ -209,6 +219,28 @@ export function PhaseConversation({
         used to draw itself the instant one reading landed, which meant the leader met their week one
         bar at a time and there was no reveal left to have.
       */}
+      {/*
+        The calendar branch. It has been unreachable since F5 merged: nothing in the app linked to
+        it, on either surface, so the only way in was to type the URL. Offered once every area has a
+        figure, which is where the source puts it, and never presented as the better option — the
+        audit is worth doing without it and several testers were anxious about this step.
+      */}
+      {offerCalendar && (
+        <div className="border-border/70 border-t pt-8">
+          <p className="text-foreground text-[1.02rem] leading-relaxed text-balance">
+            If you would like, you can reality-check this against your actual calendar. It is
+            optional, your calendar file is never stored, and the audit works just as well without
+            it.
+          </p>
+          <Link
+            href="/programme/calendar"
+            className="border-border text-foreground mt-5 inline-block rounded-full border px-7 py-2.5 text-sm font-medium"
+          >
+            Look at my calendar
+          </Link>
+        </div>
+      )}
+
       {revealState === 'ready' && !revealing && (
         <div className="border-border/70 border-t pt-8">
           <p className="text-foreground text-[1.02rem] leading-relaxed text-balance">

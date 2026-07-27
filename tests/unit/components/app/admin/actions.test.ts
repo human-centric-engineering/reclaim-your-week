@@ -160,23 +160,59 @@ describe('content', () => {
     buckets: [
       {
         bucketSlug: 'deep-work',
-        title: { key: 'buckets.0.title', label: 'Title', value: 'Deep work', matchesSource: true },
+        title: {
+          key: 'buckets.0.title',
+          label: 'Title',
+          value: 'Deep work',
+          matchesSource: true,
+          sourceKind: 'rashmir',
+        },
         description: {
           key: 'buckets.0.description',
           label: 'Description',
           value: 'Protected time.',
           matchesSource: false,
+          sourceKind: 'rashmir',
         },
         benchmarkNote: {
           key: 'buckets.0.benchmarkNote',
           label: 'Benchmark range',
           value: 'no range',
           matchesSource: true,
+          sourceKind: 'rashmir',
         },
       },
     ],
     bands: [],
     prose: [],
+    signposts: [
+      {
+        phaseKey: 'phase-0-setup',
+        involves: {
+          key: 'phaseSignposts.0.involves',
+          label: 'What this phase involves',
+          value: 'A little context.',
+          matchesSource: true,
+          sourceKind: 'authored',
+        },
+        duration: {
+          key: 'phaseSignposts.0.duration',
+          label: 'Roughly how long',
+          value: 'a few minutes',
+          matchesSource: true,
+          sourceKind: 'authored',
+        },
+        opening: [
+          {
+            key: 'phaseSignposts.0.opening.0',
+            label: 'Opening, part 1',
+            value: 'Welcome.',
+            matchesSource: true,
+            sourceKind: 'authored',
+          },
+        ],
+      },
+    ],
     rules: [],
     editedCount: 1,
     baseVersion: 7,

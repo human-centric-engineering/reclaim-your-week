@@ -23,24 +23,34 @@ import { prisma } from '@/lib/db/client';
 import { readRunAnswers } from '@/lib/app/programme/runs/answers';
 import { readBucketLabels } from '@/lib/app/programme/buckets/labels';
 import { loadPhaseProgress } from '@/lib/app/programme/runs/journey';
+import { hasCompletedAudit } from '@/lib/app/programme/compare';
 import { phaseCaptureSlots } from '@/lib/app/programme/coach/phase-slots';
 import { RECLAIM_PHASES } from '@/lib/app/programme/map';
-import { phaseNumber, reflectionSlugForLeaving } from '@/lib/app/programme/runs/phases';
+import {
+  phaseNumber,
+  reflectionSlugForLeaving,
+  FINAL_PHASE_KEY,
+} from '@/lib/app/programme/runs/phases';
 import {
   truthy,
   bucketHours,
   buildChartData,
   type Answers,
 } from '@/lib/app/programme/chart/series';
-import { CHART_REVEAL_PHASE, chartRevealReady } from '@/lib/app/programme/chart/reveal';
+import {
+  CHART_REVEAL_PHASE,
+  chartRevealReady,
+  everyVisibleAreaHasHours,
+} from '@/lib/app/programme/chart/reveal';
 import {
   readReclaimCoachContent,
   readReclaimSignposts,
   type ReclaimCoachContent,
 } from '@/lib/app/programme/config';
-import { signpostFor } from '@/lib/app/programme/runs/signposts';
+import { signpostFor, type PhaseSignpost } from '@/lib/app/programme/runs/signposts';
 import {
   RECLAIM_UNDER_DELEGATION_INVITATION,
+  RECLAIM_CALENDAR_OFFER,
   RECLAIM_BUCKETS,
   bucketToken,
 } from '@/lib/app/programme/content';
@@ -147,6 +157,92 @@ function gapLines(answers: Answers, bucketLabels: Record<string, string>): strin
 }
 
 /**
+ * The card the leader has already read, quoted back so the coach does not signpost a phase that has
+ * just signposted itself. Shared by the ordinary path and the summary phase.
+ */
+function cardLinesFor(phaseKey: string, signposts: PhaseSignpost[]): string[] {
+  const card = signpostFor(phaseKey, signposts.length > 0 ? signposts : undefined);
+  if (card === null || card.opening.length === 0) return [];
+  return [
+    '',
+    'The leader has already read this phase on screen, and it said:',
+    ...card.opening.map((paragraph) => `"${paragraph}"`),
+    'Do not restate any of that. Begin from where it leaves off.',
+  ];
+}
+
+/**
+ * How the audit closes.
+ *
+ * The source branches this by client tier, says the consultation offer appears **once** and not on
+ * every audit, and asks that the closing affirmation vary each time rather than being recited.
+ *
+ * **"Once only" is derived, not stored.** The obvious implementation is a flag, or a moment on the
+ * run's ledger — but the run ledger is per run and this is a fact about a person, and a flag is a new
+ * piece of state to keep true. A leader who has completed an audit before has already been offered
+ * the consultation, so `hasCompletedAudit` answers the question exactly, from data that is already
+ * correct for other reasons. The current run is still `in_progress` here, so it never counts itself.
+ */
+async function closingContext(userId: string, answers: Answers): Promise<string[]> {
+  const takeaway = answers['reclaim_reflection_p6'];
+  const [returning, grant] = await Promise.all([
+    hasCompletedAudit(userId),
+    prisma.reclaimGrant.findFirst({ where: { userId }, select: { tier: true } }),
+  ]);
+
+  const parts: string[] = [
+    '',
+    'This is the close. Nothing here is captured by you: the summary is produced on screen, the',
+    "sharing choices are the leader's consent to give, and the takeaway below is theirs to save.",
+  ];
+
+  if (takeaway === undefined) {
+    parts.push(
+      '',
+      'They have not yet written what they are taking away, and the summary does not appear until they',
+      'have. Ask them, once, and let it land. You may offer their own words back for them to save. Do',
+      'not produce a summary of the audit yourself and do not list what they should have learned.'
+    );
+  } else {
+    parts.push(
+      '',
+      `They have written what they are taking away: "${takeaway.value}". Acknowledge it in their own`,
+      'words. Do not improve on it.'
+    );
+  }
+
+  parts.push(
+    '',
+    'Then close warmly, and vary the words. A closing affirmation already appears on screen beneath',
+    'the summary, so do not repeat it back at them: say something of your own about what it took to',
+    'look at this honestly. It should sound like a coach who believes in them, never like a funnel.'
+  );
+
+  if (grant?.tier === 'client') {
+    parts.push(
+      '',
+      'They are already working with Rashmir, so invite them to share these results ahead of their',
+      'next session. That is the natural next step here and needs no persuading.'
+    );
+  } else if (!returning) {
+    parts.push(
+      '',
+      'This is their first completed audit, so the door may be left open once, lightly, and only once:',
+      'if they would like to explore this further they are welcome to get in touch. Mention it in',
+      'passing and never as a call to action.'
+    );
+  } else {
+    parts.push(
+      '',
+      'They have completed an audit before and have already been invited to explore working together.',
+      'Do not offer it again. Close on what they have done, not on what they might buy.'
+    );
+  }
+
+  return parts;
+}
+
+/**
  * The figures behind the gap, and the picture behind the reveal.
  *
  * Both are data flows rather than prompt text, and for the same reason I13 gives about the
@@ -162,32 +258,86 @@ function momentForPhase(
   bucketLabels: Record<string, string>
 ): string[] {
   if (phaseKey === CHART_REVEAL_PHASE) {
-    if (!chartRevealReady(answers)) return [];
-    const chart = buildChartData(answers, bucketLabels);
-    const over = chart.buckets.filter((b) => b.status === 'over');
-    const under = chart.buckets.filter((b) => b.status === 'under');
-    return [
-      '',
-      'The picture on screen, and what to do when the leader has just asked to see it. These are the',
-      'figures they are looking at:',
-      ...chart.buckets.map(
-        (b) => `- ${b.title}: ${b.hours}h, ${b.percent} per cent of the week (${b.status})`
-      ),
-      `Total: ${chart.totalHours} hours a week.`,
-      over.length > 0 ? `Above its benchmark: ${over.map((b) => b.title).join(', ')}.` : '',
-      under.length > 0 ? `Below its benchmark: ${under.map((b) => b.title).join(', ')}.` : '',
-      chart.unallocated.length > 0
-        ? `No time at all this period: ${chart.unallocated.join(', ')}. Wonder about these gently rather than only noting them.`
-        : '',
-      chart.source === 'composite'
-        ? 'These are composite figures, their calendar plus the work that never reaches a calendar. Where that differs from what they first estimated, it is information about what a calendar does not capture, not evidence that they were wrong.'
-        : 'These are their own estimates, which is exactly what this beat is for.',
-      '',
-      'When they arrive at this moment, name what the figures show, specifically and in numbers. Then',
-      'ask one question, close to "what stands out to you here?", and stop. Do not interpret, do not',
-      'add observations, and do not move them on. After they answer, acknowledge what they noticed and',
-      'only then add what they may have missed.',
-    ].filter((line) => line !== '');
+    // Two beats live in this phase and they run in this order in the source: the calendar branch is
+    // offered once every area has a figure (`:136`), and the picture is revealed afterwards (`:229`),
+    // whichever way the branch went. So both are assembled here rather than one returning early.
+    const parts: string[] = [];
+    const uploaded = truthy(answers['reclaim_calendar_uploaded']);
+    const completeness = answers['reclaim_calendar_completeness'];
+    const everyAreaAnswered = everyVisibleAreaHasHours(answers);
+
+    if (uploaded) {
+      parts.push(
+        '',
+        'The leader has uploaded a calendar and it has been reconciled. What they are looking at is the',
+        'composite: their calendar plus the work that never reaches a calendar. Where that differs from',
+        'what they first estimated, the difference is information about what a calendar does not',
+        'capture, and never evidence that they were wrong. Do not present it as a correction.'
+      );
+      if (completeness !== undefined) {
+        parts.push(
+          `They said this about how completely their calendar reflects their working life: "${completeness.value}". Read every figure in that light.`
+        );
+      }
+    } else if (everyAreaAnswered) {
+      // Gated on the data rather than on the model's sense of "have we finished", so the offer can
+      // never arrive halfway through the areas.
+      parts.push(
+        '',
+        'Every area now has a figure, which is the point at which the calendar branch is offered. Offer',
+        'it once, close to these words, and take no for an answer without persuading:',
+        RECLAIM_CALENDAR_OFFER,
+        'It is optional and the audit is worth doing without it, so say so. If they say yes, ask two',
+        'things before anything else: how much their calendar reflects their actual working life, and',
+        'what period they would like analysed. Record both as reclaim_calendar_completeness and',
+        'reclaim_calendar_period. The first matters most, because it decides how every later figure is',
+        'read: a leader whose calendar holds everything gets their figures treated with confidence, and',
+        'one whose calendar is partial gets told plainly that the composite is the real picture and the',
+        'calendar alone is not.',
+        'Then send them to the calendar step on screen. The export instructions for each service are',
+        'listed there. Do not recite those steps yourself.'
+      );
+      if (completeness !== undefined) {
+        parts.push(
+          'They have already answered both questions, so point them at the calendar step rather than asking again.'
+        );
+      }
+    }
+
+    if (chartRevealReady(answers)) {
+      const chart = buildChartData(answers, bucketLabels);
+      const over = chart.buckets.filter((b) => b.status === 'over');
+      const under = chart.buckets.filter((b) => b.status === 'under');
+      parts.push(
+        '',
+        'The picture on screen, and what to do when the leader has just asked to see it. These are the',
+        'figures they are looking at:',
+        ...chart.buckets.map(
+          (b) => `- ${b.title}: ${b.hours}h, ${b.percent} per cent of the week (${b.status})`
+        ),
+        `Total: ${chart.totalHours} hours a week.`,
+        ...(over.length > 0
+          ? [`Above its benchmark: ${over.map((b) => b.title).join(', ')}.`]
+          : []),
+        ...(under.length > 0
+          ? [`Below its benchmark: ${under.map((b) => b.title).join(', ')}.`]
+          : []),
+        ...(chart.unallocated.length > 0
+          ? [
+              `No time at all this period: ${chart.unallocated.join(', ')}. Wonder about these gently rather than only noting them.`,
+            ]
+          : []),
+        '',
+        'When they arrive at this moment, name what the figures show, specifically and in numbers. Then',
+        'ask one question, close to "what stands out to you here?", and stop. Do not interpret, do not',
+        'add observations, and do not move them on. After they answer, acknowledge what they noticed and',
+        'only then add what they may have missed.'
+      );
+    }
+
+    // The leading '' of each beat is a blank line in the assembled block; there is nothing to strip,
+    // because every conditional entry above is spread in rather than pushed as an empty string.
+    return parts;
   }
 
   if (phaseKey === 'phase-4-gap') {
@@ -256,6 +406,20 @@ export async function buildCoachPhaseContext(userId: string): Promise<string> {
 
   const fundraisingRelevant = truthy(answers[FUNDRAISING_RELEVANT]);
   const slots = phaseCaptureSlots(currentPhaseKey, { fundraisingRelevant, bucketLabels });
+
+  // The summary phase captures nothing conversationally — the coach may not write a reflection or a
+  // sharing choice — but it is not silent. It asks the takeaway before the artifact exists, and it
+  // closes. So it gets its own block rather than the capture list's early exit.
+  if (currentPhaseKey === FINAL_PHASE_KEY) {
+    return [
+      `This audit is at phase ${number} of 6: ${phase.label}.`,
+      '',
+      ...contentForPhase(currentPhaseKey, content, fundraisingRelevant),
+      ...cardLinesFor(currentPhaseKey, signposts),
+      ...(await closingContext(userId, answers)),
+    ].join('\n');
+  }
+
   if (slots.length === 0) return '';
 
   const lines = slots.map((slot) => {
@@ -274,18 +438,7 @@ export async function buildCoachPhaseContext(userId: string): Promise<string> {
       ? 'This phase has no reflection pause.'
       : `Before this phase can be left, the leader records their own reflection (${reflectionSlug}) on screen. You may ask what they notice and offer their words back, and only they can save it.`;
 
-  // The card the leader has already read. Without this the coach opens by signposting a phase that
-  // has just signposted itself, because its own instructions tell it to orient them.
-  const card = signpostFor(currentPhaseKey, signposts.length > 0 ? signposts : undefined);
-  const cardLines =
-    card === null || card.opening.length === 0
-      ? []
-      : [
-          '',
-          'The leader has already read this phase on screen, and it said:',
-          ...card.opening.map((paragraph) => `"${paragraph}"`),
-          'Do not restate any of that. Begin from where it leaves off.',
-        ];
+  const cardLines = cardLinesFor(currentPhaseKey, signposts);
 
   return [
     `This audit is at phase ${number} of 6: ${phase.label}.`,

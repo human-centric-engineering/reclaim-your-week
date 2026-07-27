@@ -241,6 +241,74 @@ export const RECLAIM_HOUR_BANDS = [
 ];
 
 /**
+ * The calendar branch offer (§ "Phase 1 — the calendar branch offer"), verbatim.
+ *
+ * Offered by the coach after every area has a figure, and offered **once**. The wording carries its
+ * own guardrails: "optional but can be very revealing" and a closing question rather than a nudge.
+ * Brief §3 asks that the optionality be unmissable, because several testers were anxious here.
+ */
+export const RECLAIM_CALENDAR_OFFER =
+  '"You now have a picture of where you think your time is going, based on your own reflection. Would you like to reality-check this against your actual calendar data? If you have access to your Google Calendar, Outlook, or Apple Calendar, you can export and upload your calendar file and we will compare what you have estimated against what your calendar actually shows. This is optional but can be very revealing. Would you like to do that?"';
+
+/**
+ * The three calendar export walkthroughs (§ "Phase 1 — the calendar export walkthroughs"), verbatim.
+ *
+ * **On the screen, not in the conversation, and the extract says so** — "shown at the upload step",
+ * "users need these at the moment they choose to upload". The source prompt has the coach recite them
+ * because a Claude Project had nowhere else to put them; an app does, and a list of steps is
+ * something you scan while tabbing to another window rather than something you want narrated one
+ * message at a time.
+ *
+ * There is a sharper reason too. The transcription audit found the Outlook walkthrough had been
+ * **fabricated** at some point, with "Save Calendar" and "Full Details" steps appearing in no source
+ * document. Steps that send someone into a menu that does not exist are worse than no help at all,
+ * and a model asked to recall them is exactly how that happens again. Held as data, guarded verbatim
+ * by I11 hop 2, and rendered.
+ */
+export const RECLAIM_CALENDAR_EXPORT_STEPS = [
+  {
+    service: 'Google Calendar',
+    steps: [
+      'Open Google Calendar in a web browser (not the mobile app)',
+      'Click the gear icon (Settings) in the top right',
+      'Click Settings',
+      'In the left sidebar, click Import & export',
+      'Click Export',
+      'A .zip file will download. Unzip it to find one or more .ics files',
+      'Upload the .ics file for your main work calendar here',
+    ],
+  },
+  {
+    service: 'Outlook / Microsoft 365',
+    steps: [
+      'Open Outlook on the web or desktop',
+      'Go to Calendar',
+      'Click File (desktop) or Settings gear (web)',
+      'Look for Export or Share calendar',
+      'Choose the date range and save as .ics file',
+      'Upload the .ics file here',
+    ],
+  },
+  {
+    service: 'Apple Calendar',
+    steps: [
+      'Open the Calendar app on Mac',
+      'In the left sidebar, right-click the calendar you want to export',
+      'Click Export',
+      'Save the .ics file',
+      'Upload it here',
+    ],
+  },
+];
+
+/**
+ * The hand-off line that closes the export help (§ "Phase 1 — the calendar export walkthroughs").
+ * A pause with no question in it, holding the thread open across a task the leader leaves to do.
+ */
+export const RECLAIM_CALENDAR_HANDOFF =
+  'Take your time. When you have the file, upload it here and we will continue.';
+
+/**
  * The operator-set consultation contact (§10). Seeded to Rashmir's published address; an operator
  * can change it from the config form. The consultation invitation appears once, at the end.
  */

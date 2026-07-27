@@ -166,7 +166,10 @@ describe('lib/app/ bootstrap defaults are no-ops', () => {
     const [block] = appEslintConfig;
     // The leaf-owned framework-consuming paths: seeds + the app API/UI surfaces (F3, F4), plus the
     // leaf's own tests for them (the conversational surface) — a test must import what it exercises
-    // and ships in no build, which is the reason Daybreak's own ban exempts its tests too.
+    // and ships in no build, which is the reason Daybreak's own ban exempts its tests too. The
+    // invariant guards are on that list for the sharpest version of the same reason: `agent-caps`
+    // imports the framework's real `facetAllows` rather than mirroring it, and a hand-written copy
+    // of an enforcement function passed for a year while the runtime enforced nothing.
     expect(block.files).toEqual([
       'prisma/seeds/app-reclaim/**/*.{ts,tsx}',
       'app/api/v1/app/**/*.{ts,tsx}',
@@ -175,6 +178,7 @@ describe('lib/app/ bootstrap defaults are no-ops', () => {
       'tests/**/lib/app/**/*.{ts,tsx}',
       'tests/**/app/api/v1/app/**/*.{ts,tsx}',
       'tests/**/components/app/reclaim/**/*.{ts,tsx}',
+      'tests/**/invariants/**/*.{ts,tsx}',
     ]);
     expect(block.rules['no-restricted-imports']).toBeDefined();
   });

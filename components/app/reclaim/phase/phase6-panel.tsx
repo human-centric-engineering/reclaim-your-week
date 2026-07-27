@@ -14,26 +14,49 @@ import {
   RECLAIM_CONSULTATION_EMAIL,
 } from '@/lib/app/programme/content';
 import { SummaryView } from '@/components/app/reclaim/summary/summary-view';
+import { CoachChat } from '@/components/app/reclaim/coach-chat';
 import { ReferralInvite } from '@/components/app/reclaim/referral-invite';
 import { TextAreaField, SelectField } from '@/components/app/reclaim/phase/fields';
 import {
   fetchSummary,
   shareSummary,
   completeAudit,
+  readAnswers,
+  saveAnswer,
   type ShareInput,
 } from '@/components/app/reclaim/phase/actions';
 import type { AuditSummary } from '@/components/app/reclaim/summary/types';
 
 const AGE_BANDS = ['Prefer not to say', 'Under 35', '35–44', '45–54', '55–64', '65+'];
 
-export function Phase6Panel({ runId, onAdvanced }: { runId: string; onAdvanced: () => void }) {
+export function Phase6Panel({
+  runId,
+  conversationId,
+  coachOpenings,
+  onAdvanced,
+}: {
+  runId: string;
+  /** The run's transcript, so the closing beat continues the conversation rather than starting one. */
+  conversationId: string | null;
+  coachOpenings: string[];
+  onAdvanced: () => void;
+}) {
   const [summary, setSummary] = useState<AuditSummary | null>(null);
+  /**
+   * The takeaway, asked before the summary exists (`Prompt_Text.md:35`).
+   *
+   * `null` while unread, `''` when the leader has been asked and not yet answered. The summary does
+   * not render until it is saved: that ordering is the beat the source describes, and it is why this
+   * question is no longer buried in the sharing form where only people who chose to share ever saw it.
+   */
+  const [takeawayValue, setTakeawayValue] = useState<string | null>(null);
+  const [takeawayDraft, setTakeawayDraft] = useState('');
+  const [savingTakeaway, setSavingTakeaway] = useState(false);
   const [failed, setFailed] = useState(false);
   const [wantShare, setWantShare] = useState(false);
   const [withCoach, setWithCoach] = useState(false);
   const [publicLink, setPublicLink] = useState(false);
   const [ageBand, setAgeBand] = useState('');
-  const [takeaway, setTakeaway] = useState('');
   const [quotable, setQuotable] = useState(false);
   const [shareLink, setShareLink] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -46,6 +69,29 @@ export function Phase6Panel({ runId, onAdvanced }: { runId: string; onAdvanced: 
       .catch(() => setFailed(true));
   }, [runId]);
 
+  // The takeaway, read back so a leader who saved it and reloaded is not asked again.
+  useEffect(() => {
+    void readAnswers(runId)
+      .then((answers) => setTakeawayValue(answers['reclaim_reflection_p6']?.value ?? ''))
+      .catch(() => setTakeawayValue(''));
+  }, [runId]);
+
+  const saveTakeaway = async () => {
+    setSavingTakeaway(true);
+    setError(null);
+    try {
+      const value = takeawayDraft.trim();
+      // The leader-initiated path, like every other reflection: the coach may ask and may offer
+      // words back, and only this save writes one (I6, I9).
+      await saveAnswer(runId, { slotSlug: 'reclaim_reflection_p6', value });
+      setTakeawayValue(value);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Something went wrong.');
+    } finally {
+      setSavingTakeaway(false);
+    }
+  };
+
   const saveShare = async () => {
     setBusy(true);
     setError(null);
@@ -54,7 +100,11 @@ export function Phase6Panel({ runId, onAdvanced }: { runId: string; onAdvanced: 
         publicLink,
         withCoach,
         ageBand: ageBand && ageBand !== 'Prefer not to say' ? ageBand : undefined,
-        takeaway: takeaway.trim() || undefined,
+        // Reuses what they already wrote rather than asking a near-identical question twice. The
+        // source asks the takeaway of everyone before the summary; Brief §3 asks sharers for "in a
+        // sentence, what did you take from this?" afterwards. Asking both verbatim reads as a repeat,
+        // so the sharing step carries their saved answer and asks only for permission to quote it.
+        takeaway: takeawayValue?.trim() || undefined,
         quotable,
       };
       const token = await shareSummary(runId, input);
@@ -122,9 +172,55 @@ export function Phase6Panel({ runId, onAdvanced }: { runId: string; onAdvanced: 
     );
   }
 
+  // The source asks this before it produces anything, and so does this screen.
+  if (takeawayValue === null || takeawayValue.trim().length === 0) {
+    return (
+      <div className="space-y-8">
+        <TextAreaField
+          id="takeaway-reflection"
+          label="What are you taking away from this?"
+          value={takeawayDraft}
+          onChange={setTakeawayDraft}
+          rows={4}
+        />
+        <p className="text-muted-foreground text-sm">
+          Whatever comes to mind. Your summary is ready and will be here as soon as you have written
+          it.
+        </p>
+        <button
+          type="button"
+          onClick={() => void saveTakeaway()}
+          disabled={savingTakeaway || takeawayDraft.trim().length === 0}
+          className="bg-primary text-primary-foreground rounded-full px-8 py-3 text-[0.95rem] font-medium disabled:opacity-40"
+        >
+          {savingTakeaway ? 'Saving…' : 'Save and see my summary'}
+        </button>
+        {error !== null && (
+          <p className="text-muted-foreground text-sm" role="status">
+            {error} You can try again.
+          </p>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-10">
       <SummaryView summary={summary} />
+
+      {/*
+        The warm close. A coach turn rather than fixed copy because it is the part that varies: by
+        whether they already work with Rashmir, by whether they have done this before, and by what
+        they just said they were taking away.
+      */}
+      <div className="border-border/70 border-t pt-8 print:hidden">
+        <CoachChat
+          runId={runId}
+          conversationId={conversationId}
+          openMoment={coachOpenings.includes('phase-6-close') ? null : 'phase-6-close'}
+          onTurnComplete={onAdvanced}
+        />
+      </div>
 
       <div className="border-border/70 flex flex-wrap gap-3 border-t pt-6 print:hidden">
         <button
@@ -172,13 +268,12 @@ export function Phase6Panel({ runId, onAdvanced }: { runId: string; onAdvanced: 
             onChange={setAgeBand}
             options={AGE_BANDS.map((b) => ({ value: b, label: b }))}
           />
-          <TextAreaField
-            id="takeaway"
-            label="In a sentence: what did you take from this? (optional)"
-            value={takeaway}
-            onChange={setTakeaway}
-            rows={2}
-          />
+          <div className="border-border/70 bg-muted/20 space-y-2 rounded-lg border p-4">
+            <p className="text-muted-foreground text-xs tracking-wide uppercase">
+              What you said you were taking away
+            </p>
+            <p className="text-foreground text-[0.98rem] leading-relaxed">{takeawayValue}</p>
+          </div>
           <label className="text-foreground flex items-center gap-2 text-sm">
             <input
               type="checkbox"
