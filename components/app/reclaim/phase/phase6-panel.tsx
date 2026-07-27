@@ -214,11 +214,17 @@ export function Phase6Panel({
         they just said they were taking away.
       */}
       <div className="border-border/70 border-t pt-8 print:hidden">
+        {/*
+          An explicit height, because this one is not the frame's own column: the summary scrolls
+          above it and the sharing choices sit below, so the chat has to be a bounded box of its own
+          or its transcript pushes the composer down the page (see `CoachChat`'s `className`).
+        */}
         <CoachChat
           runId={runId}
           conversationId={conversationId}
           openMoment={coachOpenings.includes('phase-6-close') ? null : 'phase-6-close'}
           onTurnComplete={onAdvanced}
+          className="border-border/60 h-[26rem] rounded-2xl border"
         />
       </div>
 

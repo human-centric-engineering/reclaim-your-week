@@ -173,11 +173,30 @@ describe('buildCoachPhaseContext', () => {
     expect(block).toContain('never read the list out');
   });
 
-  it("names the reflection as the leader's to record, for a phase that gates on one (I9)", async () => {
+  it("makes the reflection the phase's closing beat, on the two conditions that hold I9 up", async () => {
     const block = await buildCoachPhaseContext('u1');
 
     expect(block).toContain('reclaim_reflection_p2');
-    expect(block).toContain('only they can save it');
+    expect(block).toContain('what stands out to you here?');
+    // The two rules that replaced the blanket refusal: it is theirs to say, and it is theirs to leave.
+    expect(block).toContain('Never infer it');
+    expect(block).toContain('leave the move to the next phase to them');
+  });
+
+  it('stops asking for a reflection this run already holds', async () => {
+    readRunAnswers.mockResolvedValue({
+      reclaim_reflection_p2: {
+        value: 'My best hours go to other people.',
+        valueJson: null,
+        sourceType: 'user_confirmed',
+        confidence: 9,
+      },
+    });
+
+    const block = await buildCoachPhaseContext('u1');
+
+    expect(block).toContain('My best hours go to other people.');
+    expect(block).toContain('Do not ask for it again');
   });
 
   it('says a setup phase has no reflection pause', async () => {
@@ -383,12 +402,24 @@ describe('buildCoachPhaseContext — the close', () => {
     expect(block).not.toContain('first completed audit');
   });
 
-  it('never asks the coach to record anything in this phase', async () => {
+  it('records the takeaway and nothing else, because the rest of this phase is consent', async () => {
+    readRunAnswers.mockResolvedValue({});
+
+    const block = await buildCoachPhaseContext('u1');
+
+    // The one write in the close, and it is still the leader's sentence: ask, offer back, record.
+    expect(block).toContain('record_answers as reclaim_reflection_p6');
+    expect(block).toContain('never inferred');
+    // The two that stay theirs alone.
+    expect(block).toContain('sharing choices are the leader');
+    expect(block).toContain('summary is produced on screen');
+  });
+
+  it('does not record the takeaway twice when this run already holds it', async () => {
     readRunAnswers.mockResolvedValue({ reclaim_reflection_p6: takeaway });
 
     const block = await buildCoachPhaseContext('u1');
 
-    expect(block).toContain('Nothing here is captured by you');
-    expect(block).not.toContain('record_answers');
+    expect(block).toContain('do not record it again');
   });
 });

@@ -102,7 +102,7 @@ Docs-only changes still go on a branch + PR, but skip `/security-review` and `/c
 ## The disciplines underneath
 
 - **Three tiers (Sunrise → Daybreak → Reclaim Your Week).** We are the leaf. Build in `lib/app/**`,
-  `app/(protected)/programme/**`, `app/admin/programme/**`, `app-*.prisma`, `.context/app/**`. Fill the
+  `app/(programme)/programme/**`, `app/admin/programme/**`, `app-*.prisma`, `.context/app/**`. Fill the
   reserved `leaf-*` hooks; **never edit `lib/framework/**` or the three bridges** (`lib/app/bootstrap.ts`,
   `admin-nav.ts`, `db-drift.ts`). `npm run framework:boundary` enforces it. The **one exception** is F1
   (`ryw-provenance`), which lands two additive framework changes as its own upstream-style PR before

@@ -258,13 +258,38 @@ The capability ANDs them, and fails closed on a grant it cannot parse.
 > as held twice and held once is worse than one held once and known to be.
 
 Permitted: `reclaim_profile`, `reclaim_setup`, `reclaim_current`, `reclaim_energy`, `reclaim_ideal`,
-`reclaim_gap`, `reclaim_action`.
+`reclaim_gap`, `reclaim_action`, and — **since 2026-07-27, under conditions** —
+`reclaim_reflection`.
+
+**`reclaim_reflection` was refused and now is not, and that is a deliberate reversal.** The refusal
+read: these are the phase gate (I9), so a coach that can write one can open its own gate. True of the
+mechanism, and wrong about the product. What it left on screen was a textarea under the transcript —
+the question the entire coaching method rests on, asked by a form field, in a tool whose source says
+"this should feel like a coaching conversation, not a form". The point of the coach is to help a
+leader articulate themselves; a leader who has just said the thing out loud should not have to type
+it again to be allowed to move on. Owner decision, taken with the gate's purpose in view rather than
+around it.
+
+**I9 is untouched.** The transition route still refuses to leave a phase whose
+`reclaim_reflection_p<N>` is absent for this run. Only the writer moved. Three narrower guards
+replace the blanket refusal, and the first two are what stop the coach walking through its own gate:
+
+1. **The phase comes from the server.** A reflection may only be written for the phase in the
+   dispatch scope, which the route reads from the journey (`buildCoachScope`). A conversation in
+   phase 2 cannot write phase 4's reflection, and cannot clear five gates in one call.
+2. **Never inferred.** `sourceType: 'inferred'` is refused for a reflection slug. It has to be
+   recorded as something the leader said, and the coach is instructed to offer the words back before
+   recording them.
+3. **Visible and editable.** The recorded reflection is shown in the captured panel under "In your
+   words", where a change writes over the top through the ordinary leader path. This is the one that
+   makes "the leader owns their reflection" still true of a reflection the coach typed, and it is why
+   the panel is now load-bearing rather than reassuring.
+
+`reclaim_reflection_p6` (the takeaway) is permitted on the same terms — it is the question the close
+asks, and the coach that asks it is the one that records the answer.
 
 Refused, and each for its own reason:
 
-- **`reclaim_reflection`** — these are the phase gate (see I9). A coach that can write one can open
-  its own gate, and "asking before telling" stops meaning anything. The coach may propose the words
-  on screen; the leader's confirmation is what writes.
 - **`reclaim_share`** — `reclaim_share_with_coach` and `reclaim_share_quotable` decide whether a
   leader's words may be republished. An agent that can write consent can manufacture it.
 - **`reclaim_composite`** — the reconciled lane, whose whole story (I-composite) is that it is
@@ -289,8 +314,9 @@ because the chart still renders. The coach's way through the refusal is to offer
 the leader confirm it, which also satisfies I17.
 
 **Test:** `tests/unit/invariants/agent-caps.test.ts` — the grant set, the absence of
-`request_transition`, both exposure allowlists, and the three refused groups checked against the
-real slot definitions.
+`request_transition`, both exposure allowlists, the refused groups checked against the real slot
+definitions, and the reflection's three conditions (this phase only, no phase means no write, never
+inferred).
 
 ---
 
@@ -324,9 +350,17 @@ left is absent.
 A UI-only guard is not sufficient. "Asking before telling is the coaching spine of the tool"
 (Brief §3).
 
+**Who writes it changed on 2026-07-27; what gates the phase did not.** The coach now asks the
+reflection question as the phase's closing beat and records the answer, on the three conditions I6
+sets out. This invariant is deliberately unchanged by that: the route still checks the slot, still
+checks it belongs to _this_ run, and still returns 422 without it. The thing worth holding on to is
+that the gate was never "the leader typed into a box" — it was "this phase was not left until the
+person had been asked what they noticed and had answered". A conversation satisfies that reading
+better than a textarea did.
+
 **`reclaim_reflection_p6` is a reflection but not a transition gate.** The takeaway the source asks
-for before the summary is produced lives in the reflection group, so the coach may never write it
-(I6) and the leader saves it — exactly right. But `reflectionSlugForLeaving` deliberately does not
+for before the summary is produced lives in the reflection group. But `reflectionSlugForLeaving`
+deliberately does not
 return it: phase 6 is the end of the audit, and gating the finish button on a reflection would be a
 refusal nobody asked for. What it gates is the **summary appearing**, which is the beat the source
 actually describes. Before this the question was asked _after_ the artifact and only of the leaders
@@ -344,7 +378,8 @@ Three tiers: **Sunrise → Daybreak → Reclaim Your Week (this app, the leaf)**
   `leaf-db-drift.ts`)
 - `lib/app/programme/**` — domain logic
 - `app/api/v1/app/**` — HTTP API
-- `app/(protected)/programme/**` — end-user UI
+- `app/(programme)/programme/**` — end-user UI (its own route group since 2026-07-27, so the audit
+  can own the viewport; the URLs are unchanged and the edge gate still keys on `/programme`)
 - `app/admin/programme/**` — admin UI
 - `prisma/schema/app-*.prisma` — **new files**, and `<timestamp>_app_<feature>` migrations
 - `.context/app/**`

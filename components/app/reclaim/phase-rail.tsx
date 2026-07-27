@@ -14,12 +14,55 @@ import type { PhaseView } from '@/components/app/reclaim/types';
 export function PhaseRail({
   phases,
   currentPhaseKey,
+  variant = 'vertical',
 }: {
   phases: PhaseView[];
   currentPhaseKey: string;
+  /**
+   * `vertical` is the spine, in the frame's left column on a wide screen. `compact` is the same seven
+   * phases as a single line, for the narrow layout where the column is gone and the conversation
+   * needs the width — a strip rather than a stack, so it costs one row instead of seven.
+   */
+  variant?: 'vertical' | 'compact';
 }) {
   const [shown, setShown] = useState(false);
   useEffect(() => setShown(true), []);
+
+  if (variant === 'compact') {
+    const current = phases.find((p) => p.key === currentPhaseKey);
+    const index = phases.findIndex((p) => p.key === currentPhaseKey);
+    return (
+      <nav
+        aria-label="Your progress through the audit"
+        className="flex items-center gap-3 overflow-x-auto"
+      >
+        <ol className="flex shrink-0 items-center gap-1.5">
+          {phases.map((phase) => (
+            <li key={phase.key}>
+              <span
+                aria-hidden
+                className={`block h-1.5 rounded-full transition-all ${
+                  phase.key === currentPhaseKey
+                    ? 'bg-primary w-6'
+                    : phase.status === 'completed'
+                      ? 'bg-primary/50 w-1.5'
+                      : 'bg-border w-1.5'
+                }`}
+              />
+            </li>
+          ))}
+        </ol>
+        {current !== undefined && (
+          <p className="text-muted-foreground truncate text-xs">
+            <span className="text-foreground font-medium">
+              {index} · {current.label}
+            </span>
+            <span className="sr-only">, phase {index} of 6</span>
+          </p>
+        )}
+      </nav>
+    );
+  }
 
   return (
     <nav aria-label="Your progress through the audit">

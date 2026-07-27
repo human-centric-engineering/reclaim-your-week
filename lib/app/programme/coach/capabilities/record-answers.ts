@@ -12,9 +12,11 @@
  * 1. **The run comes from the server.** `context.scope` is built by the route and threaded verbatim
  *    by the chat handler; the model never sees it. So there is no argument the model can get wrong
  *    about which run it is writing into, which was the whole objection in I6.
- * 2. **The groups are allowlisted, twice.** `checkSlotWrite` refuses reflections, sharing consent
- *    and the computed calendar lanes with an explanation, and the agent's grant carries the same
- *    allowlist as an `ExposureConfig` the framework enforces independently.
+ * 2. **The groups are allowlisted, twice.** `checkSlotWrite` refuses sharing consent and the computed
+ *    calendar lanes with an explanation, and the agent's grant carries the same allowlist as an
+ *    `ExposureConfig` the framework enforces independently. A reflection is permitted but narrowed:
+ *    only the phase in the server-issued scope, and never `inferred`. Both conditions come from the
+ *    route, so neither is an argument the model can choose.
  * 3. **Typed slots need typed values.** An hours slot cannot be filled with "about eight". See
  *    `../writable-slots.ts` for why that one rule carries most of the product risk.
  *
@@ -227,7 +229,10 @@ export class ReclaimRecordAnswersCapability extends BaseCapability<
         continue;
       }
 
-      const check = checkSlotWrite(answer.slotSlug, answer.valueJson);
+      const check = checkSlotWrite(answer.slotSlug, answer.valueJson, {
+        ...(scope.nodeKey !== undefined ? { phaseKey: scope.nodeKey } : {}),
+        sourceType: answer.sourceType,
+      });
       if (!check.ok) {
         refused.push({
           slotSlug: answer.slotSlug,

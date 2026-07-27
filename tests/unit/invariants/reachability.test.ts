@@ -24,11 +24,22 @@ import { join } from 'node:path';
 
 const root = process.cwd();
 
-/** Where a leader's pages live. */
-const PAGE_ROOT = join(root, 'app/(protected)/programme');
+/**
+ * Where a leader's pages live.
+ *
+ * `(programme)` rather than `(protected)`: the audit moved into its own route group so it could own
+ * the viewport (see that group's layout for why). The URLs did not change — route groups do not
+ * appear in them — but this sweep walks the *tree*, and the `expect(routes.length)` assertion below
+ * exists precisely so a move like that fails loudly instead of quietly checking nothing.
+ */
+const PAGE_ROOT = join(root, 'app/(programme)/programme');
 
 /** Where a link to one of them could plausibly be written. */
-const LINK_ROOTS = [join(root, 'components/app'), join(root, 'app/(protected)')];
+const LINK_ROOTS = [
+  join(root, 'components/app'),
+  join(root, 'app/(programme)'),
+  join(root, 'app/(protected)'),
+];
 
 /**
  * Routes that are correctly reachable without an in-app link, each with the reason.

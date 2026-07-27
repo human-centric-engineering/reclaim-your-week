@@ -53,13 +53,16 @@ parked with a reason. Nothing leaves by being forgotten.
 | P15 | The parked epics                                            | —       | parked           | scope     | future epics                |
 | P16 | A provider key for CI, or a nightly smoke run               | —       | ready ▲          | gate      | P3's remainder; a cost call |
 | P18 | The audit is seven forms; it was meant to be a conversation | John    | **shipped**      | feature   | [[ryw-conversational]]      |
+| P19 | The conversation shipped laid out as a document             | John    | in flight        | feature   | [[ryw-chat-ux]]             |
 
 **Doing P1–P3 first was deliberate.** They are the three where the repository told a reader something
 untrue, or where a claim the product makes to users was not gated by anything. Every other item was
 honest about its own state; those three were not.
 
-**Everything the team owns is now shipped.** P1–P3, P5–P11 and P4's build landed across two branches
-on 2026-07-26; **P18** landed on 2026-07-27. What remains is the items nobody here can close alone:
+**Everything the team owns is now shipped, with one in flight.** P1–P3, P5–P11 and P4's build landed
+across two branches on 2026-07-26; **P18** landed on 2026-07-27, and **P19** — the surface half of the
+same epic, opened the same day the first real leader used it — is on `feat/ryw-chat-ux`. What remains
+beyond that is the items nobody here can close alone:
 **P12** (the eight things Rashmir owes), **P16** (a cost decision about a provider key in CI), and the
 three parked scope items — plus **P4's copy sign-off**, since the pages exist and the words in them
 are a draft until she reads them.
@@ -373,6 +376,30 @@ The **eval fixture named in the plan was not built**, deliberately: it would nee
 could only be a second manual gate, and what it measures is model behaviour — better measured against
 a real conversation than against fixtures written by whoever wrote the prompt. That leaves **P16**
 below exactly where it was, with one more argument for the nightly-workflow option.
+
+### P19 · The conversation shipped laid out as a document
+
+P18 made the audit a conversation and proved it: the coach opens the phase, records what it hears,
+paces the two big reveals. The first session anyone actually ran through it found that the **surface**
+had not come with it. The composer moved further down the page with every turn, so talking to the
+coach meant scrolling past what you had already said; a turn that called a tool looked like nothing
+happening; the reply arrived in provider-sized lumps; and the reflection — the question the whole
+method rests on — was still a textarea bolted underneath the conversation.
+
+**The layout could not have worked.** The chat had a `flex-1 overflow-y-auto` transcript with no
+bounded ancestor anywhere above it, so the scroll region never scrolled and its autoscroll had been a
+no-op since it was written. The layout in the way is Sunrise-owned, which is why the fix is a leaf
+route group (`app/(programme)/`) rather than an edit: same URLs, same edge gate, same surface theme,
+and a frame that owns the viewport.
+
+**One invariant was deliberately reversed**, and it is the reason this is a feature and not a tidy:
+I6 refused the coach the reflection slots, on the reasoning that a coach able to write one can open
+its own phase gate. Owner decision to permit it — the point of the coach is to help a leader
+articulate themselves, and a textarea under the transcript is the opposite of that. I9 is untouched;
+what replaced the refusal is three narrower guards (this phase only, never inferred, always visible
+and editable). Full reasoning in [[ryw-chat-ux]] and in [[invariants]] I6.
+
+_Owner:_ John · _Status:_ in flight · _Class:_ feature
 
 ### P16 · A provider key for CI, or a nightly smoke run
 

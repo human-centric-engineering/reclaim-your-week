@@ -41,3 +41,21 @@ export function reflectionSlugForLeaving(nodeKey: string): string | null {
   if (n === null || n < 1 || n > 5) return null;
   return `reclaim_reflection_p${n}`;
 }
+
+/**
+ * The reflection slot that **belongs to** `nodeKey`, or `null` for a phase that has none.
+ *
+ * Deliberately not the same function as `reflectionSlugForLeaving`, because the two answer different
+ * questions and phase 6 is where they part company. Leaving is a **gate**: phase 6 is the end of the
+ * audit and gating the finish button on a reflection would be a refusal nobody asked for (I9).
+ * Belonging is a **permission**: `reclaim_reflection_p6` is the takeaway the close asks for before the
+ * summary exists, and the coach that asks the question is the one that records the answer.
+ *
+ * Used by the write allowlist to pin a reflection write to the phase in the server-issued scope, so a
+ * conversation in phase 2 cannot record a reflection for phase 4.
+ */
+export function reflectionSlugForPhase(nodeKey: string): string | null {
+  const n = phaseNumber(nodeKey);
+  if (n === null || n < 1) return null;
+  return `reclaim_reflection_p${n}`;
+}

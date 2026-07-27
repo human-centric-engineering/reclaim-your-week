@@ -169,20 +169,20 @@ describe('CapturedPanel', () => {
     expect(onSaved).not.toHaveBeenCalled();
   });
 
-  it('renders nothing in a phase that captures nothing conversationally', () => {
+  it('renders nothing at all in a phase with neither readings nor a reflection', () => {
     const { container } = render(
-      <CapturedPanel
-        runId="run-1"
-        phaseKey="phase-6-summary"
-        answers={answers()}
-        onSaved={onSaved}
-      />
+      <CapturedPanel runId="run-1" phaseKey="not-a-phase" answers={answers()} onSaved={onSaved} />
     );
 
     expect(container).toBeEmptyDOMElement();
   });
 
-  it('never lists a reflection or a sharing choice, whatever the run holds (I6)', () => {
+  /**
+   * The reflection is shown, and that is the change (2026-07-27). It used to be absent by
+   * construction, because the coach could not write one; now that it can, the leader seeing the
+   * sentence — and being able to replace it in one click — is what keeps the authorship theirs.
+   */
+  it("shows the reflection this run holds, in the leader's own words", () => {
     render(
       <CapturedPanel
         runId="run-1"
@@ -191,6 +191,60 @@ describe('CapturedPanel', () => {
           reclaim_reflection_p1: {
             value: 'How little recovery there is',
             valueJson: null,
+            sourceType: 'user_confirmed',
+            confidence: 9,
+          },
+        })}
+        onSaved={onSaved}
+      />
+    );
+
+    expect(screen.getByText('In your words')).toBeInTheDocument();
+    expect(screen.getByText('How little recovery there is')).toBeInTheDocument();
+    // Never offered back as a reading to verify: they said it, and second-guessing their own sentence
+    // is the form creeping back in.
+    expect(screen.queryByRole('button', { name: 'Yes, that is right' })).not.toBeInTheDocument();
+  });
+
+  it('writes a changed reflection over the top, through the leader path', async () => {
+    render(
+      <CapturedPanel
+        runId="run-1"
+        phaseKey="phase-1-current"
+        answers={answers({
+          reclaim_reflection_p1: {
+            value: 'How little recovery there is',
+            valueJson: null,
+            sourceType: 'user_confirmed',
+            confidence: 9,
+          },
+        })}
+        onSaved={onSaved}
+      />
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Change this' }));
+    const box = screen.getByRole('textbox', { name: 'Your reflection' });
+    await userEvent.clear(box);
+    await userEvent.type(box, 'That I never stop');
+    await userEvent.click(screen.getByRole('button', { name: 'Save this' }));
+
+    expect(saveAnswer).toHaveBeenCalledWith('run-1', {
+      slotSlug: 'reclaim_reflection_p1',
+      value: 'That I never stop',
+    });
+    expect(onSaved).toHaveBeenCalled();
+  });
+
+  it('never lists a sharing choice, whatever the run holds (I6)', () => {
+    render(
+      <CapturedPanel
+        runId="run-1"
+        phaseKey="phase-1-current"
+        answers={answers({
+          reclaim_share_quotable: {
+            value: 'Yes, happy to be quoted',
+            valueJson: true,
             sourceType: 'direct',
             confidence: 10,
           },
@@ -199,6 +253,6 @@ describe('CapturedPanel', () => {
       />
     );
 
-    expect(screen.queryByText('How little recovery there is')).not.toBeInTheDocument();
+    expect(screen.queryByText('Yes, happy to be quoted')).not.toBeInTheDocument();
   });
 });

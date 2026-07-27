@@ -164,6 +164,59 @@ describe('CoachChat', () => {
   });
 });
 
+/**
+ * What a leader sees while a turn is running.
+ *
+ * The stream has always carried `status` frames and this client always dropped them, so the whole of
+ * a turn that called a tool looked like nothing happening: an empty paragraph with a blinking bar in
+ * it. They are shown now — and translated first, because the raw frame names an internal tool slug.
+ */
+describe('CoachChat — while the coach is working', () => {
+  /** A stream that emits its frames and then waits, so the in-flight state can be observed. */
+  function pendingSse(frames: unknown[]) {
+    return {
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'content-type': 'text/event-stream' }),
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          for (const frame of frames) {
+            controller.enqueue(
+              encoder.encode(
+                `event: ${(frame as { type: string }).type}\ndata: ${JSON.stringify(frame)}\n\n`
+              )
+            );
+          }
+          // Deliberately left open: the turn is still running.
+        },
+      }),
+    };
+  }
+
+  it('says it is thinking before the first word arrives', async () => {
+    fetchMock.mockResolvedValue(pendingSse([{ type: 'status', message: 'Thinking...' }]));
+
+    render(<CoachChat runId="run-1" conversationId={null} />);
+    await userEvent.type(screen.getByRole('textbox', { name: 'Your message' }), 'hello');
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    expect(await screen.findByRole('status', { name: 'Thinking…' })).toBeInTheDocument();
+  });
+
+  it('says it is making a note, and never shows the tool slug behind it', async () => {
+    fetchMock.mockResolvedValue(
+      pendingSse([{ type: 'status', message: 'Executing reclaim_audit__record_answers' }])
+    );
+
+    render(<CoachChat runId="run-1" conversationId={null} />);
+    await userEvent.type(screen.getByRole('textbox', { name: 'Your message' }), 'about six hours');
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    expect(await screen.findByRole('status', { name: 'Making a note…' })).toBeInTheDocument();
+    expect(screen.queryByText(/record_answers/)).not.toBeInTheDocument();
+  });
+});
+
 describe('CoachChat — the coach opening a moment', () => {
   it('opens the moment itself, with no leader turn on screen', async () => {
     // The point of the whole mechanism: the leader arrives and the coach has already spoken. The

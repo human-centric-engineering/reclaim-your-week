@@ -74,6 +74,10 @@ const COACH_VOICED = [
   // from what you said. Have we got it right?"), which is as much coach voice as a phase panel is.
   'components/app/reclaim/coach/captured-panel.tsx',
   'components/app/reclaim/coach/phase-conversation.tsx',
+  // What a leader is told the coach is doing while a turn runs. Four short strings, and every one of
+  // them is the tool speaking about itself mid-conversation, which is exactly where I1's "never in
+  // the first person" is easiest to break.
+  'components/app/reclaim/coach/status.ts',
   'components/app/reclaim/consent-gate.tsx',
   'components/app/reclaim/phase-rail.tsx',
   'components/app/reclaim/phase/advance-controls.tsx',
@@ -86,6 +90,9 @@ const COACH_VOICED = [
   'components/app/reclaim/phase/phase6-panel.tsx',
   'components/app/reclaim/phase/reflection.tsx',
   'components/app/reclaim/phase/setup-panel.tsx',
+  // The bar the full-screen frame carries. Three words of prose, one of which is the way out of the
+  // audit, so a leader reads it at the moment they are most likely to be looking for a door.
+  'components/app/reclaim/programme-chrome.tsx',
   'components/app/reclaim/programme-shell.tsx',
   'components/app/reclaim/referral-invite.tsx',
   'components/app/reclaim/repeat/comparison.tsx',
