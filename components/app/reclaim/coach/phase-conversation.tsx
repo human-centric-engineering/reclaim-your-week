@@ -9,14 +9,25 @@
  *
  * Three parts, and the division between them is the invariant, not the layout:
  *
- *  - **The conversation** captures the phase's readings. The coach writes them silently through
- *    `record_answers` as it goes, taking the run from the server-issued scope (I6).
+ *  - **The conversation** captures the phase's readings, and closes it. The coach writes them
+ *    silently through `record_answers` as it goes, taking the run and the phase from the
+ *    server-issued scope (I6).
  *  - **The panel** shows what has been recorded, and offers back anything the coach inferred rather
- *    than was told, so an inference cannot become part of the audit unseen.
- *  - **The reflection and the move onward stay with the leader.** The coach may ask what they notice
- *    and offer their words back; it may not record the reflection and it holds no transition
- *    capability. The server enforces both (I9, and the ungranted `request_transition`), and this is
- *    the UI half: the leader writes the reflection and presses the button.
+ *    than was told, so an inference cannot become part of the audit unseen. The reflection sits there
+ *    too, in the leader's own words, editable.
+ *  - **The move onward stays with the leader.** The coach holds no transition capability and the
+ *    server enforces the gate (I9); this is the UI half — the button is theirs to press.
+ *
+ * **The reflection used to be a textarea under all of this**, which is the one place the form crept
+ * back into the conversation: the question the whole method rests on, asked by a field. The coach now
+ * asks it as the phase's closing beat and records the answer, under conditions the server owns — this
+ * phase only, never inferred, always visible and always editable. See `coach/writable-slots.ts` for
+ * the reasoning and what replaced the blanket refusal.
+ *
+ * **Nothing stacks below the conversation any more.** The signpost opens it, the beats (the calendar
+ * branch, the reveal, the picture) land at the tail of the transcript where the turns that led to
+ * them are, and the move onward sits above the composer. A leader never scrolls past their own
+ * conversation to reach the thing they act with.
  *
  * The form panels are not replaced. A leader who would rather fill in fields can switch, and the two
  * paths write the same slots through the same server path (I3), so switching mid-phase keeps
@@ -35,15 +46,15 @@ import {
 import type { CoachOpeningMoment } from '@/lib/app/programme/coach/opening';
 import { phaseCaptureSlots } from '@/lib/app/programme/coach/phase-slots';
 import { reflectionSlugForLeaving } from '@/lib/app/programme/runs/phases';
+import type { PhaseSignpost } from '@/lib/app/programme/runs/signposts';
 import { ReclaimChart } from '@/components/app/reclaim/chart/reclaim-chart';
 import { CoachChat } from '@/components/app/reclaim/coach-chat';
 import { CapturedPanel } from '@/components/app/reclaim/coach/captured-panel';
-import { Reflection } from '@/components/app/reclaim/phase/reflection';
+import { Signpost } from '@/components/app/reclaim/signpost';
 import {
   advancePhase,
   readAnswers,
   readLabels,
-  saveAnswer,
   type RunAnswers,
 } from '@/components/app/reclaim/phase/actions';
 
@@ -79,6 +90,11 @@ function openMomentFor(
 export interface PhaseConversationProps {
   runId: string;
   phaseKey: string;
+  /** Where this phase sits in the seven, for the signpost that opens the transcript. */
+  phaseIndex: number;
+  phaseLabel: string;
+  /** The operator's signpost cards; omitted falls back to the shipped defaults. */
+  signposts?: PhaseSignpost[];
   /** The run's conversation, or `null` until the first turn opens one. */
   conversationId: string | null;
   /** The coach-opening moments this run has already had, so none is replayed on a reload. */
@@ -92,6 +108,9 @@ export interface PhaseConversationProps {
 export function PhaseConversation({
   runId,
   phaseKey,
+  phaseIndex,
+  phaseLabel,
+  signposts,
   conversationId,
   coachOpenings,
   onAdvanced,
@@ -99,9 +118,10 @@ export function PhaseConversation({
 }: PhaseConversationProps) {
   const [answers, setAnswers] = useState<RunAnswers>({});
   const [labels, setLabels] = useState<Record<string, string>>({});
-  const [reflection, setReflection] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** The captured panel, on a screen too narrow to keep it beside the conversation. */
+  const [panelOpen, setPanelOpen] = useState(false);
   /**
    * Set when the leader asks to see their week. Held here rather than derived, because the run's
    * ledger only catches up on the next `GET /runs/current` and the beat has to start the moment they
@@ -123,8 +143,12 @@ export function PhaseConversation({
   }, [refresh]);
 
   const reflectionSlug = reflectionSlugForLeaving(phaseKey);
-  const captureSlots = phaseCaptureSlots(phaseKey);
+  const captureSlots = phaseCaptureSlots(phaseKey, {
+    fundraisingRelevant: truthy(answers['reclaim_setup_fundraising_relevant']),
+    bucketLabels: labels,
+  });
   const capturedCount = captureSlots.filter((s) => answers[s.slug] !== undefined).length;
+  const reflected = reflectionSlug === null || answers[reflectionSlug] !== undefined;
 
   // I12, the reveal as an event rather than a running total. `revealing` folds in the click that has
   // not yet reached the run's ledger, so the chart and the coach's beat start together.
@@ -135,18 +159,22 @@ export function PhaseConversation({
   // A leader who has said nothing yet has nothing to move on from, so the button waits rather than
   // letting them skip a phase they have not had. Both gates are the server's (I9 for the reflection,
   // I12 for the reveal); this only avoids offering a move that would be refused.
-  const canAdvance =
-    capturedCount > 0 &&
-    (reflectionSlug === null || reflection.trim().length > 0) &&
-    (revealState === null || revealed);
+  const canAdvance = capturedCount > 0 && reflected && (revealState === null || revealed);
+
+  /** Why the move is not offered yet, in one sentence, because a dimmed button explains nothing. */
+  const waitingOn =
+    capturedCount === 0
+      ? 'The conversation records as you go. There will be something to move on from shortly.'
+      : revealState !== null && !revealed
+        ? 'Have a look at the shape of your week before moving on.'
+        : !reflected
+          ? 'The coach will ask what stands out to you before this phase closes.'
+          : null;
 
   const advance = async () => {
     setBusy(true);
     setError(null);
     try {
-      if (reflectionSlug !== null) {
-        await saveAnswer(runId, { slotSlug: reflectionSlug, value: reflection.trim() });
-      }
       const advanced = await advancePhase(runId, phaseKey);
       if (!advanced.ok) {
         throw new Error(
@@ -178,107 +206,159 @@ export function PhaseConversation({
   // absent from the run's ledger is passed down, so the common case never troubles the server.
   const openMoment = openMomentFor(phaseKey, coachOpenings, revealing);
 
-  return (
-    <div className="space-y-10">
-      <div className="grid gap-x-10 gap-y-8 lg:grid-cols-[1fr_17rem]">
-        <CoachChat
-          runId={runId}
-          conversationId={conversationId}
-          openMoment={openMoment}
-          onTurnComplete={() => {
-            void refresh();
-            // The run's ledger has moved if a moment just fired; re-reading it is what stops the
-            // moment being offered again on the next render.
-            onAdvanced();
-          }}
-        />
-        <div className="space-y-6">
-          <CapturedPanel
-            runId={runId}
-            phaseKey={phaseKey}
-            answers={answers}
-            bucketLabels={labels}
-            onSaved={() => void refresh()}
-          />
-          <button
-            type="button"
-            onClick={onSwitchToForm}
-            className="text-muted-foreground hover:text-foreground text-xs underline underline-offset-4"
-          >
-            I would rather fill this in myself
-          </button>
-        </div>
-      </div>
-
-      {/*
-        I12 — the picture and its interpretation are separate beats.
-
-        Until every area has a figure there is nothing whole to show. Once there is, the leader asks
-        for it, and what they get is the chart on its own: no summary beside it, no reading of what it
-        means. The coach's turn then names the gaps in figures and asks one question, and stops. This
-        used to draw itself the instant one reading landed, which meant the leader met their week one
-        bar at a time and there was no reveal left to have.
-      */}
-      {/*
-        The calendar branch. It has been unreachable since F5 merged: nothing in the app linked to
-        it, on either surface, so the only way in was to type the URL. Offered once every area has a
-        figure, which is where the source puts it, and never presented as the better option — the
-        audit is worth doing without it and several testers were anxious about this step.
-      */}
-      {offerCalendar && (
-        <div className="border-border/70 border-t pt-8">
-          <p className="text-foreground text-[1.02rem] leading-relaxed text-balance">
-            If you would like, you can reality-check this against your actual calendar. It is
-            optional, your calendar file is never stored, and the audit works just as well without
-            it.
-          </p>
-          <Link
-            href="/programme/calendar"
-            className="border-border text-foreground mt-5 inline-block rounded-full border px-7 py-2.5 text-sm font-medium"
-          >
-            Look at my calendar
-          </Link>
-        </div>
-      )}
-
-      {revealState === 'ready' && !revealing && (
-        <div className="border-border/70 border-t pt-8">
-          <p className="text-foreground text-[1.02rem] leading-relaxed text-balance">
-            That is every area accounted for. Whenever you are ready, we can look at the shape of
-            the week you have described.
-          </p>
-          <button
-            type="button"
-            onClick={() => setRevealing(true)}
-            className="bg-primary text-primary-foreground mt-5 rounded-full px-8 py-3 text-[0.95rem] font-medium"
-          >
-            Show me where the week is going
-          </button>
-        </div>
-      )}
-
-      {chart !== null && (
-        <div className="border-border/70 border-t pt-8">
-          <ReclaimChart data={chart} />
-        </div>
-      )}
-
-      {reflectionSlug !== null && <Reflection value={reflection} onChange={setReflection} />}
-
-      {error !== null && (
-        <p className="text-muted-foreground text-sm" role="status">
-          {error} You can try again.
-        </p>
-      )}
-
+  const panel = (
+    <div className="space-y-6">
+      <CapturedPanel
+        runId={runId}
+        phaseKey={phaseKey}
+        answers={answers}
+        bucketLabels={labels}
+        onSaved={() => void refresh()}
+      />
       <button
         type="button"
-        onClick={() => void advance()}
-        disabled={busy || !canAdvance}
-        className="bg-primary text-primary-foreground rounded-full px-8 py-3 text-[0.95rem] font-medium disabled:opacity-40"
+        onClick={onSwitchToForm}
+        className="text-muted-foreground hover:text-foreground text-xs underline underline-offset-4"
       >
-        {busy ? 'Saving…' : 'Continue to the next phase'}
+        I would rather fill this in myself
       </button>
+    </div>
+  );
+
+  return (
+    <div className="flex min-h-0 flex-1">
+      <CoachChat
+        runId={runId}
+        conversationId={conversationId}
+        openMoment={openMoment}
+        onTurnComplete={() => {
+          void refresh();
+          // The run's ledger has moved if a moment just fired; re-reading it is what stops the
+          // moment being offered again on the next render.
+          onAdvanced();
+        }}
+        intro={
+          <Signpost
+            phaseKey={phaseKey}
+            index={phaseIndex}
+            label={phaseLabel}
+            signposts={signposts}
+          />
+        }
+        beats={
+          <>
+            {/*
+              The calendar branch. It had been unreachable since F5 merged: nothing in the app linked
+              to it, on either surface, so the only way in was to type the URL. Offered once every
+              area has a figure, which is where the source puts it, and never presented as the better
+              option — the audit is worth doing without it and several testers were anxious about
+              this step.
+            */}
+            {offerCalendar && (
+              <div className="border-border/70 rounded-2xl border border-dashed px-6 py-5">
+                <p className="text-foreground text-[1.02rem] leading-relaxed text-balance">
+                  If you would like, you can reality-check this against your actual calendar. It is
+                  optional, your calendar file is never stored, and the audit works just as well
+                  without it.
+                </p>
+                <Link
+                  href="/programme/calendar"
+                  className="border-border text-foreground mt-4 inline-block rounded-full border px-7 py-2.5 text-sm font-medium"
+                >
+                  Look at my calendar
+                </Link>
+              </div>
+            )}
+
+            {/*
+              I12 — the picture and its interpretation are separate beats.
+
+              Until every area has a figure there is nothing whole to show. Once there is, the leader
+              asks for it, and what they get is the chart on its own: no summary beside it, no reading
+              of what it means. The coach's turn then names the gaps in figures and asks one question,
+              and stops. This used to draw itself the instant one reading landed, which meant the
+              leader met their week one bar at a time and there was no reveal left to have.
+            */}
+            {revealState === 'ready' && !revealing && (
+              <div className="border-border/70 rounded-2xl border px-6 py-5">
+                <p className="text-foreground text-[1.02rem] leading-relaxed text-balance">
+                  That is every area accounted for. Whenever you are ready, we can look at the shape
+                  of the week you have described.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setRevealing(true)}
+                  className="bg-primary text-primary-foreground mt-4 rounded-full px-8 py-3 text-[0.95rem] font-medium"
+                >
+                  Show me where the week is going
+                </button>
+              </div>
+            )}
+
+            {chart !== null && (
+              <div className="border-border/70 rounded-2xl border px-4 py-5 sm:px-6">
+                <ReclaimChart data={chart} />
+              </div>
+            )}
+          </>
+        }
+        footer={
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            {canAdvance ? (
+              <button
+                type="button"
+                onClick={() => void advance()}
+                disabled={busy}
+                className="bg-primary text-primary-foreground rounded-full px-6 py-2 text-sm font-medium disabled:opacity-40"
+              >
+                {busy ? 'Saving…' : 'Continue to the next phase'}
+              </button>
+            ) : (
+              <p className="text-muted-foreground text-xs leading-relaxed">{waitingOn}</p>
+            )}
+
+            {error !== null && (
+              <p className="text-muted-foreground text-xs" role="status">
+                {error} You can try again.
+              </p>
+            )}
+
+            {/* The panel has no column of its own below `xl`, so it is one tap away instead. */}
+            <button
+              type="button"
+              onClick={() => setPanelOpen(true)}
+              className="text-muted-foreground hover:text-foreground ml-auto text-xs underline underline-offset-4 xl:hidden"
+            >
+              {capturedCount} of {captureSlots.length} noted
+            </button>
+          </div>
+        }
+      />
+
+      <aside className="border-border/60 hidden w-80 shrink-0 overflow-y-auto border-l px-5 py-6 xl:block">
+        {panel}
+      </aside>
+
+      {panelOpen && (
+        <div className="fixed inset-0 z-50 flex justify-end xl:hidden">
+          <button
+            type="button"
+            aria-label="Close what the coach has noted"
+            onClick={() => setPanelOpen(false)}
+            className="bg-foreground/20 absolute inset-0"
+          />
+          <div className="bg-background border-border/60 relative flex w-[min(22rem,90vw)] flex-col overflow-y-auto border-l px-5 py-6">
+            <button
+              type="button"
+              onClick={() => setPanelOpen(false)}
+              className="text-muted-foreground hover:text-foreground mb-4 self-end text-xs underline underline-offset-4"
+            >
+              Close
+            </button>
+            {panel}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

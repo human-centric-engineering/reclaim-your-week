@@ -8,7 +8,8 @@
  *   - `fill_slot`, whose run comes from the LLM-supplied `contextKey`, stays locked to the
  *     run-independent `reclaim_profile` group and is refused every run-carrying group;
  *   - `record_answers`, whose run comes from the server-issued dispatch scope, may write the audit
- *     but is refused reflections, sharing consent, and the computed calendar lanes;
+ *     but is refused sharing consent and the computed calendar lanes;
+ *   - a reflection is permitted only for the phase in that scope, and never as an inference;
  *   - a typed slot cannot be filled with prose alone.
  *
  * Refusals are evaluated against the *real* slot groups (`reclaimSlotDefinitions`), so the guard
@@ -108,12 +109,54 @@ describe('I6 — record_answers takes its run from the server, so it may write t
     expect([...ALL_GROUPS].sort()).toEqual([...classified].sort());
   });
 
-  it('refuses reflections in the grant data and in code (I9 stays leader-owned)', () => {
-    expect(facetAllowsWrite(write, 'reclaim_reflection')).toBe(false);
+  /**
+   * The reflection rule, which is the one permission on this agent that was widened rather than
+   * narrowed (2026-07-27). The blanket refusal is gone — the coach asks the closing question and
+   * records the answer, because a textarea under the transcript was the form creeping back into the
+   * conversation. What holds the gate up now is that both conditions come from the *server*: the
+   * phase is the one in the dispatch scope, and an inferred reflection is refused outright.
+   *
+   * I9 itself is untouched and is not asserted here: the transition route still refuses to leave a
+   * phase whose reflection slot is absent (`tests/unit/app/api/.../transition`).
+   */
+  describe('reflections — permitted, but only this phase and only what was said', () => {
+    it('permits the group in the grant data, since the coach now records one', () => {
+      expect(facetAllowsWrite(write, 'reclaim_reflection')).toBe(true);
+    });
 
-    const check = checkSlotWrite('reclaim_reflection_p3', undefined);
-    expect(check.ok).toBe(false);
-    if (!check.ok) expect(check.refusal.code).toBe('group_refused');
+    it("records the reflection belonging to the phase in the server's scope", () => {
+      const check = checkSlotWrite('reclaim_reflection_p3', undefined, {
+        phaseKey: 'phase-3-ideal',
+        sourceType: 'user_confirmed',
+      });
+      expect(check.ok).toBe(true);
+    });
+
+    it('refuses a reflection for any other phase, so it cannot clear the gates ahead', () => {
+      const check = checkSlotWrite('reclaim_reflection_p4', undefined, {
+        phaseKey: 'phase-3-ideal',
+        sourceType: 'direct',
+      });
+      expect(check.ok).toBe(false);
+      if (!check.ok) expect(check.refusal.code).toBe('reflection_wrong_phase');
+    });
+
+    it('refuses a reflection when the turn carries no phase at all', () => {
+      const check = checkSlotWrite('reclaim_reflection_p3', undefined, {
+        sourceType: 'direct',
+      });
+      expect(check.ok).toBe(false);
+      if (!check.ok) expect(check.refusal.code).toBe('reflection_wrong_phase');
+    });
+
+    it('refuses an inferred reflection: a leader has to have said it', () => {
+      const check = checkSlotWrite('reclaim_reflection_p3', undefined, {
+        phaseKey: 'phase-3-ideal',
+        sourceType: 'inferred',
+      });
+      expect(check.ok).toBe(false);
+      if (!check.ok) expect(check.refusal.code).toBe('reflection_not_inferred');
+    });
   });
 
   it('refuses sharing consent in the grant data and in code', () => {

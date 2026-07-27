@@ -14,9 +14,15 @@
  * anyone remembering to add it here, which is the failure this file exists to prevent.
  *
  * **Only what the coach may write.** Every group here is in `COACH_WRITABLE_GROUPS`; the refused
- * groups (reflections, sharing consent, the computed calendar lanes) are absent by construction, so
- * the coach is never handed a list of readings it would then be refused for recording (I6). Phase 6
- * captures nothing conversationally: its slots are the sharing choices, which are consent.
+ * groups (sharing consent, the computed calendar lanes) are absent by construction, so the coach is
+ * never handed a list of readings it would then be refused for recording (I6). Phase 6 captures none
+ * of these: its own slots are the sharing choices, which are consent.
+ *
+ * **Reflections are writable now, and still not here.** `reclaim_reflection` was moved into
+ * `COACH_WRITABLE_GROUPS`, but the group holds all six per-phase reflections at once, so listing it
+ * against a phase would hand the coach five slugs it may not touch. The reflection a phase closes on
+ * is derived per phase instead (`reflectionSlugForPhase`), which is the same rule the write allowlist
+ * enforces. This list stays what it has always been: the readings the phase is *for*.
  *
  * Pure data and pure functions — no Prisma, no framework reads — so the client panel imports it as
  * happily as the server-side context builder does.

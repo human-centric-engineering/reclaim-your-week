@@ -14,9 +14,10 @@
  * leader's hours. This block is read through `readRunAnswers`, so it reports *this* run, and it says
  * plainly that anything absent from its list has not been captured in this audit yet.
  *
- * **It names the refusals rather than letting the coach discover them.** A typed slot refuses prose,
- * and reflections and sharing consent refuse the coach entirely (I6). Each of those is a wasted turn
- * if the coach learns it from an error, so the block states them up front.
+ * **It names the refusals rather than letting the coach discover them.** A typed slot refuses prose;
+ * sharing consent refuses the coach entirely; a reflection is permitted only for the phase in scope
+ * and only when the leader has actually said it (I6). Each of those is a wasted turn if the coach
+ * learns it from an error, so the block states them up front.
  */
 
 import { prisma } from '@/lib/db/client';
@@ -192,22 +193,24 @@ async function closingContext(userId: string, answers: Answers): Promise<string[
 
   const parts: string[] = [
     '',
-    'This is the close. Nothing here is captured by you: the summary is produced on screen, the',
-    "sharing choices are the leader's consent to give, and the takeaway below is theirs to save.",
+    "This is the close. The summary is produced on screen and the sharing choices are the leader's",
+    'consent to give, so neither is yours. The takeaway is the one reading you record here.',
   ];
 
   if (takeaway === undefined) {
     parts.push(
       '',
-      'They have not yet written what they are taking away, and the summary does not appear until they',
-      'have. Ask them, once, and let it land. You may offer their own words back for them to save. Do',
-      'not produce a summary of the audit yourself and do not list what they should have learned.'
+      'They have not yet said what they are taking away, and the summary does not appear until they',
+      'have. Ask them, once, and let it land. When they answer, offer their own words back and record',
+      'it with record_answers as reclaim_reflection_p6, in their words, never inferred, and never',
+      'before they have said it. Do not produce a summary of the audit yourself and do not list what',
+      'they should have learned.'
     );
   } else {
     parts.push(
       '',
-      `They have written what they are taking away: "${takeaway.value}". Acknowledge it in their own`,
-      'words. Do not improve on it.'
+      `They have said what they are taking away: "${takeaway.value}". Acknowledge it in their own`,
+      'words. Do not improve on it, and do not record it again.'
     );
   }
 
@@ -432,11 +435,18 @@ export async function buildCoachPhaseContext(userId: string): Promise<string> {
     return `- ${slot.slug}: captured as "${recorded.value}" (${recorded.sourceType}, confidence ${recorded.confidence}). ${slot.label}`;
   });
 
+  // The reflection is the phase's closing beat, and it is listed with the readings rather than
+  // described beside them: the coach reads the capture list as its worklist, and a gate mentioned in
+  // a footnote is a gate the model treats as somebody else's problem. It carries its own state
+  // because it is the one reading that cannot be inferred and cannot be recorded early.
   const reflectionSlug = reflectionSlugForLeaving(currentPhaseKey);
+  const reflectionRecorded = reflectionSlug === null ? undefined : answers[reflectionSlug];
   const reflectionNote =
     reflectionSlug === null
       ? 'This phase has no reflection pause.'
-      : `Before this phase can be left, the leader records their own reflection (${reflectionSlug}) on screen. You may ask what they notice and offer their words back, and only they can save it.`;
+      : reflectionRecorded !== undefined
+        ? `The reflection for this phase is recorded (${reflectionSlug}): "${reflectionRecorded.value}". Do not ask for it again. The leader can change it beside the conversation whenever they like, and the move to the next phase is theirs to take.`
+        : `This phase closes with the leader's own reflection (${reflectionSlug}), and the phase cannot be left until it is recorded. Once the readings above are captured, ask one genuine question, close to "what stands out to you here?", and stop. When they answer, offer back what you heard in their own words and record it with record_answers as ${reflectionSlug}. Never infer it and never write it before they have said it: an inferred reflection is refused. Then leave the move to the next phase to them.`;
 
   const cardLines = cardLinesFor(currentPhaseKey, signposts);
 

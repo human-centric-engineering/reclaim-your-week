@@ -5,19 +5,46 @@
  * outright. The hazard that lockdown named — a model-supplied run key writing one leader's answers
  * into another's run — is gone, because the run id now comes from the server-issued dispatch scope
  * (`./scope.ts`). What is *not* gone is everything else I6 was quietly protecting, so the permission
- * is an allowlist of groups rather than "any registered slug", and three groups are refused in code:
+ * is an allowlist of groups rather than "any registered slug", and two groups are refused in code:
  *
- * - **`reclaim_reflection`** — the reflection slots are the phase gate. The transition route refuses
- *   to leave a phase until the slot for that phase exists, and asking before telling is the coaching
- *   spine of the whole tool. A coach that can write these can open its own gate, and the pause stops
- *   meaning anything. The coach may *propose* the words on screen; the leader's confirmation is what
- *   writes, through the ordinary leader-initiated path.
  * - **`reclaim_share`** — `reclaim_share_with_coach` and `reclaim_share_quotable` decide whether a
  *   leader's words may be republished. An agent that can write consent can manufacture it.
  * - **`reclaim_calendar` and `reclaim_composite`** — computed lanes whose privacy story is that they
  *   hold deterministic per-bucket totals and nothing else. Model-derived numbers in there would make
  *   that story false. **Two slugs inside `reclaim_calendar` are the exception**; see
  *   `COACH_WRITABLE_SLOTS_IN_REFUSED_GROUPS` below.
+ *
+ * ## `reclaim_reflection` was the third refusal, and is now a narrowed permission
+ *
+ * The refusal read: the reflection slots are the phase gate, so a coach that can write one can open
+ * its own gate. That is true of the mechanism and wrong about the product. The reflection was left as
+ * a textarea under the transcript — the one question the whole coaching method is built around, asked
+ * by a form field, in a tool whose source says "this should feel like a coaching conversation, not a
+ * form". **The point of the coach is to help a leader articulate themselves**, and a leader who has
+ * just said the thing out loud should not have to type it again to be allowed to move on.
+ *
+ * What did not change: **I9 is untouched.** The transition route still refuses to leave a phase until
+ * `reclaim_reflection_p<N>` exists for this run. Only the *writer* moved. Three narrower guards stand
+ * in place of the blanket refusal:
+ *
+ * 1. **The phase, from the server** — the one that is genuinely enforced. A reflection may only be
+ *    written for the phase in the dispatch scope, which the route derives from the journey
+ *    (`buildCoachScope`) and the model never sees. A conversation in phase 2 cannot record phase 4's
+ *    reflection, and cannot record five of them at once to clear the gates ahead. This is what bounds
+ *    the change: whatever the coach does, it does it in the phase the leader is sitting in.
+ * 2. **Never inferred** — a discipline, not a boundary, and it is worth being exact about which.
+ *    `sourceType: 'inferred'` is refused for a reflection, but the **model chooses that value**, so a
+ *    reflection it made up and labelled `direct` passes this check. What the rule buys is that the
+ *    documented path is the honest one and a well-behaved coach is told plainly what is expected;
+ *    what it does not buy is a control. Compare the leader-facing `answers` route, which takes a
+ *    `confirming` **boolean** rather than a client-chosen `sourceType` for exactly this reason: a
+ *    caller naming its own provenance is not evidence. The residual risk is bounded and
+ *    self-affecting — the worst case is the current phase's reflection recorded unprompted, in the
+ *    leader's own run, where guard 3 puts it in front of them. **Do not lean on this as enforcement.**
+ * 3. **Visible and editable.** The recorded reflection is shown to the leader in their own words, in
+ *    the captured panel, where changing it writes over the top. That is the same honesty mechanism an
+ *    inferred reading already gets, and — given exactly what guard 2 is not — it is the real backstop:
+ *    a sentence the leader can see and replace is a sentence they still own.
  *
  * ## The two layers, and what each actually holds
  *
@@ -39,7 +66,11 @@ import type { Prisma } from '@prisma/client';
 import { SLOT_DATA_TYPE } from '@/lib/framework/data-slots/vocabulary';
 import { validateTypedValue } from '@/lib/framework/data-slots/capabilities/typed-value';
 import { reclaimSlotDefinitions } from '@/lib/app/programme/slots';
+import { reflectionSlugForPhase } from '@/lib/app/programme/runs/phases';
 import type { SlotDefinitionInput } from '@/lib/framework/data-slots';
+
+/** The group holding the six per-phase reflection slots, which are written under extra conditions. */
+export const REFLECTION_GROUP = 'reclaim_reflection';
 
 /** Slot groups the coach may write from conversation. */
 export const COACH_WRITABLE_GROUPS: readonly string[] = [
@@ -50,16 +81,21 @@ export const COACH_WRITABLE_GROUPS: readonly string[] = [
   'reclaim_ideal',
   'reclaim_gap',
   'reclaim_action',
+  REFLECTION_GROUP,
 ];
+
+/**
+ * How a reading was come by, for the reflection rule. Mirrors `SLOT_SOURCE_TYPE`, and only one member
+ * is load-bearing here: an inferred reflection is a reflection the leader did not have.
+ */
+const INFERRED = 'inferred';
 
 /**
  * Groups the coach may never write, each with the sentence the model is told when it tries. The
  * refusal is worth explaining rather than stonewalling: a coach that knows *why* it cannot record a
- * reflection can do the right thing instead, which is to ask the leader and let them confirm.
+ * sharing choice can do the right thing instead, which is to offer it on screen.
  */
 export const COACH_REFUSED_GROUPS: Readonly<Record<string, string>> = {
-  reclaim_reflection:
-    "Reflections are the leader's own words and only they can record one. Ask what they notice, then offer their answer back for them to confirm.",
   reclaim_share:
     'Sharing choices are consent and only the leader can give it. Offer the choice on screen instead.',
   reclaim_calendar:
@@ -104,7 +140,12 @@ export function slotDefinitionFor(slotSlug: string): SlotDefinitionInput | undef
 
 /** Why a proposed write was refused, in a form the capability can hand back to the model. */
 export interface SlotWriteRefusal {
-  code: 'unknown_slot' | 'group_refused' | 'typed_value_required';
+  code:
+    | 'unknown_slot'
+    | 'group_refused'
+    | 'typed_value_required'
+    | 'reflection_wrong_phase'
+    | 'reflection_not_inferred';
   message: string;
 }
 
@@ -118,6 +159,18 @@ export interface SlotWriteAccepted {
 export type SlotWriteCheck =
   { ok: true; accepted: SlotWriteAccepted } | { ok: false; refusal: SlotWriteRefusal };
 
+/** What the *server* knows about the turn proposing a write. Never anything the model supplied. */
+export interface SlotWriteConditions {
+  /**
+   * The phase from the dispatch scope (`scope.nodeKey`). Absent means the turn carries no phase, and
+   * a reflection is refused rather than guessed at — the same stance `readCoachScope` takes about a
+   * missing run.
+   */
+  phaseKey?: string;
+  /** How the model says it came by the reading. Only `inferred` changes the decision. */
+  sourceType?: string;
+}
+
 /**
  * Decide whether the coach may record one proposed answer.
  *
@@ -128,8 +181,16 @@ export type SlotWriteCheck =
  * renders. So a slot declared `number`, `boolean`, `date` or `json` is refused unless a valid typed
  * value arrives with it, and the coach's way through the refusal is to propose a figure and let the
  * leader confirm it.
+ *
+ * `conditions` carries what the server knows about the turn. It is optional so a caller with no
+ * dispatch scope (a test, a future non-conversational caller) still gets the group and typed-value
+ * rules — but a reflection needs the phase, so an absent one refuses it.
  */
-export function checkSlotWrite(slotSlug: string, valueJson: unknown): SlotWriteCheck {
+export function checkSlotWrite(
+  slotSlug: string,
+  valueJson: unknown,
+  conditions: SlotWriteConditions = {}
+): SlotWriteCheck {
   const definition = DEFINITION_BY_SLUG.get(slotSlug);
   if (definition === undefined) {
     return {
@@ -159,6 +220,33 @@ export function checkSlotWrite(slotSlug: string, valueJson: unknown): SlotWriteC
         message: `"${slotSlug}" is not something this conversation records.`,
       },
     };
+  }
+
+  // A reflection is the leader's own noticing, and the two conditions on writing one are the
+  // replacement for the blanket refusal this group used to carry (see the header). Both are checked
+  // against what the *server* supplied, never against an argument.
+  if (definition.group === REFLECTION_GROUP) {
+    const permitted =
+      conditions.phaseKey === undefined ? null : reflectionSlugForPhase(conditions.phaseKey);
+    if (permitted === null || permitted !== slotSlug) {
+      return {
+        ok: false,
+        refusal: {
+          code: 'reflection_wrong_phase',
+          message: `"${slotSlug}" is not this phase's reflection. You may only record the reflection for the phase the leader is on, and only once they have said what they notice.`,
+        },
+      };
+    }
+    if (conditions.sourceType === INFERRED) {
+      return {
+        ok: false,
+        refusal: {
+          code: 'reflection_not_inferred',
+          message:
+            'A reflection cannot be inferred — it is what the leader noticed, in their words. Ask them, offer back what you heard, and record it once they have said it.',
+        },
+      };
+    }
   }
 
   const dataType = definition.dataType ?? SLOT_DATA_TYPE.text;

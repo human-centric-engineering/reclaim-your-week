@@ -1,5 +1,6 @@
 /**
- * Reconcile the coach agent's capability grants to the authored list.
+ * Reconcile the coach agent's capability grants to the authored list — the grants themselves, their
+ * exposure config, and the ones that must never be held again.
  *
  * **Why this unit has to exist, and why it is the part that gets missed.** `002-reclaim-surface`
  * creates grants and updates the ones it names; neither it nor `003` ever *removes* one. So deleting
@@ -38,6 +39,7 @@
  * `hashInputs` folds `agent.ts` in, so the unit re-runs exactly when the authored grant list changes.
  */
 
+import { Prisma } from '@prisma/client';
 import type { SeedUnit } from '@/prisma/runner';
 import { reclaimCoachAgent } from '@/lib/app/programme/agent';
 
@@ -91,6 +93,49 @@ const unit: SeedUnit = {
       }
     }
 
+    // The authored grants themselves, exposure config included.
+    //
+    // **This half was missing, and it is the same class of bug as the two above.** `002` writes each
+    // grant's `customConfig` — the write facet naming the slot groups the capability may reach — but
+    // `002` has no `hashInputs`, so it re-runs only when its own file changes. Widening the authored
+    // allowlist in `agent.ts` therefore changed the code, passed every test that reads the code, and
+    // left the row in every installed database exactly as it was. Found when `reclaim_reflection`
+    // was added to `COACH_WRITABLE_GROUPS` (2026-07-27) and the seed reported "no changes".
+    //
+    // It fails safe rather than open — `facetAllows` refuses what the stored facet omits, so the
+    // symptom is a coach that cannot record what it was just told it may. But "the authored rule and
+    // the enforced rule silently disagree" is the thing this unit exists to prevent, so it belongs
+    // here, where `hashInputs` already folds in `agent.ts`.
+    //
+    // **It reconciles the config and leaves `isEnabled` alone on an existing row**, which is the
+    // difference between this loop and `002`'s. `002` writes `isEnabled: true` too, and gets away
+    // with it because it has no `hashInputs` and so re-runs about never. Doing the same here would
+    // re-run on **every** edit to `agent.ts` — a persona tweak, a typo — and each one would quietly
+    // re-enable a capability an operator had switched off in the admin UI. That switch is the
+    // supported way to revoke a grant (the header above is entirely about why `isEnabled: false` is
+    // the state that means revoked); a seed that overrides it hands the operator a control that
+    // silently stops working. So: `create` enables, because a missing row is permissive and an
+    // authored capability should start on; `update` touches the config only.
+    for (const grant of reclaimCoachAgent.capabilities) {
+      const capability = await prisma.aiCapability.findUnique({
+        where: { slug: grant.slug },
+        select: { id: true },
+      });
+      if (capability === null) {
+        logger.warn(
+          `${grant.slug}: no capability row to grant — syncFramework has not projected it`
+        );
+        continue;
+      }
+      const customConfig = grant.customConfig ?? Prisma.JsonNull;
+      await prisma.aiAgentCapability.upsert({
+        where: { agentId_capabilityId: { agentId: agent.id, capabilityId: capability.id } },
+        update: { customConfig },
+        create: { agentId: agent.id, capabilityId: capability.id, isEnabled: true, customConfig },
+      });
+    }
+    logger.info(`✓  reconciled ${reclaimCoachAgent.capabilities.length} authored grant(s)`);
+
     const authored = reclaimCoachAgent.capabilities.map((c) => c.slug);
     const held = await prisma.aiAgentCapability.findMany({
       where: { agentId: agent.id },
@@ -101,7 +146,7 @@ const unit: SeedUnit = {
       (grant) => !authored.includes(grant.capability.slug) && grant.isEnabled
     );
     if (stale.length === 0) {
-      logger.info('✓  grants already match the authored list');
+      logger.info('✓  no grants to revoke');
       return;
     }
 

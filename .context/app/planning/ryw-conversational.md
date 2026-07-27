@@ -2,6 +2,15 @@
 
 **Owner:** John · **Status:** **all stages shipped** · **Depends on:** F1–F10 (all shipped)
 
+> **The surface half is [[ryw-chat-ux]]** (post-v1 P19, 2026-07-27). Everything below is about what
+> the conversation _does_, and all of it landed. What the first real session through it found is that
+> the conversation was still laid out as a **document**: the composer walked off the bottom of the
+> page with every turn, a turn that called a tool looked like nothing happening, and the reflection
+> was a textarea underneath the conversation rather than a question inside it. That branch also
+> **reverses this plan's reading of I6 on reflections** — the coach records the reflection now, under
+> three narrower conditions. Recorded there and in [[invariants]] I6; read them together, because
+> several sentences below ("only they can save it") describe the rule as it was.
+
 ---
 
 ## Why

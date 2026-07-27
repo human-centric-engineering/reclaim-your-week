@@ -173,7 +173,7 @@ describe('lib/app/ bootstrap defaults are no-ops', () => {
     expect(block.files).toEqual([
       'prisma/seeds/app-reclaim/**/*.{ts,tsx}',
       'app/api/v1/app/**/*.{ts,tsx}',
-      'app/(protected)/programme/**/*.{ts,tsx}',
+      'app/(programme)/programme/**/*.{ts,tsx}',
       'app/admin/programme/**/*.{ts,tsx}',
       'tests/**/lib/app/**/*.{ts,tsx}',
       'tests/**/app/api/v1/app/**/*.{ts,tsx}',

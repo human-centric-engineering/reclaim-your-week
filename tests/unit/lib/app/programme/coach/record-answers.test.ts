@@ -330,17 +330,46 @@ describe('the run comes from the server, never from the model', () => {
   });
 });
 
-describe('what the coach may not record', () => {
-  it('refuses a reflection, so it can never open its own phase gate', async () => {
+/**
+ * The reflection is the one thing on this capability that was widened rather than narrowed. It used
+ * to be refused outright, on the reasoning that the coach could otherwise open its own phase gate;
+ * what that left on screen was the audit's central question asked by a textarea under the
+ * conversation. The gate is still the server's (I9, in the transition route). What stops the coach
+ * walking through it is that it may only write the reflection for the phase the *route* put in scope,
+ * and only for something the leader actually said.
+ */
+describe('the reflection the coach may record, and the three it may not', () => {
+  it("records this phase's reflection, in what the leader said", async () => {
     const result = await capability.execute(
       {
         answers: [
           {
             slotSlug: 'reclaim_reflection_p1',
-            value: 'They noticed how much of the week is firefighting.',
+            value: 'Most of my week is firefighting I did not choose.',
+            confidence: 9,
+            sourceType: 'user_confirmed',
+            reasoningNote: 'Their words, offered back and confirmed.',
+          },
+        ],
+      },
+      dispatchContext
+    );
+
+    expect(result.data?.refused).toEqual([]);
+    expect(result.data?.recorded[0]?.slotSlug).toBe('reclaim_reflection_p1');
+    expect(store.size).toBe(1);
+  });
+
+  it("refuses another phase's reflection, so it cannot clear the gates ahead", async () => {
+    const result = await capability.execute(
+      {
+        answers: [
+          {
+            slotSlug: 'reclaim_reflection_p4',
+            value: 'The gap is mostly delegation.',
             confidence: 8,
-            sourceType: 'synthesised',
-            reasoningNote: 'Summarised from what they said.',
+            sourceType: 'direct',
+            reasoningNote: 'Said while talking about phase one.',
           },
         ],
       },
@@ -348,10 +377,58 @@ describe('what the coach may not record', () => {
     );
 
     expect(result.data?.recorded).toEqual([]);
-    expect(result.data?.refused[0]?.code).toBe('group_refused');
+    expect(result.data?.refused[0]?.code).toBe('reflection_wrong_phase');
     expect(store.size).toBe(0);
   });
 
+  it('refuses an inferred reflection, because a reflection is not something worked out for someone', async () => {
+    const result = await capability.execute(
+      {
+        answers: [
+          {
+            slotSlug: 'reclaim_reflection_p1',
+            value: 'They noticed how much of the week is firefighting.',
+            confidence: 5,
+            sourceType: 'inferred',
+            reasoningNote: 'Read between the lines.',
+          },
+        ],
+      },
+      dispatchContext
+    );
+
+    expect(result.data?.recorded).toEqual([]);
+    expect(result.data?.refused[0]?.code).toBe('reflection_not_inferred');
+    expect(store.size).toBe(0);
+  });
+
+  it('refuses a reflection on a turn that carries no phase, rather than guessing which one', async () => {
+    const result = await capability.execute(
+      {
+        answers: [
+          {
+            slotSlug: 'reclaim_reflection_p1',
+            value: 'Most of my week is firefighting.',
+            confidence: 9,
+            sourceType: 'direct',
+            reasoningNote: 'Their words.',
+          },
+        ],
+      },
+      {
+        userId: USER_ID,
+        agentId: 'agent_coach',
+        scope: { moduleSlug: RECLAIM_MODULE_SLUG, [RECLAIM_RUN_SCOPE_KEY]: RUN_ID },
+      }
+    );
+
+    expect(result.data?.recorded).toEqual([]);
+    expect(result.data?.refused[0]?.code).toBe('reflection_wrong_phase');
+    expect(store.size).toBe(0);
+  });
+});
+
+describe('what the coach may not record', () => {
   it('refuses sharing consent, so it can never manufacture it', async () => {
     const result = await capability.execute(
       {

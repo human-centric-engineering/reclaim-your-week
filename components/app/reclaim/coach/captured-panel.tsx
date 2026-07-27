@@ -18,13 +18,21 @@
  * `user_confirmed`, and correcting it writes the leader's own figure over the top. Every other reading
  * sits quietly, because a panel that shouts about a name it was told plainly is noise.
  *
- * The three groups the coach may never write (reflections, sharing consent, the computed calendar
- * lanes) are absent here by construction: this panel renders `phaseCaptureSlots`, which is derived
- * from the coach-writable groups (I6).
+ * The groups the coach may never write (sharing consent, the computed calendar lanes) are absent here
+ * by construction: this panel renders `phaseCaptureSlots`, which is derived from the coach-writable
+ * groups (I6).
+ *
+ * **The reflection has its own section, and it is the reason this panel now matters more.** The coach
+ * records the reflection that closes a phase, which is a real transfer of authorship: a sentence that
+ * gates the phase is being typed by something that is not the leader. What makes that honest is not
+ * the model's restraint — it is that the leader can see the sentence, in their own words, and change
+ * it in one place. So it sits apart from the readings, always shown, always editable, whether or not
+ * the coach was confident.
  */
 
 import { useState } from 'react';
 import { phaseCaptureSlots } from '@/lib/app/programme/coach/phase-slots';
+import { reflectionSlugForPhase } from '@/lib/app/programme/runs/phases';
 import { saveAnswer, type RunAnswers } from '@/components/app/reclaim/phase/actions';
 import { truthy } from '@/lib/app/programme/chart/series';
 import { inputClass } from '@/components/app/reclaim/phase/fields';
@@ -59,7 +67,8 @@ export function CapturedPanel({
     fundraisingRelevant: truthy(answers['reclaim_setup_fundraising_relevant']),
     bucketLabels,
   });
-  if (slots.length === 0) return null;
+  const reflectionSlug = reflectionSlugForPhase(phaseKey);
+  if (slots.length === 0 && reflectionSlug === null) return null;
 
   const captured = slots.filter((s) => answers[s.slug] !== undefined);
   const toCheck = captured.filter((s) => worthChecking(answers[s.slug]));
@@ -107,7 +116,127 @@ export function CapturedPanel({
           );
         })}
       </ul>
+
+      {reflectionSlug !== null && (
+        <ReflectionCard
+          runId={runId}
+          slug={reflectionSlug}
+          value={answers[reflectionSlug]?.value ?? null}
+          onSaved={onSaved}
+        />
+      )}
     </aside>
+  );
+}
+
+/**
+ * The leader's own noticing, as the coach recorded it.
+ *
+ * Not an `UncertainReading`: a reflection is never offered back with "have we got it right?", because
+ * the leader has just said it out loud and being asked to verify their own sentence is the form
+ * creeping back in. It is simply shown, in their words, with the edit always available — and when it
+ * is not there yet, the panel says what is coming rather than leaving a blank the leader has to
+ * interpret.
+ */
+function ReflectionCard({
+  runId,
+  slug,
+  value,
+  onSaved,
+}: {
+  runId: string;
+  slug: string;
+  value: string | null;
+  onSaved: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value ?? '');
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  const commit = async () => {
+    setBusy(true);
+    setFailed(false);
+    try {
+      await saveAnswer(runId, { slotSlug: slug, value: draft.trim() });
+      setEditing(false);
+      onSaved();
+    } catch {
+      setFailed(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="border-border/60 space-y-2 border-t pt-5">
+      <p className="text-foreground text-sm font-medium">In your words</p>
+      {value === null && !editing ? (
+        <>
+          <p className="text-muted-foreground/70 text-xs leading-relaxed">
+            What stands out to you here. The coach will ask before this phase closes, and what you
+            say is kept here.
+          </p>
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="text-muted-foreground hover:text-foreground text-xs underline underline-offset-4"
+          >
+            Write it myself
+          </button>
+        </>
+      ) : editing ? (
+        <div className="space-y-2">
+          <textarea
+            rows={4}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            aria-label="Your reflection"
+            placeholder="Take a moment…"
+            className={`${inputClass} resize-none leading-relaxed`}
+          />
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              disabled={busy || draft.trim().length === 0}
+              onClick={() => void commit()}
+              className="text-primary text-xs underline underline-offset-4 disabled:opacity-40"
+            >
+              Save this
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setDraft(value ?? '');
+                setEditing(false);
+              }}
+              className="text-muted-foreground text-xs"
+            >
+              Leave it
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <p className="text-foreground text-sm leading-relaxed">{value}</p>
+          <button
+            type="button"
+            onClick={() => {
+              setDraft(value ?? '');
+              setEditing(true);
+            }}
+            className="text-muted-foreground hover:text-foreground text-xs underline underline-offset-4"
+          >
+            Change this
+          </button>
+        </>
+      )}
+      {failed && (
+        <p className="text-muted-foreground text-xs" role="status">
+          That did not save. You can try again.
+        </p>
+      )}
+    </div>
   );
 }
 

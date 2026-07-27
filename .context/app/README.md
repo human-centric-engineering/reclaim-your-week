@@ -66,7 +66,7 @@ the build breakdown that consumes them. Start a feature at
 | Admin nav    | `lib/app/leaf-admin-nav.ts`        |
 | HTTP API     | `app/api/v1/app/**`                |
 | Admin UI     | `app/admin/programme/**`           |
-| End-user UI  | `app/(protected)/programme/**`     |
+| End-user UI  | `app/(programme)/programme/**`     |
 | Models       | `prisma/schema/app-reclaim.prisma` |
 | Migrations   | `<timestamp>_app_<feature>`        |
 

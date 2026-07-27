@@ -14,6 +14,16 @@
  *
  * Phase 6 has no conversational form: its content is the summary the leader takes away and the sharing
  * choices, and consent is not something a coach may record (I6).
+ *
+ * **This is a frame, not a page, and that is the change.** It used to be a `max-w-5xl` document that
+ * grew downwards: the transcript pushed the composer below the fold, and the reflection field and the
+ * continue button below that, so talking to the coach meant scrolling past what you had already said
+ * to find the box you say the next thing in. Now the shell owns the viewport — a fixed bar, a column
+ * for the spine, and one bounded region for the phase — and **only the phase scrolls**. Everything a
+ * leader acts with stays where they left it, which is how every chat surface they already use behaves.
+ *
+ * The height comes from the route group's layout (`app/(programme)/programme/layout.tsx`), which is
+ * where the reasoning for leaving `(protected)` is written down.
  */
 
 import { useCallback, useEffect, useState } from 'react';
@@ -25,6 +35,7 @@ import {
 } from '@/components/app/reclaim/types';
 import type { PhaseSignpost } from '@/lib/app/programme/runs/signposts';
 import { PhaseRail } from '@/components/app/reclaim/phase-rail';
+import { ProgrammeChrome } from '@/components/app/reclaim/programme-chrome';
 import { TrendLines } from '@/components/app/reclaim/repeat/trend-lines';
 import { Signpost } from '@/components/app/reclaim/signpost';
 import { FINAL_PHASE_KEY } from '@/lib/app/programme/runs/phases';
@@ -60,9 +71,30 @@ export function ProgrammeShell() {
    */
   const [signposts, setSignposts] = useState<PhaseSignpost[] | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setFailed(false);
+  /**
+   * Read the run state.
+   *
+   * **`quiet` carries more weight than it looks.** Raising the loading state swaps the entire shell
+   * for the "Gathering your audit…" frame, which *unmounts the conversation* — and the transcript is
+   * component state, so it goes with it. Every mid-phase refresh went through here: the coach's turn
+   * ends, `onTurnComplete` re-reads the run, and the answer a leader was part-way through reading
+   * vanished mid-sentence, then reappeared a moment later from the rehydrated transcript. It looked
+   * like the coach had been cut off. (It reads as mid-sentence because the typing animation lags the
+   * stream on purpose: the turn completes while only the first line has been spoken.)
+   *
+   * A quiet read keeps its failure to itself for the same reason. The state already on screen is
+   * still good, and there is nothing to gain from replacing a conversation in progress with "we
+   * could not load your audit" because one background refresh missed — that is the same disappearing
+   * transcript by another route.
+   *
+   * Only the very first read has nothing to show. Every later one keeps what is on screen and swaps
+   * the data underneath it.
+   */
+  const load = useCallback(async (quiet = false) => {
+    if (!quiet) {
+      setLoading(true);
+      setFailed(false);
+    }
     try {
       const res = await fetch('/api/v1/app/reclaim/runs/current');
       const json: unknown = await res.json();
@@ -71,9 +103,9 @@ export function ProgrammeShell() {
       if (!res.ok || !parsed.success) throw new Error('bad response');
       setState(parsed.data);
     } catch {
-      setFailed(true);
+      if (!quiet) setFailed(true);
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   }, []);
 
@@ -99,24 +131,30 @@ export function ProgrammeShell() {
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-md px-4 py-24 text-center">
-        <p className="text-muted-foreground text-sm tracking-wide">Gathering your audit…</p>
-      </div>
+      <Frame>
+        <div className="mx-auto max-w-md px-4 py-24 text-center">
+          <p className="text-muted-foreground text-sm tracking-wide">Gathering your audit…</p>
+        </div>
+      </Frame>
     );
   }
 
   if (failed || state === null) {
     return (
-      <div className="mx-auto max-w-md px-4 py-24 text-center">
-        <p className="text-foreground text-lg font-light">We could not load your audit just now.</p>
-        <button
-          type="button"
-          onClick={() => void load()}
-          className="text-primary mt-4 text-sm underline underline-offset-4"
-        >
-          Try again
-        </button>
-      </div>
+      <Frame>
+        <div className="mx-auto max-w-md px-4 py-24 text-center">
+          <p className="text-foreground text-lg font-light">
+            We could not load your audit just now.
+          </p>
+          <button
+            type="button"
+            onClick={() => void load()}
+            className="text-primary mt-4 text-sm underline underline-offset-4"
+          >
+            Try again
+          </button>
+        </div>
+      </Frame>
     );
   }
 
@@ -126,7 +164,11 @@ export function ProgrammeShell() {
     // is the UI half, so a leader meets the terms as a step rather than as a 403. Once accepted (or
     // already on file), it hands straight through to the entry.
     if (!consented) {
-      return <ConsentGate onAccepted={handleConsented} />;
+      return (
+        <Frame>
+          <ConsentGate onAccepted={handleConsented} />
+        </Frame>
+      );
     }
     // F9 t-1: a returning leader sees where they have been before being invited to begin again.
     // `TrendLines` renders nothing until there are two completed audits to compare, so a first-time
@@ -134,10 +176,10 @@ export function ProgrammeShell() {
     // `TrendLines` returns null until there are two audits with something to plot, and it carries its
     // own wrapper so a first-time leader's page has no empty container in it either.
     return (
-      <>
+      <Frame>
         <TrendLines />
         <BeginAudit onStarted={() => void load()} />
-      </>
+      </Frame>
     );
   }
 
@@ -147,61 +189,94 @@ export function ProgrammeShell() {
   );
   const currentPhase = state.phases[currentIndex];
 
-  return (
-    <div className="mx-auto max-w-5xl px-4 py-10 sm:py-14">
-      <header className="mb-12">
-        <p className="text-primary text-[0.72rem] font-medium tracking-[0.24em] uppercase">
-          Reclaim your week
-        </p>
-        <h1 className="text-foreground mt-4 text-3xl leading-tight font-light sm:text-4xl">
-          Your audit
-        </h1>
-      </header>
+  const talking = phaseMode === 'conversation' && currentPhase.key !== FINAL_PHASE_KEY;
 
-      <div className="grid gap-x-14 gap-y-12 md:grid-cols-[15rem_1fr]">
-        <aside className="md:pt-1">
+  return (
+    <>
+      <ProgrammeChrome here={`Phase ${currentIndex} · ${currentPhase.label}`} />
+
+      <div className="flex min-h-0 flex-1">
+        {/* The spine keeps its own column on a wide screen, and its own scroll: seven phases fit, but
+            a short viewport should not clip the last of them. */}
+        <aside className="border-border/60 hidden w-60 shrink-0 overflow-y-auto border-r px-6 py-8 lg:block">
           <PhaseRail phases={state.phases} currentPhaseKey={state.currentPhaseKey} />
         </aside>
 
-        <main className="min-w-0 space-y-9">
-          <Signpost
-            phaseKey={currentPhase.key}
-            index={currentIndex}
-            label={currentPhase.label}
-            signposts={signposts ?? undefined}
-          />
-          {phaseMode === 'conversation' && currentPhase.key !== FINAL_PHASE_KEY ? (
+        <main className="flex min-h-0 flex-1 flex-col">
+          <div className="border-border/60 shrink-0 border-b px-4 py-2.5 sm:px-6 lg:hidden">
+            <PhaseRail
+              phases={state.phases}
+              currentPhaseKey={state.currentPhaseKey}
+              variant="compact"
+            />
+          </div>
+
+          {talking ? (
             <PhaseConversation
               runId={state.run.id}
               phaseKey={currentPhase.key}
+              phaseIndex={currentIndex}
+              phaseLabel={currentPhase.label}
+              signposts={signposts ?? undefined}
               conversationId={state.run.conversationId}
               coachOpenings={state.run.coachOpenings}
-              onAdvanced={() => void load()}
+              // Quiet, and this is the call site the flag exists for: it fires after *every* coach
+              // turn, not only when the phase moves, so a loud reload would unmount the transcript
+              // mid-answer each time the coach finished speaking.
+              onAdvanced={() => void load(true)}
               onSwitchToForm={() => setPhaseMode('form')}
             />
           ) : (
-            <div className="space-y-9">
-              <PhaseContent
-                phaseKey={currentPhase.key}
-                runId={state.run.id}
-                conversationId={state.run.conversationId}
-                coachOpenings={state.run.coachOpenings}
-                onAdvanced={() => void load()}
-              />
-              {currentPhase.key !== FINAL_PHASE_KEY && (
-                <button
-                  type="button"
-                  onClick={() => setPhaseMode('conversation')}
-                  className="text-muted-foreground hover:text-foreground text-xs underline underline-offset-4"
-                >
-                  I would rather talk this through
-                </button>
-              )}
+            /* The form path scrolls inside the same bounded region, so both surfaces sit in one
+               frame and switching between them does not change the shape of the page. */
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <div className="mx-auto max-w-3xl space-y-9 px-4 py-10 sm:px-6">
+                <Signpost
+                  phaseKey={currentPhase.key}
+                  index={currentIndex}
+                  label={currentPhase.label}
+                  signposts={signposts ?? undefined}
+                />
+                <PhaseContent
+                  phaseKey={currentPhase.key}
+                  runId={state.run.id}
+                  conversationId={state.run.conversationId}
+                  coachOpenings={state.run.coachOpenings}
+                  // Quiet for the same reason: phase 6's close carries a conversation too, and the
+                  // form panels hold their own in-progress field state.
+                  onAdvanced={() => void load(true)}
+                />
+                {currentPhase.key !== FINAL_PHASE_KEY && (
+                  <button
+                    type="button"
+                    onClick={() => setPhaseMode('conversation')}
+                    className="text-muted-foreground hover:text-foreground text-xs underline underline-offset-4"
+                  >
+                    I would rather talk this through
+                  </button>
+                )}
+              </div>
             </div>
           )}
         </main>
       </div>
-    </div>
+    </>
+  );
+}
+
+/**
+ * The frame around everything that is not a run in progress: loading, the failure, the consent gate,
+ * and the invitation to begin. They are short pages, so they scroll in the middle region and keep the
+ * bar above them — a leader who arrives at the consent gate should still be able to leave.
+ */
+function Frame({ children }: { children: React.ReactNode }) {
+  return (
+    <>
+      <ProgrammeChrome />
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-5xl px-4 py-10 sm:py-14">{children}</div>
+      </div>
+    </>
   );
 }
 

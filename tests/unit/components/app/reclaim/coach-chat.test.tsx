@@ -164,6 +164,59 @@ describe('CoachChat', () => {
   });
 });
 
+/**
+ * What a leader sees while a turn is running.
+ *
+ * The stream has always carried `status` frames and this client always dropped them, so the whole of
+ * a turn that called a tool looked like nothing happening: an empty paragraph with a blinking bar in
+ * it. They are shown now — and translated first, because the raw frame names an internal tool slug.
+ */
+describe('CoachChat — while the coach is working', () => {
+  /** A stream that emits its frames and then waits, so the in-flight state can be observed. */
+  function pendingSse(frames: unknown[]) {
+    return {
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'content-type': 'text/event-stream' }),
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          for (const frame of frames) {
+            controller.enqueue(
+              encoder.encode(
+                `event: ${(frame as { type: string }).type}\ndata: ${JSON.stringify(frame)}\n\n`
+              )
+            );
+          }
+          // Deliberately left open: the turn is still running.
+        },
+      }),
+    };
+  }
+
+  it('says it is thinking before the first word arrives', async () => {
+    fetchMock.mockResolvedValue(pendingSse([{ type: 'status', message: 'Thinking...' }]));
+
+    render(<CoachChat runId="run-1" conversationId={null} />);
+    await userEvent.type(screen.getByRole('textbox', { name: 'Your message' }), 'hello');
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    expect(await screen.findByRole('status', { name: 'Thinking…' })).toBeInTheDocument();
+  });
+
+  it('says it is making a note, and never shows the tool slug behind it', async () => {
+    fetchMock.mockResolvedValue(
+      pendingSse([{ type: 'status', message: 'Executing reclaim_audit__record_answers' }])
+    );
+
+    render(<CoachChat runId="run-1" conversationId={null} />);
+    await userEvent.type(screen.getByRole('textbox', { name: 'Your message' }), 'about six hours');
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    expect(await screen.findByRole('status', { name: 'Making a note…' })).toBeInTheDocument();
+    expect(screen.queryByText(/record_answers/)).not.toBeInTheDocument();
+  });
+});
+
 describe('CoachChat — the coach opening a moment', () => {
   it('opens the moment itself, with no leader turn on screen', async () => {
     // The point of the whole mechanism: the leader arrives and the coach has already spoken. The
@@ -231,5 +284,146 @@ describe('CoachChat — the coach opening a moment', () => {
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/chat/conversations/conv-1/messages');
+  });
+});
+
+/**
+ * The frames that are not plain content, and the states around them.
+ *
+ * Each of these is a turn that ends somewhere other than "the coach answered", and each has a way of
+ * failing quietly: a retried answer concatenated onto the abandoned one, a budget abort that leaves an
+ * empty paragraph, a status line that keeps shouting over the words it was covering for.
+ */
+describe('CoachChat — turns that end in something other than an answer', () => {
+  /** A stream of arbitrary frames, closed after the last one. */
+  function streamOf(frames: string[]) {
+    return {
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'content-type': 'text/event-stream' }),
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          for (const frame of frames) controller.enqueue(encoder.encode(frame));
+          controller.close();
+        },
+      }),
+    };
+  }
+
+  const frame = (o: Record<string, unknown>) =>
+    `event: ${String(o.type)}\ndata: ${JSON.stringify(o)}\n\n`;
+
+  async function sendHello() {
+    await userEvent.type(screen.getByRole('textbox', { name: 'Your message' }), 'hello');
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+  }
+
+  it('discards the abandoned partial when a fallback provider restarts', async () => {
+    fetchMock.mockResolvedValue(
+      streamOf([
+        frame({ type: 'content', delta: 'Half an answ' }),
+        frame({ type: 'content_reset', reason: 'provider_fallback' }),
+        frame({ type: 'content', delta: 'A whole answer.' }),
+        frame({ type: 'done' }),
+      ])
+    );
+
+    render(<CoachChat runId="run-1" conversationId={null} />);
+    await sendHello();
+
+    expect(await screen.findByText('A whole answer.')).toBeInTheDocument();
+    expect(screen.queryByText(/Half an answ/)).not.toBeInTheDocument();
+  });
+
+  it('surfaces a per-turn budget abort, which can be the only frame that arrives', async () => {
+    // No trailing `done` or `error`: dropping this frame leaves the coach turn silently empty.
+    fetchMock.mockResolvedValue(
+      streamOf([
+        `event: budget_exceeded_per_turn\ndata: ${JSON.stringify({
+          type: 'budget_exceeded_per_turn',
+          message: 'This turn cost more than its limit.',
+        })}\n\n`,
+      ])
+    );
+
+    render(<CoachChat runId="run-1" conversationId={null} />);
+    await sendHello();
+
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      /This turn cost more than its limit/
+    );
+  });
+
+  it("passes the server's own error message through rather than a generic one", async () => {
+    fetchMock.mockResolvedValue(
+      streamOf([
+        frame({ type: 'error', code: 'provider_down', message: 'The coach is unavailable.' }),
+      ])
+    );
+
+    render(<CoachChat runId="run-1" conversationId={null} />);
+    await sendHello();
+
+    expect(await screen.findByRole('status')).toHaveTextContent(/The coach is unavailable/);
+  });
+
+  it('moves the status under the words once there are words to read', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'content-type': 'text/event-stream' }),
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(encoder.encode(frame({ type: 'status', message: 'Thinking...' })));
+          controller.enqueue(
+            encoder.encode(frame({ type: 'content', delta: 'Where does your week go?' }))
+          );
+          // Left open: still streaming, so the status is still live.
+        },
+      }),
+    });
+
+    render(<CoachChat runId="run-1" conversationId={null} />);
+    await sendHello();
+
+    // The words are the headline; the status is a note beneath them, not the dots that replaced them.
+    expect(await screen.findByText('Where does your week go?')).toBeInTheDocument();
+    const statuses = screen.getAllByRole('status');
+    expect(statuses.some((el) => el.textContent === 'Thinking…')).toBe(true);
+  });
+});
+
+describe('CoachChat — the frame it is given', () => {
+  it('shows the phase’s own invitation instead of the generic one when given it', () => {
+    render(<CoachChat runId="run-1" conversationId={null} opener="Tell me about your energy." />);
+
+    expect(screen.getByText('Tell me about your energy.')).toBeInTheDocument();
+    expect(screen.queryByText(/say hello and we will begin/)).not.toBeInTheDocument();
+  });
+
+  it('renders the phase’s intro, beats and footer around the transcript', () => {
+    render(
+      <CoachChat
+        runId="run-1"
+        conversationId={null}
+        intro={<p>the signpost</p>}
+        beats={<p>the chart</p>}
+        footer={<button type="button">Continue to the next phase</button>}
+      />
+    );
+
+    expect(screen.getByText('the signpost')).toBeInTheDocument();
+    expect(screen.getByText('the chart')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Continue to the next phase' })).toBeInTheDocument();
+  });
+
+  it('takes an explicit height for a caller that is inside a scrolling column', () => {
+    // Phase 6's warm close. Without this the transcript grows and the composer walks down the page,
+    // which is the whole bug the frame was built to end.
+    render(<CoachChat runId="run-1" conversationId={null} className="h-[26rem]" />);
+
+    const section = screen.getByRole('region', { name: 'Conversation with the coach' });
+    expect(section.className).toContain('h-[26rem]');
+    expect(section.className).not.toContain('flex-1');
   });
 });
