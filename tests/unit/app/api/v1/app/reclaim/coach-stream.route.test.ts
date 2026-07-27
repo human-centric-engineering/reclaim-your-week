@@ -51,6 +51,7 @@ vi.mock('@/lib/framework/guidance/surface', () => ({
 vi.mock('@/app/api/v1/app/reclaim/runs/service', () => ({
   loadCoachTurnTarget: vi.fn(),
   linkRunConversation: vi.fn(),
+  claimCoachOpening: vi.fn(),
 }));
 
 import { POST } from '@/app/api/v1/app/reclaim/runs/[runId]/coach/stream/route';
@@ -58,7 +59,12 @@ import { auth } from '@/lib/auth/config';
 import { consumerChatLimiter, agentChatLimiter } from '@/lib/security/rate-limit';
 import { streamChat } from '@/lib/orchestration/chat';
 import { resolveModuleSurface } from '@/lib/framework/guidance/surface';
-import { loadCoachTurnTarget, linkRunConversation } from '@/app/api/v1/app/reclaim/runs/service';
+import {
+  loadCoachTurnTarget,
+  linkRunConversation,
+  claimCoachOpening,
+} from '@/app/api/v1/app/reclaim/runs/service';
+import { COACH_OPENING_TRIGGER } from '@/lib/app/programme/coach/opening';
 
 const RUN_ID = 'clxrun00000000000000000a';
 
@@ -99,6 +105,7 @@ beforeEach(() => {
     phaseKey: 'phase-3-ideal',
   });
   vi.mocked(streamChat).mockReturnValue(opensConversation('conv-of-this-run'));
+  vi.mocked(claimCoachOpening).mockResolvedValue(true);
 });
 
 describe('POST reclaim coach stream', () => {
@@ -176,6 +183,85 @@ describe('POST reclaim coach stream', () => {
     const res = await POST(req({ message: '' }), ctx());
 
     expect(res.status).toBe(400);
+    expect(streamChat).not.toHaveBeenCalled();
+  });
+
+  it('reads a body with no kind as a leader turn, so a deploy does not break a turn in flight', async () => {
+    // The discriminated union picks its branch by reading `kind`, so an absent one matches no branch
+    // at all. A browser still running the previous build sends exactly this shape.
+    const res = await POST(req({ message: 'still typing' }), ctx());
+
+    expect(res.status).toBe(200);
+    expect(streamChat).toHaveBeenCalledWith(expect.objectContaining({ message: 'still typing' }));
+  });
+});
+
+describe('POST reclaim coach stream — the coach opening a moment', () => {
+  it('claims the moment before generating, and sends the trigger in the leader’s place', async () => {
+    vi.mocked(loadCoachTurnTarget).mockResolvedValue({
+      conversationId: 'conv-of-this-run',
+      phaseKey: 'phase-4-gap',
+    });
+
+    const res = await POST(req({ kind: 'opening', moment: 'phase-4-gap' }), ctx());
+
+    expect(res.status).toBe(200);
+    expect(claimCoachOpening).toHaveBeenCalledWith('user-1', RUN_ID, 'phase-4-gap');
+    expect(streamChat).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: COACH_OPENING_TRIGGER,
+        scope: expect.objectContaining({ nodeKey: 'phase-4-gap', reclaimRunId: RUN_ID }),
+      })
+    );
+  });
+
+  it('generates nothing when the moment was already claimed', async () => {
+    // The whole point of the ledger: a reload part-way through a stream, or a second tab, must not
+    // buy the leader a second copy of a beat they have already had.
+    vi.mocked(loadCoachTurnTarget).mockResolvedValue({
+      conversationId: 'conv-of-this-run',
+      phaseKey: 'phase-4-gap',
+    });
+    vi.mocked(claimCoachOpening).mockResolvedValue(false);
+
+    const res = await POST(req({ kind: 'opening', moment: 'phase-4-gap' }), ctx());
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ data: { opened: false } });
+    expect(streamChat).not.toHaveBeenCalled();
+  });
+
+  it('refuses a moment that does not belong to the phase the leader is on', async () => {
+    // The client sends the moment; the server owns the phase. Without this a client could ask for
+    // the gap presentation while the leader is still describing their week.
+    vi.mocked(loadCoachTurnTarget).mockResolvedValue({
+      conversationId: 'conv-of-this-run',
+      phaseKey: 'phase-1-current',
+    });
+
+    const res = await POST(req({ kind: 'opening', moment: 'phase-4-gap' }), ctx());
+
+    expect(res.status).toBe(422);
+    expect(await res.json()).toMatchObject({ error: { code: 'OPENING_WRONG_PHASE' } });
+    expect(claimCoachOpening).not.toHaveBeenCalled();
+    expect(streamChat).not.toHaveBeenCalled();
+  });
+
+  it('400s on a moment that is not one of ours', async () => {
+    const res = await POST(req({ kind: 'opening', moment: 'phase-9-invented' }), ctx());
+
+    expect(res.status).toBe(400);
+    expect(claimCoachOpening).not.toHaveBeenCalled();
+    expect(streamChat).not.toHaveBeenCalled();
+  });
+
+  it('refuses before claiming when the run is not the caller’s', async () => {
+    vi.mocked(loadCoachTurnTarget).mockRejectedValue(new NotFoundError('Audit not found'));
+
+    const res = await POST(req({ kind: 'opening', moment: 'phase-4-gap' }), ctx());
+
+    expect(res.status).toBe(404);
+    expect(claimCoachOpening).not.toHaveBeenCalled();
     expect(streamChat).not.toHaveBeenCalled();
   });
 

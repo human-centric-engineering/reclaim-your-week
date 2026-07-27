@@ -1,7 +1,6 @@
 # `ryw-conversational` — the audit as a coaching conversation
 
-**Owner:** John · **Status:** stages 0–2 shipped, stages 3–9 specified · **Depends on:** F1–F10
-(all shipped)
+**Owner:** John · **Status:** stages 0–6 shipped, 7–9 ready · **Depends on:** F1–F10 (all shipped)
 
 ---
 
@@ -32,12 +31,13 @@ should be able to. What was missing was the thing the tool was designed to be.
 The work was planned as five stages, smallest-provable-thing first. Stage 0 shipped alone (#50); this
 branch carries stages 1 and 2 together, because stage 2 has no surface to stand on without stage 1.
 
-| Stage | What                                                                                                    | State                                                             |
-| ----- | ------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| 0     | `record_answers` — a conversation produces the same data a form does                                    | **shipped** (#50)                                                 |
-| 1     | The run-scoped conversation: the leaf stream route, and the run's conversation as a foreign key         | **shipped** (this branch)                                         |
-| 2     | The conversational phase surface: phase context, the captured panel, the coach re-authored              | **shipped** (this branch)                                         |
-| 3–9   | The conversation's own shape: a phase that opens itself, the chart beat, the calendar branch, the close | **specified** — see [The remaining stages](#the-remaining-stages) |
+| Stage | What                                                                                            | State                                                             |
+| ----- | ----------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| 0     | `record_answers` — a conversation produces the same data a form does                            | **shipped** (#50)                                                 |
+| 1     | The run-scoped conversation: the leaf stream route, and the run's conversation as a foreign key | **shipped** (this branch)                                         |
+| 2     | The conversational phase surface: phase context, the captured panel, the coach re-authored      | **shipped** (this branch)                                         |
+| 3–6   | The phase opens itself: the signpost card, the opening turn, the chart beat, the gap figures    | **shipped**                                                       |
+| 7–9   | The calendar branch, the close, and proving it                                                  | **specified** — see [The remaining stages](#the-remaining-stages) |
 
 **Stages 3 to 5 were never written down.** They existed in a working conversation that is gone. Rather
 than reconstruct a plan nobody could check, the next stages were planned from the open questions the
@@ -181,17 +181,27 @@ which leaves the coach unable to record the answer to a question the source expl
 Each is one PR through the [[building-a-feature]] gate loop. **3 and 4 are hard prerequisites; 5, 6
 and 7 are independent of each other once 4 lands.**
 
-| Stage | Delivers                                                     | Closes | Size |
-| ----- | ------------------------------------------------------------ | ------ | ---- |
-| 3     | The deterministic signpost card, content in `Module.config`  | 1      | ~450 |
-| 4     | The server-triggered opening turn, wired to one moment       | 1      | ~500 |
-| 5     | The chart as a beat (I12), both paths, server-gated          | 2      | ~450 |
-| 6     | The phase-4 gap data flow and its opening turn               | —      | ~350 |
-| 7a    | I6 amendment, real exposure enforcement, `fill_slot` removal | 6      | ~350 |
-| 7b    | The calendar hand-off and the unreachable-route bug          | 3      | ~450 |
-| 8a    | Phase 6 takeaway as a question                               | 4      | ~400 |
-| 8b    | Warm close and affirmation after the summary                 | 4      | ~300 |
-| 9     | `smoke:reclaim-coach` + the eval fixture                     | 5      | ~400 |
+| Stage | Delivers                                                     | Closes | State        |
+| ----- | ------------------------------------------------------------ | ------ | ------------ |
+| 3     | The deterministic signpost card, content in `Module.config`  | 1      | **shipped**  |
+| 4     | The server-triggered opening turn, and the moment ledger     | 1      | **shipped**  |
+| 5     | The chart as a beat (I12), both paths, server-gated          | 2      | **shipped**  |
+| 6     | The phase-4 gap data flow and its opening turn               | —      | **shipped**  |
+| 7a    | I6 amendment, real exposure enforcement, `fill_slot` removal | 6      | ready ▲      |
+| 7b    | The calendar hand-off and the unreachable-route bug          | 3      | ready ▲      |
+| 8a    | Phase 6 takeaway as a question                               | 4      | ready ▲      |
+| 8b    | Warm close and affirmation after the summary                 | 4      | blocked → 8a |
+| 9     | `smoke:reclaim-coach` + the eval fixture                     | 5      | ready ▲      |
+
+**Stages 3 to 6 shipped together**, as one branch. They are the prerequisite chain — 5 and 6 have no
+trigger without 4, and 4 has nothing to open without 3 — and they read as one story: the conversation
+now opens itself, and the two beats that need figures land as beats rather than as running totals.
+
+**Two things were deferred out of stage 3 deliberately.** The signposts are editable through the
+framework's own module config form but are **not yet in `/admin/programme/content`**, because
+`content-diff.ts` would label our orientation copy "differs from source" — a sentence about a source
+document that this copy does not have. Adding `ContentField.sourceKind` is the prerequisite and it
+belongs with the editor row, not with the config key. See [[invariants]] I11.
 
 ### Stage 3 — the deterministic signpost card
 

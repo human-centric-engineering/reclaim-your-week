@@ -94,7 +94,25 @@ export interface AdvanceResult {
   ok: boolean;
   /** Set when the server refused because a reflection is still required (I9). */
   reflectionRequired?: boolean;
+  /** Set when the server refused because the picture of the week has not been shown yet (I12). */
+  chartRevealRequired?: boolean;
   message?: string;
+}
+
+/**
+ * Record that a coach-opening moment has happened, without generating a turn.
+ *
+ * The form path's half of the reveal: there is no conversation to speak into, and the fact still has
+ * to reach the run, because the transition gate reads it. Best-effort by design — a leader who has
+ * seen their week should not be blocked by a bookkeeping call, and the gate will ask again if it
+ * genuinely did not land.
+ */
+export async function claimOpening(runId: string, moment: string): Promise<void> {
+  await fetch(`/api/v1/app/reclaim/runs/${runId}/coach/openings`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ moment }),
+  }).catch(() => undefined);
 }
 
 /** Fetch the leader's own summary for a run (Phase 6). Throws on failure. */
@@ -148,6 +166,9 @@ export async function advancePhase(runId: string, fromPhase: string): Promise<Ad
   const code = z.object({ error: z.object({ code: z.string() }) }).safeParse(json);
   if (res.status === 422 && code.success && code.data.error.code === 'REFLECTION_REQUIRED') {
     return { ok: false, reflectionRequired: true, message: errorMessageFrom(json) ?? undefined };
+  }
+  if (res.status === 422 && code.success && code.data.error.code === 'CHART_REVEAL_REQUIRED') {
+    return { ok: false, chartRevealRequired: true, message: errorMessageFrom(json) ?? undefined };
   }
   return { ok: false, message: errorMessageFrom(json) ?? 'We could not move on just now.' };
 }

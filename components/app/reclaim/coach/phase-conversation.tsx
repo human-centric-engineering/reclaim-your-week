@@ -25,6 +25,12 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { buildChartData } from '@/lib/app/programme/chart/series';
+import {
+  CHART_REVEAL_MOMENT,
+  CHART_REVEAL_PHASE,
+  chartRevealState,
+} from '@/lib/app/programme/chart/reveal';
+import type { CoachOpeningMoment } from '@/lib/app/programme/coach/opening';
 import { phaseCaptureSlots } from '@/lib/app/programme/coach/phase-slots';
 import { reflectionSlugForLeaving } from '@/lib/app/programme/runs/phases';
 import { ReclaimChart } from '@/components/app/reclaim/chart/reclaim-chart';
@@ -39,15 +45,43 @@ import {
   type RunAnswers,
 } from '@/components/app/reclaim/phase/actions';
 
-/** The phase whose panel draws the leader's week as it fills in. */
-const CHARTED_PHASE = 'phase-1-current';
+/**
+ * Which moment, if any, the coach should open here.
+ *
+ * The three data moments each have their own trigger, and they differ in kind. Phase 4 and phase 5
+ * open as soon as the leader arrives, because the figures they need are already captured. Phase 1's
+ * waits for the leader to ask, because the whole point of that beat is that they choose when to look
+ * (I12, I16 — the decision stays with them).
+ *
+ * A moment already in the run's ledger returns `null`, so a reload never replays a beat.
+ */
+function openMomentFor(
+  phaseKey: string,
+  coachOpenings: string[],
+  revealing: boolean
+): CoachOpeningMoment | null {
+  const due: CoachOpeningMoment | null =
+    phaseKey === CHART_REVEAL_PHASE
+      ? revealing
+        ? CHART_REVEAL_MOMENT
+        : null
+      : phaseKey === 'phase-4-gap'
+        ? 'phase-4-gap'
+        : phaseKey === 'phase-5-action'
+          ? 'phase-5-action'
+          : null;
+  if (due === null || coachOpenings.includes(due)) return null;
+  return due;
+}
 
 export interface PhaseConversationProps {
   runId: string;
   phaseKey: string;
   /** The run's conversation, or `null` until the first turn opens one. */
   conversationId: string | null;
-  /** Re-read the run state after the phase advances. */
+  /** The coach-opening moments this run has already had, so none is replayed on a reload. */
+  coachOpenings: string[];
+  /** Re-read the run state after the phase advances, or after a moment fires. */
   onAdvanced: () => void;
   /** Switch this phase to its form panel. */
   onSwitchToForm: () => void;
@@ -57,6 +91,7 @@ export function PhaseConversation({
   runId,
   phaseKey,
   conversationId,
+  coachOpenings,
   onAdvanced,
   onSwitchToForm,
 }: PhaseConversationProps) {
@@ -65,6 +100,12 @@ export function PhaseConversation({
   const [reflection, setReflection] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * Set when the leader asks to see their week. Held here rather than derived, because the run's
+   * ledger only catches up on the next `GET /runs/current` and the beat has to start the moment they
+   * press the button.
+   */
+  const [revealing, setRevealing] = useState(false);
 
   const refresh = useCallback(async () => {
     const [loaded, bucketLabels] = await Promise.all([
@@ -83,10 +124,19 @@ export function PhaseConversation({
   const captureSlots = phaseCaptureSlots(phaseKey);
   const capturedCount = captureSlots.filter((s) => answers[s.slug] !== undefined).length;
 
+  // I12, the reveal as an event rather than a running total. `revealing` folds in the click that has
+  // not yet reached the run's ledger, so the chart and the coach's beat start together.
+  const revealState =
+    phaseKey === CHART_REVEAL_PHASE ? chartRevealState(answers, coachOpenings) : null;
+  const revealed = revealState === 'revealed' || (revealState === 'ready' && revealing);
+
   // A leader who has said nothing yet has nothing to move on from, so the button waits rather than
-  // letting them skip a phase they have not had. The reflection gate is the server's (I9); this only
-  // avoids offering a move that would be refused.
-  const canAdvance = capturedCount > 0 && (reflectionSlug === null || reflection.trim().length > 0);
+  // letting them skip a phase they have not had. Both gates are the server's (I9 for the reflection,
+  // I12 for the reveal); this only avoids offering a move that would be refused.
+  const canAdvance =
+    capturedCount > 0 &&
+    (reflectionSlug === null || reflection.trim().length > 0) &&
+    (revealState === null || revealed);
 
   const advance = async () => {
     setBusy(true);
@@ -100,7 +150,9 @@ export function PhaseConversation({
         throw new Error(
           advanced.reflectionRequired
             ? 'A reflection is needed before moving on.'
-            : (advanced.message ?? 'We could not move on just now.')
+            : advanced.chartRevealRequired
+              ? 'Have a look at the shape of your week before moving on.'
+              : (advanced.message ?? 'We could not move on just now.')
         );
       }
       onAdvanced();
@@ -110,7 +162,11 @@ export function PhaseConversation({
     }
   };
 
-  const chart = phaseKey === CHARTED_PHASE ? buildChartData(answers, labels) : null;
+  const chart = revealed ? buildChartData(answers, labels) : null;
+
+  // The moment the coach opens, or `null` for a phase the leader leads. Only a moment that is due and
+  // absent from the run's ledger is passed down, so the common case never troubles the server.
+  const openMoment = openMomentFor(phaseKey, coachOpenings, revealing);
 
   return (
     <div className="space-y-10">
@@ -118,7 +174,13 @@ export function PhaseConversation({
         <CoachChat
           runId={runId}
           conversationId={conversationId}
-          onTurnComplete={() => void refresh()}
+          openMoment={openMoment}
+          onTurnComplete={() => {
+            void refresh();
+            // The run's ledger has moved if a moment just fired; re-reading it is what stops the
+            // moment being offered again on the next render.
+            onAdvanced();
+          }}
         />
         <div className="space-y-6">
           <CapturedPanel
@@ -138,8 +200,32 @@ export function PhaseConversation({
         </div>
       </div>
 
-      {/* The picture the leader is talking their way into. Renders once there is anything to draw. */}
-      {chart !== null && capturedCount > 0 && (
+      {/*
+        I12 — the picture and its interpretation are separate beats.
+
+        Until every area has a figure there is nothing whole to show. Once there is, the leader asks
+        for it, and what they get is the chart on its own: no summary beside it, no reading of what it
+        means. The coach's turn then names the gaps in figures and asks one question, and stops. This
+        used to draw itself the instant one reading landed, which meant the leader met their week one
+        bar at a time and there was no reveal left to have.
+      */}
+      {revealState === 'ready' && !revealing && (
+        <div className="border-border/70 border-t pt-8">
+          <p className="text-foreground text-[1.02rem] leading-relaxed text-balance">
+            That is every area accounted for. Whenever you are ready, we can look at the shape of
+            the week you have described.
+          </p>
+          <button
+            type="button"
+            onClick={() => setRevealing(true)}
+            className="bg-primary text-primary-foreground mt-5 rounded-full px-8 py-3 text-[0.95rem] font-medium"
+          >
+            Show me where the week is going
+          </button>
+        </div>
+      )}
+
+      {chart !== null && (
         <div className="border-border/70 border-t pt-8">
           <ReclaimChart data={chart} />
         </div>

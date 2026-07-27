@@ -103,6 +103,10 @@ const COACH_VOICED = [
   // conversation. Rashmir's verbatim content reaches this file as imported constants, never as
   // literal text, so the zero-tolerance rule can stay bare here too.
   'lib/app/programme/coach/phase-context.ts',
+  // The trigger that makes the coach speak first. It is persisted as a message and stays in the
+  // model's history for the whole run, so it is read every turn by the thing whose voice this guard
+  // protects — the strongest case in this list for a file no leader ever sees.
+  'lib/app/programme/coach/opening.ts',
   // The three emails the app authors. `welcome.tsx` is here because its absence had a cost; the other
   // two were already clean, which is luck rather than enforcement, and this is what ends the luck.
   'components/app/emails/invitation.tsx',

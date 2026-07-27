@@ -48,6 +48,7 @@ const props = {
   runId: 'run-1',
   phaseKey: 'phase-2-energy',
   conversationId: 'conv-1',
+  coachOpenings: [],
   onAdvanced: vi.fn(),
   onSwitchToForm: vi.fn(),
 };

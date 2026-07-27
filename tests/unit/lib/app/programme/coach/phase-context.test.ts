@@ -10,20 +10,30 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-const { findFirst, readRunAnswers, readBucketLabels, loadPhaseProgress, readCoachContent } =
-  vi.hoisted(() => ({
-    findFirst: vi.fn(),
-    readRunAnswers: vi.fn(),
-    readBucketLabels: vi.fn(),
-    loadPhaseProgress: vi.fn(),
-    readCoachContent: vi.fn(),
-  }));
+const {
+  findFirst,
+  readRunAnswers,
+  readBucketLabels,
+  loadPhaseProgress,
+  readCoachContent,
+  readSignposts,
+} = vi.hoisted(() => ({
+  findFirst: vi.fn(),
+  readRunAnswers: vi.fn(),
+  readBucketLabels: vi.fn(),
+  loadPhaseProgress: vi.fn(),
+  readCoachContent: vi.fn(),
+  readSignposts: vi.fn(),
+}));
 
 vi.mock('@/lib/db/client', () => ({ prisma: { reclaimAuditRun: { findFirst } } }));
 vi.mock('@/lib/app/programme/runs/answers', () => ({ readRunAnswers }));
 vi.mock('@/lib/app/programme/buckets/labels', () => ({ readBucketLabels }));
 vi.mock('@/lib/app/programme/runs/journey', () => ({ loadPhaseProgress }));
-vi.mock('@/lib/app/programme/config', () => ({ readReclaimCoachContent: readCoachContent }));
+vi.mock('@/lib/app/programme/config', () => ({
+  readReclaimCoachContent: readCoachContent,
+  readReclaimSignposts: readSignposts,
+}));
 
 /** Content as an operator's config would supply it — the two areas are enough to show the shape. */
 const content = {
@@ -63,6 +73,9 @@ beforeEach(() => {
   readRunAnswers.mockResolvedValue({});
   readBucketLabels.mockResolvedValue({});
   loadPhaseProgress.mockResolvedValue({ phases: [], currentPhaseKey: 'phase-2-energy' });
+  // The signpost cards. Defaults to none, so the existing assertions keep testing the capture block
+  // rather than the card echo; the tests that care about the card supply their own.
+  readSignposts.mockResolvedValue([]);
   readCoachContent.mockResolvedValue(content);
 });
 
@@ -196,5 +209,101 @@ describe('buildCoachPhaseContext', () => {
     readBucketLabels.mockRejectedValue(new Error('label read failed'));
 
     expect(await buildCoachPhaseContext('u1')).toContain('phase 2 of 6');
+  });
+
+  it('still builds when the signpost config cannot be read', async () => {
+    // The cards are operator-editable config; a failed read must cost the coach a paragraph of
+    // context, never a leader their turn.
+    readSignposts.mockRejectedValue(new Error('config read failed'));
+
+    expect(await buildCoachPhaseContext('u1')).toContain('phase 2 of 6');
+  });
+});
+
+describe('buildCoachPhaseContext — the card the leader has already read', () => {
+  it('quotes the phase opening back and forbids restating it', async () => {
+    // Without this the coach opens by orienting the leader to a phase that has just oriented them,
+    // because its own system instructions tell it to signpost every phase.
+    readSignposts.mockResolvedValue([
+      {
+        phaseKey: 'phase-2-energy',
+        involves: 'INVOLVES',
+        duration: 'ten minutes',
+        opening: ['THE CARD SAID THIS'],
+      },
+    ]);
+
+    const block = await buildCoachPhaseContext('u1');
+
+    expect(block).toContain('THE CARD SAID THIS');
+    expect(block).toContain('Do not restate');
+  });
+
+  it('says nothing about a card when the phase has no opening beats', async () => {
+    readSignposts.mockResolvedValue([
+      { phaseKey: 'phase-2-energy', involves: 'INVOLVES', duration: 'ten', opening: [] },
+    ]);
+
+    expect(await buildCoachPhaseContext('u1')).not.toContain('Do not restate');
+  });
+});
+
+describe('buildCoachPhaseContext — the gap, in the leader’s own figures', () => {
+  beforeEach(() => {
+    loadPhaseProgress.mockResolvedValue({ phases: [], currentPhaseKey: 'phase-4-gap' });
+  });
+
+  const hours = (n: number) => ({
+    value: String(n),
+    valueJson: n,
+    sourceType: 'direct',
+    confidence: 10,
+  });
+
+  it('gives the coach the arithmetic rather than asking it to remember', async () => {
+    // I13's sibling. The source wants a gap named in actual numbers ("about 15% ... closer to 30%"),
+    // and a coach asked to do that from memory invents a figure that sounds right.
+    readRunAnswers.mockResolvedValue({
+      reclaim_current_hours__deep_work: hours(4),
+      reclaim_ideal_hours__deep_work: hours(10),
+    });
+
+    const block = await buildCoachPhaseContext('u1');
+
+    expect(block).toContain('4h now, 10h wanted, 6h more');
+    expect(block).toContain('Do not recalculate these');
+  });
+
+  it('names a reduction as less rather than as a negative number', async () => {
+    readRunAnswers.mockResolvedValue({
+      reclaim_current_hours__deep_work: hours(12),
+      reclaim_ideal_hours__deep_work: hours(5),
+    });
+
+    expect(await buildCoachPhaseContext('u1')).toContain('12h now, 5h wanted, 7h less');
+  });
+
+  it('says so plainly when an area has no ideal yet', async () => {
+    readRunAnswers.mockResolvedValue({ reclaim_current_hours__deep_work: hours(4) });
+
+    expect(await buildCoachPhaseContext('u1')).toContain('no ideal given');
+  });
+
+  it('leaves out an area the leader was never asked about', async () => {
+    // Fundraising is conditional, and this run did not mark it relevant, so it must not appear as a
+    // gap of zero against an ideal nobody was offered.
+    readRunAnswers.mockResolvedValue({ reclaim_current_hours__deep_work: hours(4) });
+
+    expect(await buildCoachPhaseContext('u1')).not.toContain('Fundraising');
+  });
+
+  it('is absent in a phase that is not the gap', async () => {
+    loadPhaseProgress.mockResolvedValue({ phases: [], currentPhaseKey: 'phase-2-energy' });
+    readRunAnswers.mockResolvedValue({
+      reclaim_current_hours__deep_work: hours(4),
+      reclaim_ideal_hours__deep_work: hours(10),
+    });
+
+    expect(await buildCoachPhaseContext('u1')).not.toContain('Do not recalculate these');
   });
 });

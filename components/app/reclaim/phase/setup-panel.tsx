@@ -10,7 +10,6 @@
  */
 
 import { useEffect, useState } from 'react';
-import { RECLAIM_PROCESS_OUTLINE } from '@/lib/app/programme/content';
 import { parseHours, isHours } from '@/components/app/reclaim/phase/hours';
 import { saveBatch, advancePhase, type AnswerInput } from '@/components/app/reclaim/phase/actions';
 import { readShortcut } from '@/components/app/reclaim/repeat/actions';
@@ -253,11 +252,13 @@ export function SetupPanel({ runId, onAdvanced }: { runId: string; onAdvanced: (
 
   return (
     <div className="space-y-8">
-      {confirmLine === null ? (
-        <p className="text-foreground text-[1.02rem] leading-relaxed text-balance">
-          {RECLAIM_PROCESS_OUTLINE}
-        </p>
-      ) : (
+      {/*
+        The process outline used to render here, and now opens the phase from the signpost card
+        above instead — one place, read from `Module.config`, and shown on the conversational path
+        too, which this branch never reached. What stays here is the shortcut, because it is about
+        this form's fields rather than about the phase.
+      */}
+      {confirmLine !== null && (
         // F9 t-2 — §4's recent-audit shortcut, in Rashmir's own words (I11, guarded verbatim in
         // hop 2). It CONFIRMS rather than assumes: everything below is filled in and every field is
         // still editable, and the question invites them to say what has changed.

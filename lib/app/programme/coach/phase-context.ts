@@ -26,9 +26,24 @@ import { loadPhaseProgress } from '@/lib/app/programme/runs/journey';
 import { phaseCaptureSlots } from '@/lib/app/programme/coach/phase-slots';
 import { RECLAIM_PHASES } from '@/lib/app/programme/map';
 import { phaseNumber, reflectionSlugForLeaving } from '@/lib/app/programme/runs/phases';
-import { truthy } from '@/lib/app/programme/chart/series';
-import { readReclaimCoachContent, type ReclaimCoachContent } from '@/lib/app/programme/config';
-import { RECLAIM_UNDER_DELEGATION_INVITATION } from '@/lib/app/programme/content';
+import {
+  truthy,
+  bucketHours,
+  buildChartData,
+  type Answers,
+} from '@/lib/app/programme/chart/series';
+import { CHART_REVEAL_PHASE, chartRevealReady } from '@/lib/app/programme/chart/reveal';
+import {
+  readReclaimCoachContent,
+  readReclaimSignposts,
+  type ReclaimCoachContent,
+} from '@/lib/app/programme/config';
+import { signpostFor } from '@/lib/app/programme/runs/signposts';
+import {
+  RECLAIM_UNDER_DELEGATION_INVITATION,
+  RECLAIM_BUCKETS,
+  bucketToken,
+} from '@/lib/app/programme/content';
 
 /** The slug whose answer decides whether the fundraising area is part of this leader's audit. */
 const FUNDRAISING_RELEVANT = 'reclaim_setup_fundraising_relevant';
@@ -96,6 +111,104 @@ function contentForPhase(
   return parts;
 }
 
+/**
+ * One line per area: what the leader has now, what they said they wanted, and the difference.
+ *
+ * Reads `RECLAIM_BUCKETS` and the leader's own labels rather than the operator's config titles, which
+ * is deliberate: this is the same source `buildChartData` draws from, so the areas the coach names are
+ * exactly the areas on the leader's screen, under exactly the same names. The config supplies the
+ * coach's *descriptive* content (the frame, the descriptions, the benchmarks); the canonical slugs and
+ * their display labels are structure (I7).
+ */
+function gapLines(answers: Answers, bucketLabels: Record<string, string>): string[] {
+  const current = bucketHours(answers);
+  const lines: string[] = [];
+
+  for (const bucket of RECLAIM_BUCKETS) {
+    const now = current.get(bucket.slug);
+    if (now === null || now === undefined) continue; // never asked about, so never compared
+    const token = bucketToken(bucket.slug);
+    const ideal = answers[`reclaim_ideal_hours__${token}`];
+    const title = bucketLabels[token] ?? bucket.title;
+    if (ideal === undefined) {
+      lines.push(`- ${title}: ${now}h now, no ideal given.`);
+      continue;
+    }
+    const want = Number(ideal.valueJson ?? ideal.value);
+    if (!Number.isFinite(want)) {
+      lines.push(`- ${title}: ${now}h now, ideal recorded as "${ideal.value}".`);
+      continue;
+    }
+    const delta = Math.round((want - now) * 10) / 10;
+    const direction = delta === 0 ? 'no change' : delta > 0 ? `${delta}h more` : `${-delta}h less`;
+    lines.push(`- ${title}: ${now}h now, ${want}h wanted, ${direction}.`);
+  }
+  return lines;
+}
+
+/**
+ * The figures behind the gap, and the picture behind the reveal.
+ *
+ * Both are data flows rather than prompt text, and for the same reason I13 gives about the
+ * refer-back. The source asks the tool to name a gap in the leader's actual numbers — "you estimated
+ * you were spending about 15% on delivery and operations. Your calendar shows it is closer to 30%"
+ * (`sources/Time_Audit_Tool_Prompt_Text.md:235`) — and a coach asked to do that from memory will
+ * invent a figure that sounds right. So the arithmetic happens here and the model is given the
+ * result.
+ */
+function momentForPhase(
+  phaseKey: string,
+  answers: Answers,
+  bucketLabels: Record<string, string>
+): string[] {
+  if (phaseKey === CHART_REVEAL_PHASE) {
+    if (!chartRevealReady(answers)) return [];
+    const chart = buildChartData(answers, bucketLabels);
+    const over = chart.buckets.filter((b) => b.status === 'over');
+    const under = chart.buckets.filter((b) => b.status === 'under');
+    return [
+      '',
+      'The picture on screen, and what to do when the leader has just asked to see it. These are the',
+      'figures they are looking at:',
+      ...chart.buckets.map(
+        (b) => `- ${b.title}: ${b.hours}h, ${b.percent} per cent of the week (${b.status})`
+      ),
+      `Total: ${chart.totalHours} hours a week.`,
+      over.length > 0 ? `Above its benchmark: ${over.map((b) => b.title).join(', ')}.` : '',
+      under.length > 0 ? `Below its benchmark: ${under.map((b) => b.title).join(', ')}.` : '',
+      chart.unallocated.length > 0
+        ? `No time at all this period: ${chart.unallocated.join(', ')}. Wonder about these gently rather than only noting them.`
+        : '',
+      chart.source === 'composite'
+        ? 'These are composite figures, their calendar plus the work that never reaches a calendar. Where that differs from what they first estimated, it is information about what a calendar does not capture, not evidence that they were wrong.'
+        : 'These are their own estimates, which is exactly what this beat is for.',
+      '',
+      'When they arrive at this moment, name what the figures show, specifically and in numbers. Then',
+      'ask one question, close to "what stands out to you here?", and stop. Do not interpret, do not',
+      'add observations, and do not move them on. After they answer, acknowledge what they noticed and',
+      'only then add what they may have missed.',
+    ].filter((line) => line !== '');
+  }
+
+  if (phaseKey === 'phase-4-gap') {
+    const lines = gapLines(answers, bucketLabels);
+    if (lines.length === 0) return [];
+    return [
+      '',
+      'The gap, in their own figures. Do not recalculate these and do not quote a number that is not',
+      'here:',
+      ...lines,
+      '',
+      'Open this phase by putting the two weeks side by side and naming what sits between them, in',
+      'these numbers. Their own words about what keeps them up at night and why they are doing this now',
+      'are elsewhere in your context: use them here, quoted as they said them, and then ask what they',
+      'notice. One question, then stop.',
+    ];
+  }
+
+  return [];
+}
+
 /** What a typed slot needs before it may be recorded, in the words the coach should act on. */
 function typedValueNote(dataType: string): string {
   switch (dataType) {
@@ -132,11 +245,13 @@ export async function buildCoachPhaseContext(userId: string): Promise<string> {
   const number = phaseNumber(currentPhaseKey);
   if (phase === undefined || number === null) return '';
 
-  // One read of the run, one of the labels, one of the content, then everything below is arithmetic.
-  const [answers, bucketLabels, content] = await Promise.all([
+  // One read of the run, one of the labels, one of the content, one of the cards, then everything
+  // below is arithmetic.
+  const [answers, bucketLabels, content, signposts] = await Promise.all([
     readRunAnswers(userId, run.id),
     readBucketLabels(userId).catch(() => ({})),
     readReclaimCoachContent(),
+    readReclaimSignposts().catch(() => []),
   ]);
 
   const fundraisingRelevant = truthy(answers[FUNDRAISING_RELEVANT]);
@@ -159,10 +274,25 @@ export async function buildCoachPhaseContext(userId: string): Promise<string> {
       ? 'This phase has no reflection pause.'
       : `Before this phase can be left, the leader records their own reflection (${reflectionSlug}) on screen. You may ask what they notice and offer their words back, and only they can save it.`;
 
+  // The card the leader has already read. Without this the coach opens by signposting a phase that
+  // has just signposted itself, because its own instructions tell it to orient them.
+  const card = signpostFor(currentPhaseKey, signposts.length > 0 ? signposts : undefined);
+  const cardLines =
+    card === null || card.opening.length === 0
+      ? []
+      : [
+          '',
+          'The leader has already read this phase on screen, and it said:',
+          ...card.opening.map((paragraph) => `"${paragraph}"`),
+          'Do not restate any of that. Begin from where it leaves off.',
+        ];
+
   return [
     `This audit is at phase ${number} of 6: ${phase.label}.`,
     '',
     ...contentForPhase(currentPhaseKey, content, fundraisingRelevant),
+    ...cardLines,
+    ...momentForPhase(currentPhaseKey, answers, bucketLabels),
     '',
     'What this phase captures, and what this run has so far. Anything listed as not yet captured has',
     'not been said in this audit, whatever earlier values appear elsewhere in your context.',

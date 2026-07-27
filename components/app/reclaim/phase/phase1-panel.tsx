@@ -3,15 +3,22 @@
 /**
  * Phase 1 — current reality (F6 t-2). Shows the nine areas first (the overview), then a card per area:
  * **hours per week** (I8, never a percentage) + what it looks like in practice, with deep-work's three
- * extra questions and the fundraising area shown only when Phase 0 marked it relevant. A live
- * `<ReclaimChart>` draws what they enter (composite when a calendar was reconciled, I-composite). A
- * user may relabel an area (I7 — the canonical slug is untouched). Ends with the required reflection
- * (I9, server-enforced). On continue it batch-saves and advances to Phase 2.
+ * extra questions and the fundraising area shown only when Phase 0 marked it relevant. A user may
+ * relabel an area (I7 — the canonical slug is untouched). Ends with the required reflection (I9,
+ * server-enforced). On continue it batch-saves and advances to Phase 2.
+ *
+ * **The chart is a reveal, not a live preview** (I12). It used to redraw as the leader typed, which
+ * meant they met their week one bar at a time and there was no picture left to show them. Now it waits
+ * until every area they were asked about has a figure, and then they choose when to look — and the
+ * server will not let them leave phase 1 until they have (`422 CHART_REVEAL_REQUIRED`). The
+ * conversational surface has the same rule; both read `chartRevealState`. Composite figures where a
+ * calendar was reconciled, never raw calendar totals (I-composite).
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { RECLAIM_BUCKETS, bucketToken, RECLAIM_DEEP_WORK_NOTE } from '@/lib/app/programme/content';
 import { buildChartData, truthy, type Answers } from '@/lib/app/programme/chart/series';
+import { CHART_REVEAL_MOMENT, chartRevealState } from '@/lib/app/programme/chart/reveal';
 import { ReclaimChart } from '@/components/app/reclaim/chart/reclaim-chart';
 import { Comparison } from '@/components/app/reclaim/repeat/comparison';
 import { Reflection } from '@/components/app/reclaim/phase/reflection';
@@ -23,11 +30,21 @@ import {
   readAnswers,
   readLabels,
   saveLabel,
+  claimOpening,
   type AnswerInput,
   type RunAnswers,
 } from '@/components/app/reclaim/phase/actions';
 
-export function Phase1Panel({ runId, onAdvanced }: { runId: string; onAdvanced: () => void }) {
+export function Phase1Panel({
+  runId,
+  coachOpenings,
+  onAdvanced,
+}: {
+  runId: string;
+  /** The moments this run has had, so a reload does not re-offer a reveal already given. */
+  coachOpenings: string[];
+  onAdvanced: () => void;
+}) {
   const [base, setBase] = useState<RunAnswers>({});
   const [labels, setLabels] = useState<Record<string, string>>({});
   const [hours, setHours] = useState<Record<string, string>>({});
@@ -39,6 +56,8 @@ export function Phase1Panel({ runId, onAdvanced }: { runId: string; onAdvanced: 
   const [stage, setStage] = useState<'overview' | 'cards'>('overview');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Set the moment the leader asks to see their week, before the run's ledger catches up. */
+  const [revealed, setRevealed] = useState(false);
 
   useEffect(() => {
     void (async () => {
@@ -57,17 +76,40 @@ export function Phase1Panel({ runId, onAdvanced }: { runId: string; onAdvanced: 
     [fundraisingRelevant]
   );
 
-  /** Merge the loaded answers with the live-entered hours, so the chart previews what they type. */
-  const chartData = useMemo(() => {
+  /** The loaded answers merged with the live-entered hours, so the chart draws what they typed. */
+  const liveAnswers = useMemo(() => {
     const live: Answers = { ...base };
     for (const [token, v] of Object.entries(hours)) {
       if (isHours(v))
         live[`reclaim_current_hours__${token}`] = { value: v, valueJson: parseHours(v) };
     }
-    return buildChartData(live, labels);
-  }, [base, hours, labels]);
+    return live;
+  }, [base, hours]);
 
-  const anyHours = Object.values(hours).some((v) => v.trim().length > 0);
+  const chartData = useMemo(() => buildChartData(liveAnswers, labels), [liveAnswers, labels]);
+
+  /**
+   * I12 — the picture is an event, not a running total.
+   *
+   * This panel used to draw the chart the instant any one field had a number in it, so a leader met
+   * their week a bar at a time while typing and there was never a picture to reveal. Now it waits
+   * until every area they were asked about has a figure, and then they choose when to look. The
+   * conversational surface has the same rule for the same reason; both read `chartRevealState`.
+   */
+  const revealState = chartRevealState(
+    liveAnswers,
+    revealed ? [CHART_REVEAL_MOMENT] : coachOpenings
+  );
+  const isRevealed = revealState === 'revealed';
+
+  const reveal = useCallback(async () => {
+    setRevealed(true);
+    // Recorded server-side because the transition gate reads it, and because a reload should not
+    // ask a leader to reveal a week they have already seen. A failure here leaves the chart on
+    // screen and the gate closed, which the continue button explains rather than the leader
+    // discovering it as a refusal.
+    await claimOpening(runId, CHART_REVEAL_MOMENT);
+  }, [runId]);
 
   /** The live hours keyed by canonical bucket slug, for the comparison beside the cards (F9 t-2). */
   const liveHours = useMemo(() => {
@@ -122,7 +164,9 @@ export function Phase1Panel({ runId, onAdvanced }: { runId: string; onAdvanced: 
         throw new Error(
           advanced.reflectionRequired
             ? 'A reflection is needed before moving on.'
-            : (advanced.message ?? 'We could not move on just now.')
+            : advanced.chartRevealRequired
+              ? 'Have a look at the shape of your week before moving on.'
+              : (advanced.message ?? 'We could not move on just now.')
         );
       }
       onAdvanced();
@@ -236,7 +280,28 @@ export function Phase1Panel({ runId, onAdvanced }: { runId: string; onAdvanced: 
         })}
       </div>
 
-      {anyHours && (
+      {/*
+        I12 — the picture, then a pause, then the question. The chart renders alone: no reading of
+        what it means sits beside it, and the reflection below is the leader's own noticing rather
+        than ours.
+      */}
+      {revealState === 'ready' && (
+        <div className="border-border/70 border-t pt-8">
+          <p className="text-foreground text-[1.02rem] leading-relaxed text-balance">
+            That is every area accounted for. Whenever you are ready, we can look at the shape of
+            the week you have described.
+          </p>
+          <button
+            type="button"
+            onClick={() => void reveal()}
+            className="bg-primary text-primary-foreground mt-5 rounded-full px-8 py-3 text-[0.95rem] font-medium"
+          >
+            Show me where the week is going
+          </button>
+        </div>
+      )}
+
+      {isRevealed && (
         <div className="border-border/70 border-t pt-8">
           <ReclaimChart data={chartData} />
         </div>
@@ -253,7 +318,7 @@ export function Phase1Panel({ runId, onAdvanced }: { runId: string; onAdvanced: 
       <button
         type="button"
         onClick={() => void submit()}
-        disabled={busy || reflection.trim().length === 0}
+        disabled={busy || reflection.trim().length === 0 || !isRevealed}
         className="bg-primary text-primary-foreground rounded-full px-8 py-3 text-[0.95rem] font-medium disabled:opacity-40"
       >
         {busy ? 'Saving…' : 'Continue to the next phase'}

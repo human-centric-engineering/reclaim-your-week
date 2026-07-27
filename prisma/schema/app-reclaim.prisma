@@ -50,6 +50,21 @@ model ReclaimAuditRun {
   /// reference from a leaf table to an orchestration row would couple two unrelated lifecycles.
   conversationId String?
 
+  /// Which coach-opening moments this run has already fired (`coach/opening.ts`).
+  ///
+  /// Appended once and never removed: a moment is something that happened to a leader, and re-firing
+  /// it would replay a beat they have already had — showing them the picture of their week for the
+  /// "first" time twice, or re-presenting a gap they have already sat with. The stream route claims a
+  /// moment with a conditional `updateMany` **before** generating, so two tabs, a StrictMode double
+  /// effect and a reload mid-stream all collapse to one turn.
+  ///
+  /// A leaf-owned column because there is nowhere else to put it. `UserNodeState.progress` is a
+  /// module-defined `Json?` payload and is semantically exactly right, but the framework exposes no
+  /// writer for it (`applyJourneyTransition` takes only `{ nodeKey, kind }`), and `JourneyEvent` is
+  /// written inside the engine's own transaction. Filed as a Daybreak ask; when a
+  /// `recordNodeProgress` seam lands, this ledger moves there and the column goes.
+  coachOpenings String[] @default([])
+
   startedAt   DateTime  @default(now())
   completedAt DateTime?
   updatedAt   DateTime  @updatedAt

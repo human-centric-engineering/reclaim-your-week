@@ -24,6 +24,7 @@ import type { ModuleDefinition } from '@/lib/framework/modules';
 import { reclaimSlotDefinitions } from '@/lib/app/programme/slots';
 import { RECLAIM_MODULE_SLUG, RECLAIM_COACH_ROLE } from '@/lib/app/programme/identity';
 import { ReclaimRecordAnswersCapability } from '@/lib/app/programme/coach/capabilities/record-answers';
+import { RECLAIM_PHASE_SIGNPOSTS } from '@/lib/app/programme/runs/signposts';
 import {
   RECLAIM_GOVERNING_FRAME,
   RECLAIM_DEEP_WORK_NOTE,
@@ -76,6 +77,24 @@ const hourBandSchema = z.object({
 });
 
 /**
+ * One phase's signpost — the card that opens the phase before anyone speaks
+ * (`sources/Time_Audit_Tool_Prompt_Text.md:31`).
+ *
+ * `opening` is an **array of paragraphs, not one string**, and that shape is load-bearing rather than
+ * stylistic. Phase 0's default is `[RECLAIM_WARM_OPEN, RECLAIM_PROCESS_OUTLINE]`, and the second of
+ * those is Rashmir's, pinned character-identical to a `content-source.md` blockquote by I11 hop 2.
+ * One concatenated string would fuse a guarded field into an unguarded one and hop 2 could no longer
+ * compare it against the source at all. Keeping the beats separate also matches the source, which
+ * scripts phase 0 as a warm open **then** an outline ending on a question.
+ */
+const phaseSignpostSchema = z.object({
+  phaseKey: z.string(),
+  involves: z.string(),
+  duration: z.string(),
+  opening: z.array(z.string()),
+});
+
+/**
  * The coach-editable content, as a Zod schema (decision A4). The generic admin config
  * form renders from it (F10 t-4) and the API validates operator input against it, so
  * Rashmir rewords a bucket description or the footnote without a deploy (I11). Every
@@ -94,6 +113,18 @@ export const reclaimConfigSchema = z.object({
   hourBands: z.array(hourBandSchema).default(RECLAIM_HOUR_BANDS),
   /** The summary footnote (§9) — must not be reworded (I11 hop-2 guarded). Verbatim. */
   footnote: z.string().default(RECLAIM_FOOTNOTE),
+
+  /**
+   * The per-phase signpost cards, which are how a phase opens itself.
+   *
+   * Config rather than constants because a signpost is the first thing a leader reads in a phase and
+   * Brief §7 puts the register of the whole product on the same footing as any single page. Rashmir
+   * should be able to change how a phase greets someone without a deploy, exactly as she can change a
+   * bucket description. Mostly **our** orientation copy rather than hers, which is why the content
+   * editor marks these fields differently (`sourceKind: 'authored'`): "differs from source" is a
+   * sentence about a source document, and this copy has none.
+   */
+  phaseSignposts: z.array(phaseSignpostSchema).default(RECLAIM_PHASE_SIGNPOSTS),
 
   /**
    * F9 t-2 — the recent-audit shortcut's confirm line (§4). Verbatim, interpolated at render.

@@ -19,7 +19,12 @@ vi.mock('@/lib/db/client', () => ({
   },
 }));
 
-import { readReclaimUiConfig, readReclaimAccessConfig } from '@/lib/app/programme/config';
+import {
+  readReclaimUiConfig,
+  readReclaimAccessConfig,
+  readReclaimSignposts,
+} from '@/lib/app/programme/config';
+import { RECLAIM_PROCESS_OUTLINE } from '@/lib/app/programme/content';
 
 beforeEach(() => {
   moduleFindUnique.mockReset();
@@ -31,31 +36,31 @@ const USER = 'user-1';
 describe('readReclaimUiConfig — the strategy mirror (open item 10)', () => {
   it('shows the mirror on an unedited module row, because the default is `always`', async () => {
     moduleFindUnique.mockResolvedValue({ config: {} });
-    expect(await readReclaimUiConfig(USER)).toEqual({ strategyMirror: true });
+    expect(await readReclaimUiConfig(USER)).toMatchObject({ strategyMirror: true });
   });
 
   it('does not query runs for `always` — the mode alone settles it', async () => {
     moduleFindUnique.mockResolvedValue({ config: { strategyMirrorMode: 'always' } });
-    expect(await readReclaimUiConfig(USER)).toEqual({ strategyMirror: true });
+    expect(await readReclaimUiConfig(USER)).toMatchObject({ strategyMirror: true });
     expect(runFindFirst).not.toHaveBeenCalled();
   });
 
   it('hides the mirror on `off`, without querying runs', async () => {
     moduleFindUnique.mockResolvedValue({ config: { strategyMirrorMode: 'off' } });
-    expect(await readReclaimUiConfig(USER)).toEqual({ strategyMirror: false });
+    expect(await readReclaimUiConfig(USER)).toMatchObject({ strategyMirror: false });
     expect(runFindFirst).not.toHaveBeenCalled();
   });
 
   it("hides the mirror on `repeat_only` during a leader's first audit", async () => {
     moduleFindUnique.mockResolvedValue({ config: { strategyMirrorMode: 'repeat_only' } });
     runFindFirst.mockResolvedValue(null);
-    expect(await readReclaimUiConfig(USER)).toEqual({ strategyMirror: false });
+    expect(await readReclaimUiConfig(USER)).toMatchObject({ strategyMirror: false });
   });
 
   it('shows the mirror on `repeat_only` once an audit has been completed', async () => {
     moduleFindUnique.mockResolvedValue({ config: { strategyMirrorMode: 'repeat_only' } });
     runFindFirst.mockResolvedValue({ id: 'run-earlier' });
-    expect(await readReclaimUiConfig(USER)).toEqual({ strategyMirror: true });
+    expect(await readReclaimUiConfig(USER)).toMatchObject({ strategyMirror: true });
     // Scoped to this leader and to finished audits: another leader's history must not unlock it, and
     // neither must the audit currently in progress.
     expect(runFindFirst).toHaveBeenCalledWith(
@@ -65,12 +70,12 @@ describe('readReclaimUiConfig — the strategy mirror (open item 10)', () => {
 
   it('falls back to defaults when the module row is missing', async () => {
     moduleFindUnique.mockResolvedValue(null);
-    expect(await readReclaimUiConfig(USER)).toEqual({ strategyMirror: true });
+    expect(await readReclaimUiConfig(USER)).toMatchObject({ strategyMirror: true });
   });
 
   it('falls back to defaults when the stored config is malformed', async () => {
     moduleFindUnique.mockResolvedValue({ config: { strategyMirrorMode: 'sometimes' } });
-    expect(await readReclaimUiConfig(USER)).toEqual({ strategyMirror: true });
+    expect(await readReclaimUiConfig(USER)).toMatchObject({ strategyMirror: true });
   });
 
   /**
@@ -86,8 +91,58 @@ describe('readReclaimUiConfig — the strategy mirror (open item 10)', () => {
     moduleFindUnique.mockResolvedValue({
       config: { strategyMirror: false, phase2CoachingSignal: true, policyVersion: 'draft-7' },
     });
-    expect(await readReclaimUiConfig(USER)).toEqual({ strategyMirror: true });
+    expect(await readReclaimUiConfig(USER)).toMatchObject({ strategyMirror: true });
     expect((await readReclaimAccessConfig()).policyVersion).toBe('draft-7');
+  });
+});
+
+describe('the phase signposts — how a phase opens itself', () => {
+  it('serves the shipped cards on an unedited row', async () => {
+    moduleFindUnique.mockResolvedValue({ config: {} });
+
+    const signposts = await readReclaimSignposts();
+
+    expect(signposts.map((s) => s.phaseKey)).toContain('phase-0-setup');
+    expect(signposts.find((s) => s.phaseKey === 'phase-0-setup')!.opening).toContain(
+      RECLAIM_PROCESS_OUTLINE
+    );
+  });
+
+  it("serves Rashmir's rewording rather than the shipped copy once she has edited it", async () => {
+    // The whole reason the cards are config and not constants: how a phase greets someone is hers to
+    // change without a deploy (I11).
+    moduleFindUnique.mockResolvedValue({
+      config: {
+        phaseSignposts: [
+          {
+            phaseKey: 'phase-0-setup',
+            involves: 'HERS',
+            duration: 'a moment',
+            opening: ['HER OPEN'],
+          },
+        ],
+      },
+    });
+
+    const signposts = await readReclaimSignposts();
+
+    expect(signposts).toHaveLength(1);
+    expect(signposts[0].opening).toEqual(['HER OPEN']);
+  });
+
+  it('falls back to the shipped cards when the stored config is malformed', async () => {
+    // A card is the first thing a leader reads in a phase. A bad row must cost them nothing.
+    moduleFindUnique.mockResolvedValue({ config: { phaseSignposts: 'not-an-array' } });
+
+    expect((await readReclaimSignposts()).length).toBeGreaterThan(0);
+  });
+
+  it('reaches the UI config too, so the shell and the coach read one source', async () => {
+    moduleFindUnique.mockResolvedValue({ config: {} });
+
+    const ui = await readReclaimUiConfig(USER);
+
+    expect(ui.phaseSignposts.length).toBeGreaterThan(0);
   });
 });
 
