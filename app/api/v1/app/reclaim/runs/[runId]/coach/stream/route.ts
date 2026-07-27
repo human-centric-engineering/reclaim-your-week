@@ -121,7 +121,7 @@ export const POST = withAuth<{ runId: string }>(async (request, session, { param
     conversationId: target.conversationId,
     contextType: MODULE_SURFACE_CONTEXT_TYPE,
     contextId: RECLAIM_MODULE_SLUG,
-    scope: buildCoachScope({ runId, nodeKey: target.phaseKey }),
+    scope: buildCoachScope({ runId, phaseKey: target.phaseKey }),
     requestId: await getRequestId(),
     visitorId: await getVisitorId(),
     signal: request.signal,

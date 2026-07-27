@@ -27,8 +27,12 @@ export const RECLAIM_RUN_SCOPE_KEY = 'reclaimRunId';
 export interface CoachScopeInput {
   /** `ReclaimAuditRun.id`, verified as the caller's before this is built. */
   runId: string;
-  /** The map node the leader is currently on, so a capture is stamped where it happened. */
-  nodeKey?: string;
+  /**
+   * The phase the leader is currently on, so a capture is stamped where it happened. Named in the
+   * leaf's own vocabulary: the route holds a *phase*, and the translation to the framework's node
+   * key happens below, inside `lib/app/` — the one tier allowed to speak both.
+   */
+  phaseKey?: string;
 }
 
 /**
@@ -42,7 +46,7 @@ export interface CoachScopeInput {
  */
 export function buildCoachScope(input: CoachScopeInput): Record<string, string> {
   return {
-    ...encodeScope({ moduleSlug: RECLAIM_MODULE_SLUG, nodeKey: input.nodeKey }),
+    ...encodeScope({ moduleSlug: RECLAIM_MODULE_SLUG, nodeKey: input.phaseKey }),
     [RECLAIM_RUN_SCOPE_KEY]: input.runId,
   };
 }
