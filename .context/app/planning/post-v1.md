@@ -34,35 +34,42 @@ parked with a reason. Nothing leaves by being forgotten.
 
 ## Board
 
-| #   | Item                                                        | Owner   | Status            | Class     | Blocks / waits on           |
-| --- | ----------------------------------------------------------- | ------- | ----------------- | --------- | --------------------------- |
-| P1  | The asks ledger describes code that is not there            | John    | **shipped**       | integrity | —                           |
-| P2  | `invariants.md` says its own tests are unwritten            | John    | **shipped**       | integrity | —                           |
-| P3  | No reclaim smoke runs in any gate                           | John    | **shipped**       | gate      | 2 of 5 still manual (below) |
-| P4  | The public surface is still the starter template            | —       | blocked → Rashmir | launch    | open items 3, 4, 7          |
-| P5  | The quarterly nudge has no scheduler                        | —       | ready ▲           | launch    | a deploy decision           |
-| P6  | Doc drift: stale cross-references                           | —       | ready ▲           | integrity | —                           |
-| P7  | F2 has no feature plan                                      | —       | ready ▲           | record    | —                           |
-| P8  | `ryw-repeat.md` has no post-build record                    | —       | ready ▲           | record    | —                           |
-| P9  | Operator-side trends over the success measures              | —       | ready ▲           | feature   | nobody owns it (see below)  |
-| P10 | Is I4's non-persistence contractual or incidental?          | —       | ready ▲           | risk      | —                           |
-| P11 | The upstream-sync playbook                                  | —       | ready ▲           | upstream  | 17 open asks                |
-| P12 | The eight items Rashmir owes (was eleven)                   | Rashmir | waiting: Rashmir  | client    | sign-off, not build         |
-| P13 | The follow-up email sequence                                | —       | parked            | scope     | Brief §2; seam only in v1   |
-| P14 | User-facing subject-access export                           | —       | parked            | scope     | not asked for in the Brief  |
-| P15 | The parked epics                                            | —       | parked            | scope     | future epics                |
-| P16 | A provider key for CI, or a nightly smoke run               | —       | ready ▲           | gate      | P3's remainder; a cost call |
-| P18 | The audit is seven forms; it was meant to be a conversation | John    | **shipped**       | feature   | [[ryw-conversational]]      |
+| #   | Item                                                        | Owner   | Status           | Class     | Blocks / waits on           |
+| --- | ----------------------------------------------------------- | ------- | ---------------- | --------- | --------------------------- |
+| P1  | The asks ledger describes code that is not there            | John    | **shipped**      | integrity | —                           |
+| P2  | `invariants.md` says its own tests are unwritten            | John    | **shipped**      | integrity | —                           |
+| P3  | No reclaim smoke runs in any gate                           | John    | **shipped**      | gate      | 2 of 5 still manual (below) |
+| P4  | The public surface is still the starter template            | John    | **shipped**      | launch    | copy sign-off: Rashmir      |
+| P5  | The quarterly nudge has no scheduler                        | John    | **shipped**      | launch    | needs wiring at deploy      |
+| P6  | Doc drift: stale cross-references                           | John    | **shipped**      | integrity | —                           |
+| P7  | F2 has no feature plan                                      | John    | **shipped**      | record    | —                           |
+| P8  | `ryw-repeat.md` has no post-build record                    | John    | **shipped**      | record    | —                           |
+| P9  | Operator-side trends over the success measures              | John    | **shipped**      | feature   | —                           |
+| P10 | Is I4's non-persistence contractual or incidental?          | John    | **shipped**      | risk      | —                           |
+| P11 | The upstream-sync playbook                                  | John    | **shipped**      | upstream  | 18 asks + 6 defects open    |
+| P12 | The eight items Rashmir owes (was eleven)                   | Rashmir | waiting: Rashmir | client    | sign-off, not build         |
+| P13 | The follow-up email sequence                                | —       | parked           | scope     | Brief §2; seam only in v1   |
+| P14 | User-facing subject-access export                           | —       | parked           | scope     | not asked for in the Brief  |
+| P15 | The parked epics                                            | —       | parked           | scope     | future epics                |
+| P16 | A provider key for CI, or a nightly smoke run               | —       | ready ▲          | gate      | P3's remainder; a cost call |
+| P18 | The audit is seven forms; it was meant to be a conversation | John    | **shipped**      | feature   | [[ryw-conversational]]      |
 
 **Doing P1–P3 first was deliberate.** They are the three where the repository told a reader something
 untrue, or where a claim the product makes to users was not gated by anything. Every other item was
 honest about its own state; those three were not.
 
-**Everything the team owns is now shipped.** P1–P3, P5–P11 and P4's build all landed across two
-branches on 2026-07-26. What remains is the four items nobody here can close alone: **P12** (the
-eight things Rashmir owes), **P16** (a cost decision about a provider key in CI), and the two parked
-scope items — plus **P4's copy sign-off**, since the pages exist and the words in them are a draft
-until she reads them.
+**Everything the team owns is now shipped.** P1–P3, P5–P11 and P4's build landed across two branches
+on 2026-07-26; **P18** landed on 2026-07-27. What remains is the items nobody here can close alone:
+**P12** (the eight things Rashmir owes), **P16** (a cost decision about a provider key in CI), and the
+three parked scope items — plus **P4's copy sign-off**, since the pages exist and the words in them
+are a draft until she reads them.
+
+> **The table above said otherwise until 2026-07-27**, listing P5 to P11 as `ready ▲` a day after each
+> one had shipped and its own section said so. Nothing was lost by it, but this is the file a reader
+> opens to find out what is left, and for a day it named seven items that were done. Worth recording
+> rather than quietly correcting: a board is only load-bearing while the summary line and the rows
+> agree, and the rows are the part people scan. Same family as P1 and P2 — the repository describing
+> itself inaccurately — one file along.
 
 ---
 
@@ -232,20 +239,31 @@ Three one-line lies, fixed alongside P1/P2 because they are the same failure mod
   The entry now records both, and the lesson that generalises from it: _a chain-of-custody guard is
   only as long as the last place the content can change._
 
-### P7 · F2 has no feature plan
+### P7 · F2 has no feature plan — **shipped**
+
+_Owner:_ John · _Status:_ **shipped** · _Class:_ record
 
 F2 `ryw-module` is the only feature with no `ryw-*.md` — and it is the one that loaded 105 slots and
 all of Rashmir's verbatim IP, i.e. the feature the plan itself called the highest risk for silent
 drift. There is a record in `plan.md` and in the I11 guards, but not the reconciliation-and-decisions
 record every other feature has.
 
-### P8 · `ryw-repeat.md` has no post-build record
+**Done** — [`ryw-module.md`](./ryw-module.md) now carries the reconciliation-and-decisions record, in
+the shape every other feature's plan has. It had no status line here for a day after it landed, which
+is how it stayed on the board as outstanding; see the note under the table.
+
+### P8 · `ryw-repeat.md` has no post-build record — **shipped**
+
+_Owner:_ John · _Status:_ **shipped** · _Class:_ record
 
 `ryw-admin.md` carries "What the build changed about this plan" and "What the gates found";
 `ryw-repeat.md` stops at its deferrals. So F9's D1–D7 reconciliations are never marked resolved in
 their own file, and **the plan's explicit pre-flight check — re-verify that `provenance.runId` is
 populated on every historical slot version — has no recorded outcome.** The nine gate findings are in
 `plan.md`'s work log but not in the feature's own plan.
+
+**Done** — [`ryw-repeat.md`](./ryw-repeat.md) now carries both "What the build changed about this
+plan" and "What the gates found", including the outcome of the `provenance.runId` pre-flight check.
 
 ### P9 · Operator-side trends — **shipped**
 
