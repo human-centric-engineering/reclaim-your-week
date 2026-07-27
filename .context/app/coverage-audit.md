@@ -124,7 +124,7 @@ is warmly framed rather than bare fields.
 | Open warmly, explain what the audit is and what they walk away with             | **CARRIES** — ✗ **G7**                |
 | **The full "Before we begin, here is what we will cover together…" script**     | **CARRIES** — ✗ **G7**                |
 | Ten questions                                                                   | **BECOMES UI** — F6.1, all ten mapped |
-| "one or two at a time. Do not list all nine at once"                            | **RETIRED** — form solves pacing      |
+| "one or two at a time. Do not list all nine at once"                            | **CARRIES** — ✗ **G20**               |
 | Fundraising follow-up changes the benchmark                                     | **CARRIES** — captured, slot exists   |
 | Time period: quarter default, year has recency bias                             | **CARRIES** — content source §4       |
 | Recent-audit shortcut: audit within the last month → confirm rather than re-ask | **BECOMES UI** — ✗ **G16**            |
@@ -135,6 +135,20 @@ session. It should open the run, before the setup form. Add verbatim to content 
 
 **G16.** F9.2 opens repeat audits comparatively but has no "within a month" shortcut that skips
 re-asking stable context. Add to F9.2.
+
+**G20.** **This row said "RETIRED — form solves pacing", and that retirement is where the whole drift
+started.** It was a reasonable reading of a form-shaped product: a form does pace, in the sense that it
+does not dump ten questions into one chat message. What it cannot do is ask one or two at a time and
+listen to the answers, which is what the instruction is for. Retiring it is the single line that best
+explains how a tool whose source says "this should feel like a coaching conversation, not a form"
+shipped as seven forms — the instruction that would have caught it had been marked as handled.
+
+Reinstated 2026-07-27. It now carries into every turn through `buildCoachPhaseContext`
+(`lib/app/programme/coach/phase-context.ts`), which states the pacing rule in the phase block rather
+than relying on a surface to imply it. See [[planning/ryw-conversational]]. Two lessons worth keeping:
+a disposition of RETIRED should name what replaces the instruction, not what makes it unnecessary; and
+"the UI solves this" is the disposition most likely to be wrong later, because the UI is the thing most
+likely to change.
 
 ## §Phase 1
 
