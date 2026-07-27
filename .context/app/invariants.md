@@ -190,6 +190,16 @@ removal retires the last grant on this agent whose write target a model could in
 seed unit (`004-reclaim-coach-grants`) revokes the row: neither `002` nor `003` ever deletes a grant,
 so without it the removal would have shipped as a no-op on every installed database.
 
+**Revoked means `isEnabled: false`, never a deleted row, and the difference is the whole point.** The
+dispatcher synthesizes a **default-allow** binding for a missing pivot row, and `loadExposureConfig`
+returns `PERMISSIVE` when there is no binding. So deleting a grant does not revoke the capability; it
+removes the _restriction_ on it. For `fill_slot` that inverts the intent exactly — it was pinned to
+`reclaim_profile` precisely because its run comes from a model-supplied argument, and an unpinned
+`fill_slot` could reach `reclaim_reflection_*` or `reclaim_share_*`, the two things this invariant
+refuses on principle. A resumed conversation's own history can contain earlier `fill_slot` calls from
+before the change, which is the sort of thing a model imitates. Found by `/security-review`; the seed
+now ensures the row exists and is disabled, which also repairs a database seeded while it deleted.
+
 **Never** `request_transition`. The server owns phase transitions and the leader decides when to
 move on.
 
