@@ -14,6 +14,7 @@ import { logger } from '@/lib/logging';
 import { NotFoundError, ValidationError } from '@/lib/api/errors';
 import { MODULE_SURFACE_CONTEXT_TYPE } from '@/lib/framework/guidance/surface';
 import { saveAnswer } from '@/lib/app/programme/slots/write';
+import { SLOT_SOURCE_TYPE, type SlotSourceType } from '@/lib/framework/data-slots/vocabulary';
 import { assertEntitled, consumeAudit } from '@/lib/app/programme/runs/entitlement';
 import { grantReferralUnlock } from '@/lib/app/programme/access/referrals';
 import { emitReclaimAccessEvent } from '@/lib/app/programme/access/events';
@@ -96,11 +97,6 @@ export async function completeRun(userId: string, runId: string): Promise<Reclai
   const run = await loadOwnedRun(runId, userId);
   if (run.status === RUN_STATUS.complete) return run;
 
-  // Last chance to attribute the cost: below, I15 closes the conversation, and once it is inactive
-  // "the run's conversation" is no longer identifiable. A leader who never saved an answer through a
-  // form (all chat, no cards) gets their link here or not at all.
-  if (run.conversationId === null) await linkRunConversation(runId, userId);
-
   await completeFinalPhase(userId, runId);
 
   const updated = await prisma.reclaimAuditRun.update({
@@ -147,41 +143,49 @@ export interface RunAnswerInput {
   value: string;
   /** Typed form for `number`/`boolean`/`json` slots (Phase 0/1 forms). Omitted ⇒ prose only. */
   valueJson?: unknown;
+  /** The leader accepting a reading the coach offered back, rather than stating it themselves. */
+  confirming?: boolean;
   conversationId?: string;
 }
 
 /**
- * Record which module-surface conversation this run's coaching happened in (F10 t-1, plan D2).
+ * The source type a leader-initiated save records.
+ *
+ * A form field the leader typed is `direct`. Confirming a reading the coach inferred is
+ * `user_confirmed`, which keeps the audit honest about where a figure started: the leader has agreed
+ * it, so it is theirs to stand on, but it is not a thing they volunteered. Every other source type
+ * belongs to the coach and is set by the capture capability, never by a client.
+ */
+function leaderSourceType(input: RunAnswerInput): SlotSourceType {
+  return input.confirming === true ? SLOT_SOURCE_TYPE.user_confirmed : SLOT_SOURCE_TYPE.direct;
+}
+
+/**
+ * Record which conversation this run's coaching happened in (F10 t-1, plan D2 — rewritten for the
+ * conversational surface).
  *
  * Cost is logged per conversation and never per run, so without this the admin surface can only guess
- * by timestamp overlap — which fails on exactly the run Brief §8 worries about (four hours in one
- * audit, or one left open for weeks). The surface keeps a single conversation live per
- * `(user, agent, module)` until completion closes it (I15), so "the active one" is unambiguous while
- * a run is in progress.
+ * by timestamp overlap, which fails on exactly the run Brief §8 worries about (four hours in one
+ * audit, or one left open for weeks).
  *
- * Write-once and idempotent: only ever fills a `null`, so a resumed run keeps its original
- * attribution. Best-effort — this is bookkeeping for a report, and it must never be able to fail a
- * leader's answer.
+ * **This used to be the guess.** It looked up the leader's most-recently-updated active surface
+ * conversation and assumed that was this run's. That held while the coach was rendered nowhere and a
+ * leader had at most one transcript, and it was never true by construction: a conversation left open
+ * from a previous audit, or opened from any other module surface entry, was equally eligible. Now the
+ * conversation arrives from the one route that opens it — the coach stream, which knows the run in its
+ * path — so the link is a fact rather than an inference, and a leader who never speaks to the coach
+ * correctly ends with no conversation attributed instead of a stray one.
+ *
+ * Write-once and idempotent: the `conversationId: null` guard makes it a conditional write rather
+ * than read-then-write, so a resumed run keeps its original attribution and two turns racing on the
+ * first message cannot set different conversations. Best-effort — this is bookkeeping for a report,
+ * and it must never be able to fail a leader's turn.
  */
-async function linkRunConversation(runId: string, userId: string): Promise<void> {
+export async function linkRunConversation(runId: string, conversationId: string): Promise<void> {
   try {
-    const conversation = await prisma.aiConversation.findFirst({
-      where: {
-        userId,
-        contextType: MODULE_SURFACE_CONTEXT_TYPE,
-        contextId: RECLAIM_MODULE_SLUG,
-        isActive: true,
-      },
-      orderBy: { updatedAt: 'desc' },
-      select: { id: true },
-    });
-    if (conversation === null) return;
-
-    // `updateMany` with the null guard makes this a conditional write rather than a read-then-write:
-    // two concurrent answer saves cannot race to set different conversations.
     await prisma.reclaimAuditRun.updateMany({
       where: { id: runId, conversationId: null },
-      data: { conversationId: conversation.id },
+      data: { conversationId },
     });
   } catch (error: unknown) {
     logger.warn('Reclaim: could not link run to its conversation', {
@@ -189,6 +193,32 @@ async function linkRunConversation(runId: string, userId: string): Promise<void>
       error: error instanceof Error ? error.message : String(error),
     });
   }
+}
+
+/**
+ * What a coach turn needs about the run it is happening in (the conversational stage-1 read).
+ *
+ * The run is verified as the caller's and in progress here, so the route never has to, and the phase
+ * comes from the journey rather than from the client: both halves of the dispatch scope the capture
+ * capability trusts (I6) are therefore server-derived. A run that is not in progress refuses the turn
+ * rather than opening a transcript nothing may be recorded into.
+ */
+export interface CoachTurnTarget {
+  /** The run's own conversation, or `undefined` to open a fresh one and link it. */
+  conversationId: string | undefined;
+  /** The phase the leader is on — the `nodeKey` half of the scope. */
+  phaseKey: string;
+}
+
+export async function loadCoachTurnTarget(userId: string, runId: string): Promise<CoachTurnTarget> {
+  const run = await loadOwnedRun(runId, userId);
+  if (run.status !== RUN_STATUS.inProgress) {
+    throw new ValidationError('This audit is not in progress', {
+      run: ['The coach can only talk through an active audit.'],
+    });
+  }
+  const { currentPhaseKey } = await loadPhaseProgress(userId, runId);
+  return { conversationId: run.conversationId ?? undefined, phaseKey: currentPhaseKey };
 }
 
 /** Assert the run is the caller's and still in progress (answers can only be saved to an active run). */
@@ -199,9 +229,6 @@ async function assertActiveOwnedRun(userId: string, runId: string): Promise<void
       run: ['Answers can only be saved to an active run.'],
     });
   }
-  // The first answer after the leader has spoken to the coach is where the conversation becomes
-  // observable. Cheap: the lookup only runs while the link is still missing.
-  if (run.conversationId === null) await linkRunConversation(runId, userId);
 }
 
 export async function saveRunAnswer(
@@ -216,7 +243,7 @@ export async function saveRunAnswer(
     slotSlug: input.slotSlug,
     value: input.value,
     valueJson: input.valueJson as SlotValueJson,
-    sourceType: 'direct',
+    sourceType: leaderSourceType(input),
     conversationId: input.conversationId,
   });
 }
@@ -239,16 +266,19 @@ export async function saveRunAnswers(
       slotSlug: input.slotSlug,
       value: input.value,
       valueJson: input.valueJson as SlotValueJson,
-      sourceType: 'direct',
+      sourceType: leaderSourceType(input),
       conversationId: input.conversationId,
     });
   }
 }
 
 /** The progress shell's data (F4 t-4): the active run (if any) and each phase's status, so the client
- *  renders where the leader is and resumes there. All seven phases always appear (Phase 0 included). */
+ *  renders where the leader is and resumes there. All seven phases always appear (Phase 0 included).
+ *
+ *  `conversationId` is what makes a reload keep the conversation: the coach surface reads the run's
+ *  transcript back from it, and a `null` simply means this leader has not spoken to the coach yet. */
 export interface CurrentRunState {
-  run: { id: string; quarter: string | null } | null;
+  run: { id: string; quarter: string | null; conversationId: string | null } | null;
   phases: PhaseView[];
   currentPhaseKey: string;
 }
@@ -261,5 +291,8 @@ export async function loadCurrentRunState(userId: string): Promise<CurrentRunSta
   if (run === null) return { run: null, ...emptyPhaseProgress() };
 
   const progress = await loadPhaseProgress(userId, run.id);
-  return { run: { id: run.id, quarter: run.quarter }, ...progress };
+  return {
+    run: { id: run.id, quarter: run.quarter, conversationId: run.conversationId },
+    ...progress,
+  };
 }

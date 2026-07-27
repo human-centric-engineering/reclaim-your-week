@@ -6,9 +6,14 @@
  * so the same object is safe to serve behind a public share token. Run-scoped (`readRunAnswers`).
  */
 
-import { readRunAnswers, type RunAnswer } from '@/lib/app/programme/runs/answers';
+import { readRunAnswers } from '@/lib/app/programme/runs/answers';
 import { RECLAIM_FOOTNOTE } from '@/lib/app/programme/content';
-import { buildChartData, type Answers, type ChartData } from '@/lib/app/programme/chart/series';
+import {
+  buildChartData,
+  type Answers,
+  type ChartData,
+  type SlotAnswer,
+} from '@/lib/app/programme/chart/series';
 
 export interface SummaryBucketRow {
   token: string;
@@ -35,8 +40,12 @@ export interface AuditSummary {
   footnote: string;
 }
 
-const text = (a: RunAnswer | undefined): string | null => (a && a.value.trim() ? a.value : null);
-const numOf = (a: RunAnswer | undefined): number | null => {
+// Typed as `SlotAnswer` (prose + typed form) rather than as the full `RunAnswer` these are called
+// with: the summary reads two fields, and the narrower signature is what lets the same helpers serve
+// the chart's answer map. A reading's source type and confidence are deliberately not summary
+// material — the summary is what the leader takes away, not a record of how it was captured.
+const text = (a: SlotAnswer): string | null => (a && a.value.trim() ? a.value : null);
+const numOf = (a: SlotAnswer): number | null => {
   if (!a) return null;
   const n = typeof a.valueJson === 'number' ? a.valueJson : Number(a.value);
   return Number.isFinite(n) ? n : null;

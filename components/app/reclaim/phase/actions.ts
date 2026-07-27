@@ -14,14 +14,39 @@ export interface AnswerInput {
   slotSlug: string;
   value: string;
   valueJson?: unknown;
+  /** The leader accepting a reading the coach offered back; recorded as `user_confirmed`, not `direct`. */
+  confirming?: boolean;
 }
 
+// `sourceType` and `confidence` come back on every answer so the conversational panel can show a
+// reading the coach inferred differently from one the leader stated. The form panels ignore them.
 const answersEnvelope = z.object({
-  answers: z.record(z.string(), z.object({ value: z.string(), valueJson: z.unknown() })),
+  answers: z.record(
+    z.string(),
+    z.object({
+      value: z.string(),
+      valueJson: z.unknown(),
+      sourceType: z.string(),
+      confidence: z.number(),
+    })
+  ),
 });
 const labelsEnvelope = z.object({ labels: z.record(z.string(), z.string()) });
 
 export type RunAnswers = z.infer<typeof answersEnvelope>['answers'];
+
+/** Save one answer for the run — the confirm/correct path beside the conversation. Throws on failure. */
+export async function saveAnswer(runId: string, answer: AnswerInput): Promise<void> {
+  const res = await fetch(`/api/v1/app/reclaim/runs/${runId}/answers`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(answer),
+  });
+  if (!res.ok) {
+    const json: unknown = await res.json().catch(() => null);
+    throw new Error(errorMessageFrom(json) ?? 'We could not save that just now.');
+  }
+}
 
 /** Save many answers for the run. Throws with the server message on failure. */
 export async function saveBatch(runId: string, answers: AnswerInput[]): Promise<void> {

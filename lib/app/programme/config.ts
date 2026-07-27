@@ -63,6 +63,38 @@ export interface ReclaimAdminConfig {
   aggregateMinimumCohort: number;
 }
 
+/**
+ * The subset the coach needs in its prompt context — Rashmir's own words, as the operator currently
+ * has them.
+ *
+ * The agent's system instructions have always said that "the tool's governing frame and the areas of
+ * leadership time are supplied to you in context", and I11 is the reason they are not restated in the
+ * authored prose: one source of truth, editable without a deploy. What was missing was the supply. The
+ * framework's module context injects the module's name, description and the user's slot values, and
+ * nothing has ever injected `Module.config`, so the coach has been running a nine-area audit without
+ * the nine areas. It did not show while the phases were forms, because the panels read this config
+ * directly and the coach was rendered nowhere.
+ *
+ * Read from the stored row, so an operator's rewording reaches the conversation the same way it
+ * reaches the screen.
+ */
+export interface ReclaimCoachContent {
+  governingFrame: string;
+  buckets: ReclaimConfig['buckets'];
+  deepWorkNote: string;
+  hourBands: ReclaimConfig['hourBands'];
+}
+
+export async function readReclaimCoachContent(): Promise<ReclaimCoachContent> {
+  const config = await readReclaimConfig();
+  return {
+    governingFrame: config.governingFrame,
+    buckets: config.buckets,
+    deepWorkNote: config.deepWorkNote,
+    hourBands: config.hourBands,
+  };
+}
+
 /** Read + parse the stored module config, falling back to the schema defaults. */
 async function readReclaimConfig(): Promise<ReclaimConfig> {
   const row = await prisma.module.findUnique({

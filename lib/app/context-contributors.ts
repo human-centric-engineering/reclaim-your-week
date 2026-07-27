@@ -12,18 +12,50 @@
  * given `contextType`, without editing the core `buildContext` switch.
  *
  * Full guide + example: CUSTOMIZATION.md §4 · .context/orchestration/chat.md
+ *
+ * ## The registration key, and the bug that hid in it
+ *
+ * Contributors are keyed on the chat request's **`contextType`**, and the id handed to the loader is
+ * the `contextId`. A module-surface conversation is `contextType: 'module'` with `contextId:
+ * 'reclaim-audit'`. This file registered under `'reclaim-audit'`, which is the id and not the type, so
+ * the loader was never dispatched: the refer-back (I13) that Brief §5 calls "a data-flow requirement,
+ * not just prompt text" never actually reached the coach. The test did not catch it because it mocked
+ * `registerContextContributor` and asserted only what the registered loader returned, never the key it
+ * was registered under. The key is a constant now, and pinned.
+ *
+ * Registering under `'module'` means taking the type the framework registers (`initFramework()` →
+ * `loadModuleContext`), and the registry replaces per type rather than composing. So this loader
+ * **delegates to the framework's loader first** and appends the leaf's blocks to what it returns,
+ * which keeps the module name, description and fresh-slot injection exactly as the framework built
+ * them. Any other module slug passes straight through untouched.
  */
 import { registerContextContributor } from '@/lib/orchestration/chat/context-builder';
-import { RECLAIM_MODULE_SLUG } from '@/lib/app/programme/module';
+import { loadModuleContext, MODULE_CONTEXT_TYPE } from '@/lib/framework/modules/context';
+import { RECLAIM_MODULE_SLUG } from '@/lib/app/programme/identity';
 import { buildReferBackForActiveRun } from '@/lib/app/programme/refer-back';
+import { buildCoachPhaseContext } from '@/lib/app/programme/coach/phase-context';
 
 export function initAppContextContributors(): void {
-  // The refer-back (F7 t-2, I13): put the leader's own Phase 0 words in front of the coach so it hands
-  // the insight back at the gap rather than inventing it. Keyed on the module slug; the loader resolves
-  // the user's single active run and reads the two setup slots run-scoped (a data flow, not "remember").
-  registerContextContributor(RECLAIM_MODULE_SLUG, async (_id, request) => {
-    if (!request.userId) return '';
-    const referBack = await buildReferBackForActiveRun(request.userId);
-    return referBack.contextBlock;
+  registerContextContributor(MODULE_CONTEXT_TYPE, async (id, request) => {
+    const frameworkContext = await loadModuleContext(id, request);
+    const userId = request?.userId;
+    if (id !== RECLAIM_MODULE_SLUG || userId === undefined) return frameworkContext;
+
+    // Both leaf blocks read this leader's own answers for their active run, so they cache per
+    // `(type, id, userId)` alongside the framework half rather than leaking across users.
+    //
+    //  - The phase block: which phase the leader is on, which readings it captures, and which of
+    //    those this run already has. Without it the coach cannot pace a phase, and cannot tell a
+    //    second audit from a first (the framework's fresh slots are cross-run heads).
+    //  - The refer-back (F7 t-2, I13): the leader's own Phase 0 words, so the coach hands the insight
+    //    back at the gap rather than inventing it.
+    const [phase, referBack] = await Promise.all([
+      buildCoachPhaseContext(userId),
+      buildReferBackForActiveRun(userId),
+    ]);
+
+    return [frameworkContext, phase, referBack.contextBlock]
+      .filter((part) => part.length > 0)
+      .join('\n\n');
   });
 }

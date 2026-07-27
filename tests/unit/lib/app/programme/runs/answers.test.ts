@@ -23,6 +23,10 @@ interface Row {
   value: string;
   valueJson: unknown;
   provenance: unknown;
+  /** How the reading was come by. The conversational panel shows an inference differently. */
+  sourceType: string;
+  /** 1–10. A form answer is 10; a coach's inference is lower and is offered back to the leader. */
+  confidence: number;
   supersededAt: Date | null;
 }
 
@@ -45,7 +49,8 @@ function write(
   slotSlug: string,
   value: string,
   runId: string,
-  valueJson: unknown = null
+  valueJson: unknown = null,
+  how: { sourceType?: string; confidence?: number } = {}
 ) {
   const existing = rows().filter((r) => r.userId === userId && r.slotSlug === slotSlug);
   for (const row of existing) row.supersededAt = new Date();
@@ -56,9 +61,20 @@ function write(
     value,
     valueJson,
     provenance: { runId, conversationId: 'c1' },
+    // Defaults match a form answer: stated directly, at full confidence.
+    sourceType: how.sourceType ?? 'direct',
+    confidence: how.confidence ?? 10,
     supersededAt: null,
   });
 }
+
+/** A form-path answer as the read returns it, for assertions that are about the value. */
+const stated = (value: string, valueJson: unknown = null) => ({
+  value,
+  valueJson,
+  sourceType: 'direct',
+  confidence: 10,
+});
 
 beforeEach(() => {
   store.rows = [];
@@ -108,8 +124,8 @@ describe('readRunAnswers — the repeat-audit bug', () => {
 
     // Before the fix this was `{}` — every run-1 value had been superseded and so was no longer a
     // head, which is what silently emptied a shared summary link.
-    expect(runOne['reclaim_current_hours__deep_work']).toEqual({ value: '10', valueJson: 10 });
-    expect(runOne['reclaim_setup_weekly_hours']).toEqual({ value: '55', valueJson: 55 });
+    expect(runOne['reclaim_current_hours__deep_work']).toEqual(stated('10', 10));
+    expect(runOne['reclaim_setup_weekly_hours']).toEqual(stated('55', 55));
   });
 
   it('keeps the two runs separate in both directions', async () => {
@@ -137,7 +153,7 @@ describe('readRunAnswers — within one run', () => {
     write('u1', 'reclaim_current_hours__deep_work', '12', 'run-1', 12); // corrected before moving on
 
     const answers = await readRunAnswers('u1', 'run-1');
-    expect(answers['reclaim_current_hours__deep_work']).toEqual({ value: '12', valueJson: 12 });
+    expect(answers['reclaim_current_hours__deep_work']).toEqual(stated('12', 12));
   });
 
   it('ignores a value with no runId in its provenance', async () => {
@@ -148,10 +164,47 @@ describe('readRunAnswers — within one run', () => {
       value: 'v',
       valueJson: null,
       provenance: { conversationId: 'c' },
+      sourceType: 'direct',
+      confidence: 10,
       supersededAt: null,
     });
 
     expect(await readRunAnswers('u1', 'run-1')).toEqual({});
+  });
+
+  it('reports how a reading was come by, which is what tells an inference from a statement', async () => {
+    // The coach recorded this from what the leader implied rather than stated (stage 0's capture
+    // path). The panel shows it back for confirmation, and it can only do that if the read says so.
+    write('u1', 'reclaim_current_hours__delivery_operations', '20', 'run-1', 20, {
+      sourceType: 'inferred',
+      confidence: 4,
+    });
+
+    const answers = await readRunAnswers('u1', 'run-1');
+
+    expect(answers['reclaim_current_hours__delivery_operations']).toEqual({
+      value: '20',
+      valueJson: 20,
+      sourceType: 'inferred',
+      confidence: 4,
+    });
+  });
+
+  it('takes the confirmed reading once the leader has agreed one', async () => {
+    write('u1', 'reclaim_current_hours__delivery_operations', '20', 'run-1', 20, {
+      sourceType: 'inferred',
+      confidence: 4,
+    });
+    write('u1', 'reclaim_current_hours__delivery_operations', '20', 'run-1', 20, {
+      sourceType: 'user_confirmed',
+      confidence: 10,
+    });
+
+    const answers = await readRunAnswers('u1', 'run-1');
+
+    expect(answers['reclaim_current_hours__delivery_operations']?.sourceType).toBe(
+      'user_confirmed'
+    );
   });
 
   it('narrows to the requested slugs and scopes the query to the run', async () => {

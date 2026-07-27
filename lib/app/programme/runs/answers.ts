@@ -65,10 +65,23 @@ import { prisma } from '@/lib/db/client';
 
 const provenanceRunIdSchema = z.object({ runId: z.string() });
 
-/** One slot's value for a run — the prose `value` plus the typed `valueJson` (numbers/booleans). */
+/**
+ * One slot's value for a run — the prose `value`, the typed `valueJson` (numbers/booleans), and how
+ * the reading was come by.
+ *
+ * `sourceType` and `confidence` are what let a screen tell a reading the leader stated outright from
+ * one the coach inferred between the lines. Both columns have existed since the slot model did; the
+ * forms simply wrote `direct` at confidence 10 every time, so nothing downstream had reason to read
+ * them. Conversational capture is the reason: an inference has to be visible *as* an inference and
+ * offered back for the leader to confirm, or the audit quietly contains things nobody said.
+ */
 export interface RunAnswer {
   value: string;
   valueJson: unknown;
+  /** `direct`, `inferred`, `user_confirmed`, … from the framework's source-type vocabulary. */
+  sourceType: string;
+  /** 1–10. A form answer is 10; a coach's inference is lower and is worth checking. */
+  confidence: number;
 }
 
 /**
@@ -103,7 +116,14 @@ export async function readRunAnswers(
       provenance: { path: ['runId'], equals: runId },
     },
     orderBy: { version: 'asc' },
-    select: { slotSlug: true, value: true, valueJson: true, provenance: true },
+    select: {
+      slotSlug: true,
+      value: true,
+      valueJson: true,
+      provenance: true,
+      sourceType: true,
+      confidence: true,
+    },
   });
 
   const out: Record<string, RunAnswer> = {};
@@ -118,7 +138,14 @@ export async function readRunAnswers(
     const parsed = provenanceRunIdSchema.safeParse(row.provenance);
     if (!parsed.success || parsed.data.runId !== runId) continue;
     // Ascending version, so a later write for the same run overwrites an earlier one — last wins.
-    out[row.slotSlug] = { value: row.value, valueJson: row.valueJson };
+    // That is also what makes a confirmation land properly: the leader confirming a coach's inference
+    // writes a fresh version at `user_confirmed`, and this read then reports the confirmed reading.
+    out[row.slotSlug] = {
+      value: row.value,
+      valueJson: row.valueJson,
+      sourceType: row.sourceType,
+      confidence: row.confidence,
+    };
   }
   return out;
 }
