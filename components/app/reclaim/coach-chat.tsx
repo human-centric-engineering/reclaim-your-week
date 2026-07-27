@@ -25,6 +25,10 @@ import { z } from 'zod';
 import { parseSseBlock } from '@/lib/api/sse-parser';
 import { parseChatStreamEvent } from '@/components/admin/orchestration/chat/chat-events';
 import { parseEnvelope } from '@/components/app/reclaim/calendar/types';
+import {
+  isCoachSyntheticMessage,
+  type CoachOpeningMoment,
+} from '@/lib/app/programme/coach/opening';
 
 interface Turn {
   role: 'leader' | 'coach';
@@ -55,9 +59,15 @@ async function loadTranscript(conversationId: string): Promise<Turn[]> {
     const res = await fetch(`/api/v1/chat/conversations/${conversationId}/messages`);
     if (!res.ok) return [];
     const { messages } = parseEnvelope(await res.json(), transcriptEnvelope);
-    return messages
-      .filter((m) => (m.role === 'user' || m.role === 'assistant') && m.content.trim().length > 0)
-      .map((m) => ({ role: m.role === 'user' ? 'leader' : 'coach', text: m.content }));
+    return (
+      messages
+        .filter((m) => (m.role === 'user' || m.role === 'assistant') && m.content.trim().length > 0)
+        // The trigger that makes the coach speak first is stored as a user row, because `streamChat`
+        // has no other shape to put it in. It is ours, not the leader's, so it never comes back as
+        // something they said. See `coach/opening.ts` for why it has to exist at all.
+        .filter((m) => !isCoachSyntheticMessage(m.role, m.content))
+        .map((m) => ({ role: m.role === 'user' ? 'leader' : 'coach', text: m.content }))
+    );
   } catch {
     return [];
   }
@@ -72,11 +82,25 @@ export interface CoachChatProps {
    * this conversation only learns what was captured by re-reading the run.
    */
   onTurnComplete?: () => void;
-  /** The opening line, before there is any transcript. Phase-specific; the coach speaks after. */
+  /**
+   * A moment for the coach to open, or `null` for a conversation the leader starts.
+   *
+   * Set when the beat needs figures the leader has just produced: the picture of their week, the gap,
+   * the action options. The turn fires once per run — the server claims the moment, so a reload or a
+   * second tab cannot replay a beat the leader has already had.
+   */
+  openMoment?: CoachOpeningMoment | null;
+  /** Placeholder before there is any transcript, where the leader is expected to speak first. */
   opener?: string;
 }
 
-export function CoachChat({ runId, conversationId, onTurnComplete, opener }: CoachChatProps) {
+export function CoachChat({
+  runId,
+  conversationId,
+  onTurnComplete,
+  openMoment = null,
+  opener,
+}: CoachChatProps) {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [draft, setDraft] = useState('');
   const [streaming, setStreaming] = useState(false);
@@ -87,12 +111,22 @@ export function CoachChat({ runId, conversationId, onTurnComplete, opener }: Coa
   // Rehydrate once per conversation. Guarded on `turns.length` deliberately: the id arrives from the
   // parent's `GET /runs/current`, which may refresh mid-phase after a save, and re-fetching then
   // would replace turns that are already on screen with the same ones a moment later.
+  //
+  // `hydrated` gates the opening turn below. A run part-way through a phase already has a transcript,
+  // and firing the opener before it loads would put the coach's new beat above the conversation it is
+  // supposed to follow.
   const hydratedRef = useRef<string | null>(null);
+  const [hydrated, setHydrated] = useState(false);
   useEffect(() => {
-    if (conversationId === null || hydratedRef.current === conversationId) return;
+    if (conversationId === null) {
+      setHydrated(true);
+      return;
+    }
+    if (hydratedRef.current === conversationId) return;
     hydratedRef.current = conversationId;
     void loadTranscript(conversationId).then((prior) => {
       if (prior.length > 0) setTurns((current) => (current.length === 0 ? prior : current));
+      setHydrated(true);
     });
   }, [conversationId]);
 
@@ -104,73 +138,120 @@ export function CoachChat({ runId, conversationId, onTurnComplete, opener }: Coa
   // sets state after unmount, and holds the server generation open (chat-interface.tsx pattern).
   useEffect(() => () => abortRef.current?.abort(), []);
 
+  /**
+   * Run one turn against the run's stream.
+   *
+   * `leaderText` is `null` for an opening turn, which is what makes the coach able to speak first:
+   * only a coach placeholder is appended, and the trigger the server sends in the leader's place
+   * never appears here or in the transcript on reload.
+   */
+  const runTurn = useCallback(
+    async (body: Record<string, unknown>, leaderText: string | null) => {
+      setError(null);
+      setTurns((t) => [
+        ...t,
+        ...(leaderText !== null ? [{ role: 'leader' as const, text: leaderText }] : []),
+        { role: 'coach' as const, text: '' },
+      ]);
+      setStreaming(true);
+
+      const controller = new AbortController();
+      abortRef.current = controller;
+      try {
+        const res = await fetch(`/api/v1/app/reclaim/runs/${runId}/coach/stream`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        });
+        if (!res.ok || res.body === null)
+          throw new Error(`The coach could not be reached (${res.status}).`);
+
+        // An opening whose moment was already claimed answers in JSON rather than SSE. Nothing has
+        // gone wrong: this run has had that beat, so drop the placeholder and leave the transcript
+        // exactly as it was.
+        if (res.headers.get('content-type')?.includes('application/json')) {
+          setTurns((t) => t.slice(0, -1));
+          return;
+        }
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const blocks = buffer.split('\n\n');
+          buffer = blocks.pop() ?? '';
+          for (const block of blocks) {
+            const event = parseChatStreamEvent(block);
+            if (event === null) {
+              // Not in the shared client union. A per-turn budget abort can be the *sole* terminal
+              // frame (no trailing `done`/`error`), so surface it from the raw frame rather than
+              // dropping it — otherwise the coach turn is left silently empty.
+              const raw = parseSseBlock(block);
+              if (raw?.type === 'budget_exceeded_per_turn') {
+                const msg = typeof raw.data.message === 'string' ? raw.data.message : undefined;
+                throw new Error(msg ?? 'This turn reached its limit. You can try again.');
+              }
+              continue;
+            }
+            if (event.type === 'content') {
+              const { delta } = event;
+              setTurns((t) => setCoachText(t, t[t.length - 1].text + delta));
+            } else if (event.type === 'content_reset') {
+              // A fallback provider restarts generation from scratch — discard the partial so the
+              // retried answer doesn't concatenate onto the abandoned one.
+              setTurns((t) => setCoachText(t, ''));
+            } else if (event.type === 'error') {
+              throw new Error(event.message);
+            }
+          }
+        }
+      } catch (e) {
+        if (controller.signal.aborted) return; // unmounted / superseded — leave state untouched
+        setError(e instanceof Error ? e.message : 'Something interrupted the conversation.');
+      } finally {
+        if (!controller.signal.aborted) {
+          setStreaming(false);
+          // Whatever the turn did or failed to do, the run may have moved: the coach records as it
+          // goes, so a turn that ended in an error can still have captured something first.
+          onTurnComplete?.();
+        }
+        if (abortRef.current === controller) abortRef.current = null;
+      }
+    },
+    [runId, onTurnComplete]
+  );
+
   const send = useCallback(async () => {
     const message = draft.trim();
     if (message.length === 0 || streaming) return;
-    setError(null);
     setDraft('');
-    setTurns((t) => [...t, { role: 'leader', text: message }, { role: 'coach', text: '' }]);
-    setStreaming(true);
+    await runTurn({ kind: 'leader', message }, message);
+  }, [draft, streaming, runTurn]);
 
-    const controller = new AbortController();
-    abortRef.current = controller;
-    try {
-      const res = await fetch(`/api/v1/app/reclaim/runs/${runId}/coach/stream`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message }),
-        signal: controller.signal,
-      });
-      if (!res.ok || res.body === null)
-        throw new Error(`The coach could not be reached (${res.status}).`);
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      for (;;) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const blocks = buffer.split('\n\n');
-        buffer = blocks.pop() ?? '';
-        for (const block of blocks) {
-          const event = parseChatStreamEvent(block);
-          if (event === null) {
-            // Not in the shared client union. A per-turn budget abort can be the *sole* terminal
-            // frame (no trailing `done`/`error`), so surface it from the raw frame rather than
-            // dropping it — otherwise the coach turn is left silently empty.
-            const raw = parseSseBlock(block);
-            if (raw?.type === 'budget_exceeded_per_turn') {
-              const msg = typeof raw.data.message === 'string' ? raw.data.message : undefined;
-              throw new Error(msg ?? 'This turn reached its limit. You can try again.');
-            }
-            continue;
-          }
-          if (event.type === 'content') {
-            const { delta } = event;
-            setTurns((t) => setCoachText(t, t[t.length - 1].text + delta));
-          } else if (event.type === 'content_reset') {
-            // A fallback provider restarts generation from scratch — discard the partial so the
-            // retried answer doesn't concatenate onto the abandoned one.
-            setTurns((t) => setCoachText(t, ''));
-          } else if (event.type === 'error') {
-            throw new Error(event.message);
-          }
-        }
-      }
-    } catch (e) {
-      if (controller.signal.aborted) return; // unmounted / superseded — leave state untouched
-      setError(e instanceof Error ? e.message : 'Something interrupted the conversation.');
-    } finally {
-      if (!controller.signal.aborted) {
-        setStreaming(false);
-        // Whatever the turn did or failed to do, the run may have moved: the coach records as it
-        // goes, so a turn that ended in an error can still have captured something first.
-        onTurnComplete?.();
-      }
-      if (abortRef.current === controller) abortRef.current = null;
-    }
-  }, [draft, streaming, runId, onTurnComplete]);
+  /**
+   * The coach opens the moment, once.
+   *
+   * Two guards, because they catch different things. `firedRef` stops React's development double
+   * effect from posting twice in one mount. The server's conditional claim stops everything else:
+   * a second tab, a reload part-way through the stream, a remount after the parent refreshes. The
+   * parent only passes a moment that is due and not already in the run's ledger, so the common case
+   * never reaches the server at all.
+   */
+  const firedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!hydrated || openMoment === null || streaming) return;
+    if (firedRef.current === openMoment) return;
+    firedRef.current = openMoment;
+    void runTurn({ kind: 'opening', moment: openMoment }, null);
+    // `streaming` is read to avoid opening on top of a turn in flight, and deliberately not a
+    // dependency: it flips twice per turn, and re-running this effect on that would re-fire the
+    // moment the instant its own turn finished.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated, openMoment, runTurn]);
 
   return (
     <section className="flex min-h-[26rem] flex-col" aria-label="Conversation with the coach">

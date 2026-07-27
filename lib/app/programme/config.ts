@@ -12,6 +12,7 @@
 
 import { prisma } from '@/lib/db/client';
 import { hasCompletedAudit } from '@/lib/app/programme/compare';
+import type { PhaseSignpost } from '@/lib/app/programme/runs/signposts';
 import {
   reclaimConfigSchema,
   RECLAIM_MODULE_SLUG,
@@ -28,6 +29,15 @@ import {
  */
 export interface ReclaimUiConfig {
   strategyMirror: boolean;
+  /**
+   * The per-phase signpost cards, which are how a phase opens itself before anyone speaks.
+   *
+   * Served to the client rather than imported from the constants, so an operator's rewording reaches
+   * the screen the same way it reaches the coach's context. The client falls back to the shipped
+   * defaults if this read fails, because a leader should never meet a phase with no orientation at
+   * all just because a config row could not be read.
+   */
+  phaseSignposts: PhaseSignpost[];
 }
 
 /** The subset the entitlement gate and consent gate need (F8). */
@@ -113,9 +123,20 @@ async function readReclaimConfig(): Promise<ReclaimConfig> {
  */
 export async function readReclaimUiConfig(userId: string): Promise<ReclaimUiConfig> {
   const config = await readReclaimConfig();
-  if (config.strategyMirrorMode === 'off') return { strategyMirror: false };
-  if (config.strategyMirrorMode === 'always') return { strategyMirror: true };
-  return { strategyMirror: await hasCompletedAudit(userId) };
+  const phaseSignposts = config.phaseSignposts;
+  if (config.strategyMirrorMode === 'off') return { strategyMirror: false, phaseSignposts };
+  if (config.strategyMirrorMode === 'always') return { strategyMirror: true, phaseSignposts };
+  return { strategyMirror: await hasCompletedAudit(userId), phaseSignposts };
+}
+
+/**
+ * The signposts alone, for the server-side readers (the coach's phase context).
+ *
+ * Separate from `readReclaimUiConfig` because that one resolves `repeat_only` with a database read
+ * per call, and the coach context has no use for the strategy-mirror answer.
+ */
+export async function readReclaimSignposts(): Promise<PhaseSignpost[]> {
+  return (await readReclaimConfig()).phaseSignposts;
 }
 
 /** Read the access policy (F8): client-window durations, the open-signup door, the policy version. */

@@ -19,6 +19,7 @@ load-bearing in aggregate.
 > | `tests/unit/invariants/write-path.test.ts`       | I3        | F4 t-2  |
 > | `tests/unit/invariants/calendar-privacy.test.ts` | I4        | F5      |
 > | `tests/unit/invariants/admin-support.test.ts`    | D4 (F10)  | F10 t-1 |
+> | `tests/unit/invariants/chart-beat.test.ts`       | I12       | conv. 5 |
 >
 > **This block used to say the opposite** — that every test below was "still to be written" — and it
 > stayed that way through all ten features while the guards were built one by one. Its own closing
@@ -378,6 +379,29 @@ or a diverged field with no version behind it, is a breach — that is what to c
 
 Anything Rashmir might want to reword must be editable through `Module.config` without a deploy.
 
+### Config holds our copy too, and the editor must not call it hers (2026-07-27)
+
+`Module.config.phaseSignposts` — how each phase opens itself — is config for the reason above: the
+first thing a leader reads in a phase is exactly the kind of thing Rashmir should be able to change
+without a deploy, and Brief §7 puts the register of the whole product on the same footing as any
+single page. But most of that copy is **ours**, not hers.
+
+That matters because `content-diff.ts` marks every field as "matches the source document" or
+"edited — differs from source", and the second would be a false statement about copy that has no
+source document. **So the signposts are deliberately not in the leaf content editor yet.** They are
+editable through the framework's own module config form (as raw JSON, per daybreak#161), and adding
+them to `/admin/programme/content` requires `ContentField` to carry a
+`sourceKind: 'rashmir' | 'authored'` first, so the marker can say "matches the shipped wording"
+instead. Attributing our orientation copy to Rashmir on her own editing screen is the inverse of what
+this invariant protects, and shipping the editor row before the distinction exists would do exactly
+that. Tracked in [[planning/ryw-conversational]] stage 3.
+
+**One field inside the signposts is hers**: phase 0's opening is
+`[RECLAIM_WARM_OPEN, RECLAIM_PROCESS_OUTLINE]`, and `opening` is an **array of paragraphs** precisely
+so the second stays a field hop 2 can compare character-identically against the extract. Folding the
+two into one string would quietly move her outline out of the guarded set. Pinned by
+`tests/unit/app/programme/runs/signposts.test.ts`.
+
 ---
 
 ## I12 — Pacing: chart and interpretation are separate beats
@@ -385,8 +409,37 @@ Anything Rashmir might want to reword must be editable through `Module.config` w
 After a big reveal, especially the perception-versus-reality chart, the UI shows the picture, asks
 one question, and lets it land. It does not render the interpretation in the same beat.
 
-This is a structural requirement from Brief §5, not a prompt nicety. The component boundary
-enforces it.
+This is a structural requirement from Brief §5, not a prompt nicety.
+
+### "The component boundary enforces it" was aspiration, and now is not (2026-07-27)
+
+For a whole version **both** surfaces drew the chart as soon as there was anything to draw — the form
+panel on `anyHours`, the conversation on `capturedCount > 0`. Under either, a leader assembled their
+week one bar at a time while typing, so by the end of the phase there was no picture left to reveal
+and nothing for the question to follow. The invariant read as satisfied because the chart component
+emits no prose, which is true and is only one third of the requirement.
+
+**Three mechanisms now hold it, and no one of them is sufficient alone:**
+
+1. **The condition.** `chartRevealReady` (`lib/app/programme/chart/reveal.ts`) is true only when every
+   bucket the leader was _asked about_ has an hours reading — and, where a calendar was uploaded,
+   only once the composite exists, because I-composite forbids plotting raw calendar totals. Until
+   then there is no chart and no button.
+2. **The surfaces.** Ready shows a button and no chart; revealed shows the chart alone. The coach's
+   turn is handed the actual figures (`buildCoachPhaseContext`) and told to name the gaps, ask one
+   question, and **stop** — the source is explicit that interpretation waits until after the leader
+   has answered (`Prompt_Text.md:235`, `:237`).
+3. **The server.** Phase 1 cannot be left until the reveal is recorded on the run:
+   `422 CHART_REVEAL_REQUIRED` from the transition route, beside the reflection gate. This is what
+   makes `:231` ("do not proceed to Phase 2 until this has been presented") checkable, and it is the
+   argument I9 already settled — a pause the UI alone holds is not a pause.
+
+The reveal is recorded in `ReclaimAuditRun.coachOpenings`, so it survives a reload and a leader is
+never shown their week "for the first time" twice.
+
+**Test:** `tests/unit/invariants/chart-beat.test.ts` — the condition, both surfaces gating on the
+reveal state rather than on a running count, and the server gate. Plus
+`tests/unit/lib/app/programme/chart/reveal.test.ts` for the condition's edges.
 
 ---
 
@@ -558,7 +611,7 @@ auto-advance through a reflection the person is still sitting with.
 | I9          | Reflection enforced server-side, `422 REFLECTION_REQUIRED`                          |
 | I10         | Tier boundaries; never edit `lib/framework/**` or the bridges                       |
 | I11         | Content loaded verbatim from `sources/`, never paraphrased                          |
-| I12         | Chart and interpretation are separate beats                                         |
+| I12         | Chart and interpretation are separate beats; reveal is server-gated                 |
 | I13         | Refer-back is a data flow, not a prompt                                             |
 | I14         | Entitlement at run creation                                                         |
 | I15         | `isActive: false` on completion                                                     |

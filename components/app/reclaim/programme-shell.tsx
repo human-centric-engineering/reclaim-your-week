@@ -18,7 +18,12 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useLocalStorage } from '@/lib/hooks/use-local-storage';
-import { currentRunStateSchema, type CurrentRunState } from '@/components/app/reclaim/types';
+import {
+  currentRunStateSchema,
+  uiConfigSchema,
+  type CurrentRunState,
+} from '@/components/app/reclaim/types';
+import type { PhaseSignpost } from '@/lib/app/programme/runs/signposts';
 import { PhaseRail } from '@/components/app/reclaim/phase-rail';
 import { TrendLines } from '@/components/app/reclaim/repeat/trend-lines';
 import { Signpost } from '@/components/app/reclaim/signpost';
@@ -48,6 +53,12 @@ export function ProgrammeShell() {
   const [consented, setConsented] = useState(false);
   // Stable identity on purpose — `ConsentGate` takes this as an effect dependency (see the note there).
   const handleConsented = useCallback(() => setConsented(true), []);
+  /**
+   * The signpost cards, as the operator currently has them. `null` until they arrive, and on failure,
+   * which falls the card back to the shipped defaults: a leader should never meet a phase with no
+   * orientation at all because a config read did not come back.
+   */
+  const [signposts, setSignposts] = useState<PhaseSignpost[] | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -69,6 +80,22 @@ export function ProgrammeShell() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Once per mount: the cards do not change while a leader is in a phase, and a failure is not worth
+  // surfacing because the component falls back to the shipped defaults.
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch('/api/v1/app/reclaim/config');
+        const json: unknown = await res.json();
+        const data = json !== null && typeof json === 'object' && 'data' in json ? json.data : null;
+        const parsed = uiConfigSchema.safeParse(data);
+        if (parsed.success) setSignposts(parsed.data.phaseSignposts);
+      } catch {
+        // Defaults stand.
+      }
+    })();
+  }, []);
 
   if (loading) {
     return (
@@ -137,12 +164,18 @@ export function ProgrammeShell() {
         </aside>
 
         <main className="min-w-0 space-y-9">
-          <Signpost phaseKey={currentPhase.key} index={currentIndex} label={currentPhase.label} />
+          <Signpost
+            phaseKey={currentPhase.key}
+            index={currentIndex}
+            label={currentPhase.label}
+            signposts={signposts ?? undefined}
+          />
           {phaseMode === 'conversation' && currentPhase.key !== FINAL_PHASE_KEY ? (
             <PhaseConversation
               runId={state.run.id}
               phaseKey={currentPhase.key}
               conversationId={state.run.conversationId}
+              coachOpenings={state.run.coachOpenings}
               onAdvanced={() => void load()}
               onSwitchToForm={() => setPhaseMode('form')}
             />
@@ -151,6 +184,7 @@ export function ProgrammeShell() {
               <PhaseContent
                 phaseKey={currentPhase.key}
                 runId={state.run.id}
+                coachOpenings={state.run.coachOpenings}
                 onAdvanced={() => void load()}
               />
               {currentPhase.key !== FINAL_PHASE_KEY && (
@@ -181,17 +215,20 @@ export function ProgrammeShell() {
 function PhaseContent({
   phaseKey,
   runId,
+  coachOpenings,
   onAdvanced,
 }: {
   phaseKey: string;
   runId: string;
+  /** Phase 1 needs it for the reveal beat (I12); the other panels have no moments. */
+  coachOpenings: string[];
   onAdvanced: () => void;
 }) {
   switch (phaseKey) {
     case 'phase-0-setup':
       return <SetupPanel runId={runId} onAdvanced={onAdvanced} />;
     case 'phase-1-current':
-      return <Phase1Panel runId={runId} onAdvanced={onAdvanced} />;
+      return <Phase1Panel runId={runId} coachOpenings={coachOpenings} onAdvanced={onAdvanced} />;
     case 'phase-2-energy':
       return <Phase2Panel runId={runId} onAdvanced={onAdvanced} />;
     case 'phase-3-ideal':

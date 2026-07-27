@@ -14,15 +14,35 @@ export const phaseViewSchema = z.object({
 export const currentRunStateSchema = z.object({
   // `conversationId` is the run's own transcript (null until the leader first speaks to the coach) —
   // what lets a reload resume the conversation rather than starting the phase again in silence.
+  //
+  // `coachOpenings` is the moments this run has already had. It is what stops a reload replaying a
+  // beat: showing a leader the picture of their week for the "first" time twice would be worse than
+  // not showing it at all.
   run: z
     .object({
       id: z.string(),
       quarter: z.string().nullable(),
       conversationId: z.string().nullable(),
+      coachOpenings: z.array(z.string()).default([]),
     })
     .nullable(),
   phases: z.array(phaseViewSchema),
   currentPhaseKey: z.string(),
+});
+
+/** The coach-editable UI config the shell reads (`GET /api/v1/app/reclaim/config`). */
+export const uiConfigSchema = z.object({
+  strategyMirror: z.boolean(),
+  phaseSignposts: z
+    .array(
+      z.object({
+        phaseKey: z.string(),
+        involves: z.string(),
+        duration: z.string(),
+        opening: z.array(z.string()),
+      })
+    )
+    .default([]),
 });
 
 export type PhaseStatus = z.infer<typeof phaseStatusSchema>;

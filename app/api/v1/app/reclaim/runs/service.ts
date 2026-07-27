@@ -221,6 +221,55 @@ export async function loadCoachTurnTarget(userId: string, runId: string): Promis
   return { conversationId: run.conversationId ?? undefined, phaseKey: currentPhaseKey };
 }
 
+/**
+ * Claim a coach-opening moment for this run, once and only once.
+ *
+ * Returns `true` when this caller won the claim and should generate the turn, `false` when the moment
+ * was already fired and nothing should happen.
+ *
+ * **One conditional statement, not read-then-write.** `hasNot` + `push` in a single `updateMany` is
+ * what makes two browser tabs, React's development double-effect, and a reload part-way through a
+ * stream all collapse to a single turn. A read followed by a write would leave a window between them
+ * wide enough for exactly the double-open this is here to prevent.
+ *
+ * **The claim happens before the turn is generated, deliberately.** The trade is visible and worth
+ * stating so nobody quietly reverses it: if generation then fails, the moment stays marked and the
+ * leader gets no opener, and they have to speak first — which is what they had to do before any of
+ * this existed, so the failure is inert. Claiming afterwards instead would mean every refresh
+ * part-way through a slow turn bought a second full generation against the leader's own budget. A
+ * rare silent no-op beats a common expensive duplicate.
+ *
+ * `userId` is in the `where` clause rather than checked beforehand: ownership and the claim are then
+ * the same statement, and no caller can forget the check.
+ */
+export async function claimCoachOpening(
+  userId: string,
+  runId: string,
+  moment: string
+): Promise<boolean> {
+  const claimed = await prisma.reclaimAuditRun.updateMany({
+    where: {
+      id: runId,
+      userId,
+      status: RUN_STATUS.inProgress,
+      // Prisma's scalar-list filters have no `hasNot`, so the absence is expressed as a negated
+      // `has`. Still one statement, which is the property that matters here.
+      NOT: { coachOpenings: { has: moment } },
+    },
+    data: { coachOpenings: { push: moment } },
+  });
+  return claimed.count > 0;
+}
+
+/** Which coach-opening moments a run has fired. Used by the transition gate (I12) and the surface. */
+export async function readCoachOpenings(userId: string, runId: string): Promise<string[]> {
+  const run = await prisma.reclaimAuditRun.findFirst({
+    where: { id: runId, userId },
+    select: { coachOpenings: true },
+  });
+  return run?.coachOpenings ?? [];
+}
+
 /** Assert the run is the caller's and still in progress (answers can only be saved to an active run). */
 async function assertActiveOwnedRun(userId: string, runId: string): Promise<void> {
   const run = await loadOwnedRun(runId, userId);
@@ -278,7 +327,17 @@ export async function saveRunAnswers(
  *  `conversationId` is what makes a reload keep the conversation: the coach surface reads the run's
  *  transcript back from it, and a `null` simply means this leader has not spoken to the coach yet. */
 export interface CurrentRunState {
-  run: { id: string; quarter: string | null; conversationId: string | null } | null;
+  run: {
+    id: string;
+    quarter: string | null;
+    conversationId: string | null;
+    /**
+     * Which coach-opening moments this run has fired. The surface fires a moment only when it is due
+     * *and* absent from here, so a reload does not replay a beat the leader has already had. The
+     * conditional claim in the route is the backstop for the race this list cannot see.
+     */
+    coachOpenings: string[];
+  } | null;
   phases: PhaseView[];
   currentPhaseKey: string;
 }
@@ -292,7 +351,12 @@ export async function loadCurrentRunState(userId: string): Promise<CurrentRunSta
 
   const progress = await loadPhaseProgress(userId, run.id);
   return {
-    run: { id: run.id, quarter: run.quarter, conversationId: run.conversationId },
+    run: {
+      id: run.id,
+      quarter: run.quarter,
+      conversationId: run.conversationId,
+      coachOpenings: run.coachOpenings,
+    },
     ...progress,
   };
 }
