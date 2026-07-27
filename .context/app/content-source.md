@@ -209,8 +209,20 @@ The warm opening that precedes it:
 
 ### 4b. The ten questions
 
-Asked one or two at a time, conversationally. **Never listed all at once.** In the app these become
-a short form (F6 t-1) rather than ten chat turns, but the wording and intent carry over.
+Asked one or two at a time, conversationally. **Never listed all at once.** In the app they are asked
+conversationally by default, one or two at a time as the source requires, with the short form (F6 t-1)
+as the alternative for a leader who would rather type into fields. Both write the same slots through
+the same server path (I3), so the choice can change mid-phase without losing anything.
+
+**This paragraph used to say the opposite** — that the ten questions "become a short form rather than
+ten chat turns" — and that was true of what shipped for ten features. It stopped being true when the
+conversational surface landed ([[planning/ryw-conversational]] stage 2). Corrected while planning
+stages 3 to 9.
+
+Worth keeping how it survived: it is a paraphrase rather than a blockquote, so
+`npm run leaf:content-diff` cannot see it. The guard proves that Rashmir's words are quoted verbatim,
+and proves nothing about whether the prose around them still describes the product. Neither hop of the
+I11 chain covers the connective tissue in this file, and this is the second place that has mattered.
 
 1. Their name and role
 2. Type of organisation (nonprofit, startup, established business, other)
