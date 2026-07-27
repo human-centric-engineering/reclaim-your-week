@@ -46,15 +46,29 @@ export const CHART_REVEAL_PHASE = 'phase-1-current';
  * between the upload and the reconciliation would show a leader a version of their week that the
  * product explicitly does not stand behind.
  */
-export function chartRevealReady(answers: Answers): boolean {
+/**
+ * Whether every area the leader was actually asked about now has an hours figure.
+ *
+ * Separate from `chartRevealReady` because two different beats need it and they want different
+ * things afterwards. The **calendar offer** comes at exactly this point in the source — "after
+ * completing the discursive exploration of all buckets" — and must not wait for a composite that
+ * only exists if the leader accepts the offer. The **reveal** needs this *and* the composite where a
+ * calendar was uploaded. Folding them together made the offer unreachable for anyone who said yes.
+ */
+export function everyVisibleAreaHasHours(answers: Answers): boolean {
   const fundraisingRelevant = truthy(answers['reclaim_setup_fundraising_relevant']);
   const visible = RECLAIM_BUCKETS.filter((b) => !b.conditional || fundraisingRelevant);
   if (visible.length === 0) return false;
-
-  const everyBucketAnswered = visible.every(
+  return visible.every(
     (b) => answers[`reclaim_current_hours__${bucketToken(b.slug)}`] !== undefined
   );
-  if (!everyBucketAnswered) return false;
+}
+
+export function chartRevealReady(answers: Answers): boolean {
+  if (!everyVisibleAreaHasHours(answers)) return false;
+
+  const fundraisingRelevant = truthy(answers['reclaim_setup_fundraising_relevant']);
+  const visible = RECLAIM_BUCKETS.filter((b) => !b.conditional || fundraisingRelevant);
 
   if (truthy(answers['reclaim_calendar_uploaded'])) {
     return visible.every(

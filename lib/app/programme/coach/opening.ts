@@ -45,6 +45,16 @@ export const COACH_OPENING_PHASES = {
   'phase-4-gap': 'phase-4-gap',
   /** Three ways in, for the leader to choose between (`:322`). */
   'phase-5-action': 'phase-5-action',
+  /**
+   * The warm close, after the summary has rendered (`:359`, `:361`).
+   *
+   * A moment rather than a card because it is the one part of the close that genuinely varies: it
+   * branches on whether the leader is already working with Rashmir, on whether they have done this
+   * before, and it answers their own takeaway in their own words. The *question* that opens phase 6
+   * is scripted on the card instead — "what are you taking away from this?" is the same question
+   * every time, so a model turn would buy nothing.
+   */
+  'phase-6-close': 'phase-6-summary',
 } as const;
 
 export type CoachOpeningMoment = keyof typeof COACH_OPENING_PHASES;

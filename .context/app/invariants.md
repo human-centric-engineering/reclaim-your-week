@@ -20,6 +20,8 @@ load-bearing in aggregate.
 > | `tests/unit/invariants/calendar-privacy.test.ts` | I4        | F5      |
 > | `tests/unit/invariants/admin-support.test.ts`    | D4 (F10)  | F10 t-1 |
 > | `tests/unit/invariants/chart-beat.test.ts`       | I12       | conv. 5 |
+> | `tests/unit/invariants/reachability.test.ts`     | —         | conv. 7 |
+> | `npm run smoke:reclaim-coach`                    | I12, I19  | conv. 9 |
 >
 > **This block used to say the opposite** — that every test below was "still to be written" — and it
 > stayed that way through all ten features while the guards were built one by one. Its own closing
@@ -177,8 +179,16 @@ the guard.
 
 ## I6 — The agent never selects the run, and never transitions
 
-Granted capabilities: `get_journey_state`, `get_next_steps`, `get_state`, `fill_slot`,
+Granted capabilities: `get_journey_state`, `get_next_steps`, `get_state`,
 `reclaim_audit__record_answers`.
+
+**`fill_slot` was granted here and has been removed (2026-07-27).** The reasoning that put it there
+is kept below because it is the same reasoning that justifies `record_answers`' shape. It covered
+`reclaim_profile`, which `record_answers` also covers — from a server-issued run rather than a
+model-supplied key — so the narrower tool was both redundant and the less safe of the two, and its
+removal retires the last grant on this agent whose write target a model could influence at all. A
+seed unit (`004-reclaim-coach-grants`) revokes the row: neither `002` nor `003` ever deletes a grant,
+so without it the removal would have shipped as a no-op on every installed database.
 
 **Never** `request_transition`. The server owns phase transitions and the leader decides when to
 move on.
@@ -187,10 +197,10 @@ move on.
 run from an argument the model supplies may only touch slots belonging to no run. A capability that
 takes the run from the server may write the audit.
 
-| Capability                      | Run comes from                                 | May write              |
-| ------------------------------- | ---------------------------------------------- | ---------------------- |
-| `fill_slot`                     | `contextKey`, an LLM-supplied argument         | `reclaim_profile` only |
-| `reclaim_audit__record_answers` | `CapabilityContext.scope`, issued by the route | the allowlist below    |
+| Capability                        | Run comes from                                 | May write           |
+| --------------------------------- | ---------------------------------------------- | ------------------- |
+| `fill_slot` _(no longer granted)_ | `contextKey`, an LLM-supplied argument         | nothing here        |
+| `reclaim_audit__record_answers`   | `CapabilityContext.scope`, issued by the route | the allowlist below |
 
 **Why the distinction.** `contextKey` is an optional argument on the framework's own tools
 (`lib/framework/guidance/capabilities/shared.ts:18-21`) and the model can pass any string, so
@@ -198,7 +208,9 @@ trusting it for run selection would let a hallucinated key write one leader's an
 leader's audit. `ChatRequest.scope` is a `Record<string, string>` built by the route and threaded
 verbatim into every dispatch (`lib/orchestration/chat/types.ts:41-49`); the model never sees it and
 cannot influence it. So the hazard is removed by construction rather than by prohibition, and the
-capability that carries the run this way is safe to grant where `fill_slot` is not.
+capability that carries the run this way is safe to grant where `fill_slot` was not. Keeping the
+comparison after the removal is deliberate: it is the argument that says why `record_answers` may
+write an audit at all, and it stops being obvious the moment the counter-example is deleted.
 
 **One route issues that scope, and it is a leaf route for a reason.** The framework's module-surface
 stream sends `{ moduleSlug }`, which is everything the framework knows and one key short of what the
@@ -215,9 +227,25 @@ conversational means the coach must record what it hears or the conversation cap
 the rule was actually protecting — that a model can never decide which run it is writing into — is
 unchanged and now enforced structurally.
 
-**Write allowlist** for `record_answers`, stated twice on purpose: as data on the capability grant
-(`AiAgentCapability.customConfig`, enforced by the framework's `facetAllows`) and in code
-(`lib/app/programme/coach/writable-slots.ts`, which can also explain the refusal to the model).
+### The write allowlist, and what actually enforces it
+
+Stated in two places, doing two different jobs:
+
+| Layer                                        | Says                                                  | Enforced by                                                         |
+| -------------------------------------------- | ----------------------------------------------------- | ------------------------------------------------------------------- |
+| The grant (`AiAgentCapability.customConfig`) | which slot **groups** this agent may write at all     | `facetAllows`, called by the capability from `context.customConfig` |
+| The code (`coach/writable-slots.ts`)         | which **slugs** within them, and the typed-value rule | `checkSlotWrite`                                                    |
+
+The capability ANDs them, and fails closed on a grant it cannot parse.
+
+> **This invariant claimed two layers for a year and had one.** `facetAllows` is called by the
+> framework's own `fill_slot` and `get_state` and by nothing else, so a _module_ capability that does
+> not call it has an `ExposureConfig` that enforces nothing — and `record_answers` did not call it.
+> The writes were still correctly constrained, by the code layer, which is the one that actually ran.
+> What was false was the claim. Worse, `agent-caps.test.ts` asserted against its **own local mirror**
+> of `facetAllows`, so the guard passed while proving only that the data said what we meant. Both are
+> fixed: the capability reads the grant, and the guard imports the real function. A rule documented
+> as held twice and held once is worse than one held once and known to be.
 
 Permitted: `reclaim_profile`, `reclaim_setup`, `reclaim_current`, `reclaim_energy`, `reclaim_ideal`,
 `reclaim_gap`, `reclaim_action`.
@@ -229,8 +257,20 @@ Refused, and each for its own reason:
   on screen; the leader's confirmation is what writes.
 - **`reclaim_share`** — `reclaim_share_with_coach` and `reclaim_share_quotable` decide whether a
   leader's words may be republished. An agent that can write consent can manufacture it.
-- **`reclaim_calendar`, `reclaim_composite`** — computed lanes whose privacy story (I4, I-composite)
-  is that they hold deterministic per-bucket totals. Model-derived numbers there make that false.
+- **`reclaim_composite`** — the reconciled lane, whose whole story (I-composite) is that it is
+  computed from the calendar and the estimates. A model-derived number there makes that false.
+- **`reclaim_calendar`, except two slugs.** The lane figures stay refused for I4's reason. But the
+  group also holds six _leader self-reports_, and the wholesale refusal was written for the lanes:
+  `completeness` and `period` are the answers to two questions the source explicitly tells the coach
+  to **ask**, before any file exists, and the first decides how every later figure is framed. A
+  conversation that cannot record the answer to a question it was told to ask captures nothing at the
+  point that matters. The exception is a named slug list
+  (`COACH_WRITABLE_SLOTS_IN_REFUSED_GROUPS`); the other four self-reports stay refused because they
+  are asked on the review screen, after the upload, where they belong.
+
+  The grant therefore permits `reclaim_calendar` and the **code** keeps the lanes shut — the two
+  layers deliberately not identical. `facetSchema` is strict on `{ groups, scopes }`, so a
+  slug-level rule cannot be expressed as data at all; logged as a Daybreak ask.
 
 **Typed slots need typed values.** `record_answers` refuses a `number`, `boolean`, `date` or `json`
 slot that arrives with prose alone. Nine bucket hour slots feed the charts, the benchmarks, the gap
@@ -273,6 +313,14 @@ left is absent.
 
 A UI-only guard is not sufficient. "Asking before telling is the coaching spine of the tool"
 (Brief §3).
+
+**`reclaim_reflection_p6` is a reflection but not a transition gate.** The takeaway the source asks
+for before the summary is produced lives in the reflection group, so the coach may never write it
+(I6) and the leader saves it — exactly right. But `reflectionSlugForLeaving` deliberately does not
+return it: phase 6 is the end of the audit, and gating the finish button on a reflection would be a
+refusal nobody asked for. What it gates is the **summary appearing**, which is the beat the source
+actually describes. Before this the question was asked _after_ the artifact and only of the leaders
+who chose to share their results, so most people were never asked at all.
 
 ---
 
@@ -598,26 +646,26 @@ auto-advance through a reflection the person is still sitting with.
 
 ## Quick reference
 
-| #           | Rule                                                                                |
-| ----------- | ----------------------------------------------------------------------------------- |
-| I1          | Third-person attribution; never speaks as Rashmir                                   |
-| I2          | Banned lexicon; no em dashes; no bullets in conversation                            |
-| I3          | Only `saveAnswer()` calls `appendSlotValue()`                                       |
-| I4          | Calendar: in-memory, `runStructuredCompletion` only, totals only                    |
-| I5          | Never `special_category`                                                            |
-| I6          | The run comes from the server, never from a model argument; no `request_transition` |
-| I7          | Canonical bucket slugs never change                                                 |
-| I8          | Hours, never percentages                                                            |
-| I9          | Reflection enforced server-side, `422 REFLECTION_REQUIRED`                          |
-| I10         | Tier boundaries; never edit `lib/framework/**` or the bridges                       |
-| I11         | Content loaded verbatim from `sources/`, never paraphrased                          |
-| I12         | Chart and interpretation are separate beats; reveal is server-gated                 |
-| I13         | Refer-back is a data flow, not a prompt                                             |
-| I14         | Entitlement at run creation                                                         |
-| I15         | `isActive: false` on completion                                                     |
-| I16         | The tool returns people to their own discernment; it reflects, does not decide      |
-| I-frame     | Not a productivity exercise; an invitation to lead differently                      |
-| I-composite | After an upload the chart shows calendar plus discursive, never raw calendar        |
-| I17         | Never judged; possibility, not failure                                              |
-| I18         | Slow down on emotion; slow and refer, never counsel                                 |
-| I19         | The coach stream writes the run's conversation, write-once; never a timestamp guess |
+| #           | Rule                                                                                                                        |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------- |
+| I1          | Third-person attribution; never speaks as Rashmir                                                                           |
+| I2          | Banned lexicon; no em dashes; no bullets in conversation                                                                    |
+| I3          | Only `saveAnswer()` calls `appendSlotValue()`                                                                               |
+| I4          | Calendar: in-memory, `runStructuredCompletion` only, totals only                                                            |
+| I5          | Never `special_category`                                                                                                    |
+| I6          | The run comes from the server, never from a model argument; no `request_transition`; the grant is enforced, not just stated |
+| I7          | Canonical bucket slugs never change                                                                                         |
+| I8          | Hours, never percentages                                                                                                    |
+| I9          | Reflection enforced server-side, `422 REFLECTION_REQUIRED`                                                                  |
+| I10         | Tier boundaries; never edit `lib/framework/**` or the bridges                                                               |
+| I11         | Content loaded verbatim from `sources/`, never paraphrased                                                                  |
+| I12         | Chart and interpretation are separate beats; reveal is server-gated                                                         |
+| I13         | Refer-back is a data flow, not a prompt                                                                                     |
+| I14         | Entitlement at run creation                                                                                                 |
+| I15         | `isActive: false` on completion                                                                                             |
+| I16         | The tool returns people to their own discernment; it reflects, does not decide                                              |
+| I-frame     | Not a productivity exercise; an invitation to lead differently                                                              |
+| I-composite | After an upload the chart shows calendar plus discursive, never raw calendar                                                |
+| I17         | Never judged; possibility, not failure                                                                                      |
+| I18         | Slow down on emotion; slow and refer, never counsel                                                                         |
+| I19         | The coach stream writes the run's conversation, write-once; never a timestamp guess                                         |

@@ -16,17 +16,30 @@
  *   leader's words may be republished. An agent that can write consent can manufacture it.
  * - **`reclaim_calendar` and `reclaim_composite`** — computed lanes whose privacy story is that they
  *   hold deterministic per-bucket totals and nothing else. Model-derived numbers in there would make
- *   that story false.
+ *   that story false. **Two slugs inside `reclaim_calendar` are the exception**; see
+ *   `COACH_WRITABLE_SLOTS_IN_REFUSED_GROUPS` below.
  *
- * The allowlist is also expressed as data on the agent's capability grant (`ExposureConfig`), so the
- * framework's own `facetAllows` enforces it a second time at a different layer. This module is the
- * first layer and the one that can explain itself to the model.
+ * ## The two layers, and what each actually holds
+ *
+ * This module is the product rule: which slugs, and the typed-value rule. The agent's capability
+ * grant carries an `ExposureConfig` naming the permitted **groups**, which the capability now reads
+ * from `context.customConfig` and enforces through the framework's own `facetAllows`.
+ *
+ * **That second layer used to be documentation rather than code.** This header, `agent.ts` and I6 all
+ * said `facetAllows` enforced the allowlist a second time; it does not run for a module capability
+ * unless the capability calls it, and `record_answers` never did, so the grant's `customConfig` was
+ * inert data. The writes were still correctly constrained — by this file, which is the layer that
+ * actually ran — but a rule documented as held twice and held once is worse than one held once and
+ * known to be. Found by reading the code rather than the docblock while planning the conversational
+ * stages; the capability now reads the grant, and `agent-caps.test.ts` exercises the real
+ * `facetAllows` instead of a local mirror of it.
  */
 
 import type { Prisma } from '@prisma/client';
 import { SLOT_DATA_TYPE } from '@/lib/framework/data-slots/vocabulary';
 import { validateTypedValue } from '@/lib/framework/data-slots/capabilities/typed-value';
 import { reclaimSlotDefinitions } from '@/lib/app/programme/slots';
+import type { SlotDefinitionInput } from '@/lib/framework/data-slots';
 
 /** Slot groups the coach may write from conversation. */
 export const COACH_WRITABLE_GROUPS: readonly string[] = [
@@ -50,13 +63,44 @@ export const COACH_REFUSED_GROUPS: Readonly<Record<string, string>> = {
   reclaim_share:
     'Sharing choices are consent and only the leader can give it. Offer the choice on screen instead.',
   reclaim_calendar:
-    'Calendar figures are computed from an uploaded calendar, never from conversation.',
+    'Calendar figures are computed from an uploaded calendar, never from conversation. The two questions you ask before an upload are the exception and you may record those.',
   reclaim_composite:
     'The reconciled picture is computed from the calendar and the estimates, never from conversation.',
 };
 
+/**
+ * Slugs inside a refused group that the coach **may** write, because they are the leader's own answer
+ * rather than a computed lane.
+ *
+ * `reclaim_calendar` was refused wholesale on the reading that the group holds deterministic
+ * per-bucket totals whose privacy story (I4) and arithmetic (I-composite) must never admit a
+ * model-derived number. That reading is right about most of the group and wrong about two members.
+ * `completeness` and `period` are the answers to two questions the source explicitly tells the tool
+ * to **ask**, before any file exists — "how much does your calendar reflect your actual working
+ * life?" and "what period would you like me to analyse?" — and the first of those modulates how every
+ * later figure is framed. A conversation that cannot record the answer to a question it was told to
+ * ask captures nothing at the one point where the whole framing is decided.
+ *
+ * The other four self-reports in this group (`switch_frequency`, `reactive_time`, `offcal_work`,
+ * `messaging_load`) stay refused. They are asked on the review screen after the upload, which is
+ * where they belong, and opening them here would hand the coach four questions with no beat to ask
+ * them in.
+ *
+ * Expressed in code alone, not on the grant: `facetSchema` is strict on `{ groups, scopes }`, so a
+ * slug-level allowlist cannot be stated as data. Logged as a Daybreak ask.
+ */
+export const COACH_WRITABLE_SLOTS_IN_REFUSED_GROUPS: readonly string[] = [
+  'reclaim_calendar_completeness',
+  'reclaim_calendar_period',
+];
+
 /** Slug → definition, built once. Mirrors the lookup `saveAnswer` does for masking. */
 const DEFINITION_BY_SLUG = new Map(reclaimSlotDefinitions.map((d) => [d.slug, d]));
+
+/** The registered definition for a slug, for callers that need its group (the grant check). */
+export function slotDefinitionFor(slotSlug: string): SlotDefinitionInput | undefined {
+  return DEFINITION_BY_SLUG.get(slotSlug);
+}
 
 /** Why a proposed write was refused, in a form the capability can hand back to the model. */
 export interface SlotWriteRefusal {
@@ -97,12 +141,17 @@ export function checkSlotWrite(slotSlug: string, valueJson: unknown): SlotWriteC
     };
   }
 
+  // A named exception inside a refused group is checked before the group, so the two framing
+  // questions the source tells the coach to ask can be recorded while the computed lanes beside them
+  // stay shut.
+  const namedException = COACH_WRITABLE_SLOTS_IN_REFUSED_GROUPS.includes(slotSlug);
+
   const refusedReason = COACH_REFUSED_GROUPS[definition.group];
-  if (refusedReason !== undefined) {
+  if (refusedReason !== undefined && !namedException) {
     return { ok: false, refusal: { code: 'group_refused', message: refusedReason } };
   }
 
-  if (!COACH_WRITABLE_GROUPS.includes(definition.group)) {
+  if (!namedException && !COACH_WRITABLE_GROUPS.includes(definition.group)) {
     return {
       ok: false,
       refusal: {

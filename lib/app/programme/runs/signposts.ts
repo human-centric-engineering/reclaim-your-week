@@ -101,7 +101,9 @@ export const RECLAIM_PHASE_SIGNPOSTS: PhaseSignpost[] = [
     phaseKey: 'phase-6-summary',
     involves: 'What you are taking from this, gathered in one place to keep.',
     duration: 'a few minutes',
-    opening: [],
+    opening: [
+      'Before the written summary, one last question, and it is the one that matters most. What are you taking away from this?',
+    ],
   },
 ];
 

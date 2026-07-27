@@ -184,6 +184,7 @@ export function ProgrammeShell() {
               <PhaseContent
                 phaseKey={currentPhase.key}
                 runId={state.run.id}
+                conversationId={state.run.conversationId}
                 coachOpenings={state.run.coachOpenings}
                 onAdvanced={() => void load()}
               />
@@ -215,12 +216,15 @@ export function ProgrammeShell() {
 function PhaseContent({
   phaseKey,
   runId,
+  conversationId,
   coachOpenings,
   onAdvanced,
 }: {
   phaseKey: string;
   runId: string;
-  /** Phase 1 needs it for the reveal beat (I12); the other panels have no moments. */
+  /** Phase 6's closing beat continues the run's own transcript rather than opening a new one. */
+  conversationId: string | null;
+  /** Phase 1 needs it for the reveal beat (I12), phase 6 for the close. */
   coachOpenings: string[];
   onAdvanced: () => void;
 }) {
@@ -238,7 +242,14 @@ function PhaseContent({
     case 'phase-5-action':
       return <Phase5Panel runId={runId} onAdvanced={onAdvanced} />;
     case 'phase-6-summary':
-      return <Phase6Panel runId={runId} onAdvanced={onAdvanced} />;
+      return (
+        <Phase6Panel
+          runId={runId}
+          conversationId={conversationId}
+          coachOpenings={coachOpenings}
+          onAdvanced={onAdvanced}
+        />
+      );
     default:
       return (
         <p className="text-muted-foreground text-sm leading-relaxed">

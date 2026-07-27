@@ -73,7 +73,7 @@ export interface ReclaimCoachAgentDefinition {
   systemInstructions: string;
   guardrails: string;
   brandVoiceInstructions: string;
-  /** The whole capability list. Reads only, plus `fill_slot` locked to `reclaim_profile` (I6). */
+  /** The whole capability list. Reads, plus the one server-scoped write, `record_answers` (I6). */
   capabilities: ReclaimAgentCapabilityGrant[];
 }
 
@@ -127,18 +127,23 @@ export const RECLAIM_RECORD_ANSWERS_SLUG = moduleCapabilitySlug(
 );
 
 /**
- * The coach agent, and the two writes it holds (I6).
+ * The coach agent, and the one write it holds (I6).
  *
- * `fill_slot` stays locked to the run-independent `reclaim_profile` group. It selects its run from
- * `contextKey`, an argument the *model* supplies, so a hallucinated value there could write one
- * leader's run into another's — which is why it may only ever touch slots that belong to no run.
+ * `record_answers` is the conversational capture path and may write the audit, because it takes the
+ * run from the server-issued dispatch scope rather than from an argument. There is nothing for the
+ * model to get wrong. Its `customConfig` is the operator-tunable outer bound — which slot **groups**
+ * this grant permits — and the capability reads it from `context.customConfig` and enforces it
+ * through the framework's `facetAllows`. Which **slugs** within those groups, and the typed-value
+ * rule, stay in code (`coach/writable-slots.ts`).
  *
- * `record_answers` is the conversational capture path and may write the audit itself, because it
- * takes the run from the server-issued dispatch scope instead of from an argument. There is nothing
- * for the model to get wrong. Its allowlist is the same one the capability enforces in code
- * (`coach/writable-slots.ts`), stated here as data so the framework's `facetAllows` checks it a
- * second time at a different layer: reflections, sharing consent and the computed calendar lanes are
- * absent from this list and therefore refused.
+ * **`fill_slot` used to be granted here, locked to `reclaim_profile`, and has been removed.** The
+ * reasoning that put it there is worth keeping, because it is the same reasoning that justifies
+ * `record_answers`' shape: `fill_slot` selects its run from `contextKey`, an argument the *model*
+ * supplies, so a hallucinated value could write one leader's answers into another's audit — which is
+ * why it was only ever allowed to touch slots belonging to no run. `record_answers` covers
+ * `reclaim_profile` too and takes its run from the server, so the narrower tool is now strictly
+ * redundant and strictly less safe. Removing it also retires the one grant on this agent whose
+ * write target a model could influence at all.
  *
  * Still no `request_transition`. The server owns phase transitions, and the leader decides when to
  * move on.
@@ -159,15 +164,17 @@ export const reclaimCoachAgent: ReclaimCoachAgentDefinition = {
     { slug: 'get_next_steps' },
     { slug: 'get_state' },
     {
-      // Model-selected run, so it may only touch slots that belong to no run (I6).
-      slug: 'fill_slot',
-      customConfig: { write: { groups: ['reclaim_profile'] } },
-    },
-    {
-      // Server-selected run, so it may write the audit. The allowlist mirrors the one the
-      // capability enforces in code; the three refused groups are absent by construction.
+      // The only write. The run comes from the server-issued dispatch scope, which is the whole
+      // reason the coach may write audit answers at all (I6), and this list is the operator-tunable
+      // outer bound the capability now actually reads and enforces through `facetAllows`.
+      //
+      // `reclaim_calendar` is here so that the two questions the source tells the coach to ask before
+      // an upload can be recorded. The computed lanes in that group stay shut in code, which is where
+      // slug-level permission has to live until a facet can express it as data.
       slug: RECLAIM_RECORD_ANSWERS_SLUG,
-      customConfig: { write: { groups: [...COACH_WRITABLE_GROUPS] } },
+      customConfig: {
+        write: { groups: [...COACH_WRITABLE_GROUPS, 'reclaim_calendar'] },
+      },
     },
   ],
 };

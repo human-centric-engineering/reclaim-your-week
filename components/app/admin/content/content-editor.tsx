@@ -23,8 +23,25 @@ import {
   type ContentField,
 } from '@/components/app/admin/actions';
 
-function SourceMarker({ matchesSource }: { matchesSource: boolean }) {
-  return matchesSource ? (
+/**
+ * What "edited" is a statement about, which depends on who wrote the field.
+ *
+ * For Rashmir's words the reference is a source document, and a difference is worth flagging in
+ * amber: it means she has revised herself, and I11's whole point is that such a revision is visible
+ * rather than discovered. For copy this app wrote there is no source document, so saying "differs
+ * from source" would assert something about a thing that does not exist and would quietly hand her
+ * authorship of our orientation prose. Those fields compare against the shipped wording instead, and
+ * a difference there is unremarkable.
+ */
+function SourceMarker({ field }: { field: Pick<ContentField, 'matchesSource' | 'sourceKind'> }) {
+  if (field.sourceKind === 'authored') {
+    return field.matchesSource ? (
+      <span className="text-muted-foreground text-xs">as shipped</span>
+    ) : (
+      <span className="text-muted-foreground text-xs">edited</span>
+    );
+  }
+  return field.matchesSource ? (
     <span className="text-muted-foreground text-xs">matches the source document</span>
   ) : (
     <span className="text-xs text-amber-700 dark:text-amber-400">edited — differs from source</span>
@@ -47,7 +64,7 @@ function Field({
     <label className="block space-y-1">
       <span className="flex flex-wrap items-baseline justify-between gap-2">
         <span className="text-sm font-medium">{field.label}</span>
-        <SourceMarker matchesSource={field.matchesSource} />
+        <SourceMarker field={field} />
       </span>
       {multiline === true ? (
         <textarea
@@ -203,7 +220,7 @@ export function ContentEditor() {
           <label key={rule.key} className="block space-y-1 rounded-lg border p-4">
             <span className="flex flex-wrap items-baseline justify-between gap-2">
               <span className="text-sm font-medium">{rule.label}</span>
-              <SourceMarker matchesSource={rule.matchesSource} />
+              <SourceMarker field={rule} />
             </span>
             <input
               type="number"
@@ -222,6 +239,57 @@ export function ContentEditor() {
         {view.prose.map((field) => (
           <div key={field.key} className="rounded-lg border p-4">
             <Field field={field} draft={drafts[field.key]} onChange={change} multiline />
+          </div>
+        ))}
+      </section>
+
+      <section className="space-y-4">
+        <div className="flex items-center gap-1">
+          <h2 className="text-lg font-medium">How each phase opens</h2>
+          <FieldHelp title="What a leader reads first">
+            <p>
+              Every phase opens with these words before anyone types anything. They set what the
+              phase is, what it involves, and roughly how long it takes, so the process never feels
+              open-ended.
+            </p>
+            <p>
+              Most of this wording was written for the app rather than taken from your documents, so
+              it is marked <strong>as shipped</strong> rather than measured against a source. The
+              one exception is the second part of Phase 0, which is your own outline and is marked
+              as such.
+            </p>
+          </FieldHelp>
+        </div>
+        {view.signposts.map((signpost) => (
+          <div key={signpost.phaseKey} className="space-y-3 rounded-lg border p-4">
+            <p className="text-muted-foreground text-xs tracking-wide uppercase">
+              {signpost.phaseKey}
+            </p>
+            <Field
+              field={signpost.involves}
+              draft={drafts[signpost.involves.key]}
+              onChange={change}
+            />
+            <Field
+              field={signpost.duration}
+              draft={drafts[signpost.duration.key]}
+              onChange={change}
+            />
+            {signpost.opening.map((beat) => (
+              <Field
+                key={beat.key}
+                field={beat}
+                draft={drafts[beat.key]}
+                onChange={change}
+                multiline
+              />
+            ))}
+            {signpost.opening.length === 0 && (
+              <p className="text-muted-foreground text-xs">
+                This phase opens on its heading alone. The summary needs no introduction because the
+                document is the point.
+              </p>
+            )}
           </div>
         ))}
       </section>

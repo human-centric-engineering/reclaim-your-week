@@ -41,18 +41,18 @@ describe('reclaimCoachAgent authored content', () => {
 });
 
 describe('reclaimCoachAgent capability grants', () => {
-  it('grants five capabilities, one per slug (no duplicates)', () => {
+  it('grants four capabilities, one per slug (no duplicates)', () => {
+    // Four, not five: `fill_slot` was removed once `record_answers` covered the same group from a
+    // server-issued run. See `agent.ts` for why the narrower tool was the less safe one.
     const slugs = reclaimCoachAgent.capabilities.map((c) => c.slug);
-    expect(slugs).toHaveLength(5);
-    expect(new Set(slugs).size).toBe(5);
+    expect(slugs).toHaveLength(4);
+    expect(new Set(slugs).size).toBe(4);
   });
 
-  it('attaches an exposure config to both writes and to neither read', () => {
-    // The reads are unrestricted; every write carries an allowlist. `agent-caps.test.ts` asserts
-    // what each allowlist contains — here we only care that no write escaped without one.
+  it('attaches an exposure config to the one write and to none of the reads', () => {
+    // The reads are unrestricted; the write carries an allowlist. `agent-caps.test.ts` asserts what
+    // that allowlist contains — here we only care that no write escaped without one.
     const withConfig = reclaimCoachAgent.capabilities.filter((c) => c.customConfig !== undefined);
-    expect(withConfig.map((c) => c.slug).sort()).toEqual(
-      ['fill_slot', RECLAIM_RECORD_ANSWERS_SLUG].sort()
-    );
+    expect(withConfig.map((c) => c.slug)).toEqual([RECLAIM_RECORD_ANSWERS_SLUG]);
   });
 });

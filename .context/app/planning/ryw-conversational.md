@@ -1,6 +1,6 @@
 # `ryw-conversational` — the audit as a coaching conversation
 
-**Owner:** John · **Status:** stages 0–6 shipped, 7–9 ready · **Depends on:** F1–F10 (all shipped)
+**Owner:** John · **Status:** **all stages shipped** · **Depends on:** F1–F10 (all shipped)
 
 ---
 
@@ -181,27 +181,28 @@ which leaves the coach unable to record the answer to a question the source expl
 Each is one PR through the [[building-a-feature]] gate loop. **3 and 4 are hard prerequisites; 5, 6
 and 7 are independent of each other once 4 lands.**
 
-| Stage | Delivers                                                     | Closes | State        |
-| ----- | ------------------------------------------------------------ | ------ | ------------ |
-| 3     | The deterministic signpost card, content in `Module.config`  | 1      | **shipped**  |
-| 4     | The server-triggered opening turn, and the moment ledger     | 1      | **shipped**  |
-| 5     | The chart as a beat (I12), both paths, server-gated          | 2      | **shipped**  |
-| 6     | The phase-4 gap data flow and its opening turn               | —      | **shipped**  |
-| 7a    | I6 amendment, real exposure enforcement, `fill_slot` removal | 6      | ready ▲      |
-| 7b    | The calendar hand-off and the unreachable-route bug          | 3      | ready ▲      |
-| 8a    | Phase 6 takeaway as a question                               | 4      | ready ▲      |
-| 8b    | Warm close and affirmation after the summary                 | 4      | blocked → 8a |
-| 9     | `smoke:reclaim-coach` + the eval fixture                     | 5      | ready ▲      |
+| Stage | Delivers                                                     | Closes | State       |
+| ----- | ------------------------------------------------------------ | ------ | ----------- |
+| 3     | The deterministic signpost card, content in `Module.config`  | 1      | **shipped** |
+| 4     | The server-triggered opening turn, and the moment ledger     | 1      | **shipped** |
+| 5     | The chart as a beat (I12), both paths, server-gated          | 2      | **shipped** |
+| 6     | The phase-4 gap data flow and its opening turn               | —      | **shipped** |
+| 7a    | I6 amendment, real exposure enforcement, `fill_slot` removal | 6      | **shipped** |
+| 7b    | The calendar hand-off and the unreachable-route bug          | 3      | **shipped** |
+| 8a/8b | The close: the takeaway, then the warm close                 | 4      | **shipped** |
+| 9     | `smoke:reclaim-coach`                                        | 5      | **shipped** |
 
 **Stages 3 to 6 shipped together**, as one branch. They are the prerequisite chain — 5 and 6 have no
 trigger without 4, and 4 has nothing to open without 3 — and they read as one story: the conversation
 now opens itself, and the two beats that need figures land as beats rather than as running totals.
 
-**Two things were deferred out of stage 3 deliberately.** The signposts are editable through the
-framework's own module config form but are **not yet in `/admin/programme/content`**, because
-`content-diff.ts` would label our orientation copy "differs from source" — a sentence about a source
-document that this copy does not have. Adding `ContentField.sourceKind` is the prerequisite and it
-belongs with the editor row, not with the config key. See [[invariants]] I11.
+**Nothing was left deferred.** Stage 3 first shipped without its content-editor half, on the
+reasoning that `content-diff.ts` would label our orientation copy "differs from source" — a sentence
+about a source document that copy does not have. That was a real problem and a bad reason to stop:
+the prerequisite was one field. `ContentField.sourceKind` distinguishes Rashmir's words from ours,
+the marker reads "as shipped" for the latter, the diverged count is taken over her fields only, and
+the signposts now have their own section in her editor. Phase 0's outline stays marked as hers, which
+is the whole reason `opening` is an array of separately-comparable beats.
 
 ### Stage 3 — the deterministic signpost card
 
@@ -384,10 +385,43 @@ em dash or a banned term, which I2 checks on the authored prose and on nothing t
 the only guard that can reach I-frame, I13, I16 and I17, which [[invariants]] currently lists as
 specification rather than guard.
 
-It needs a real key, so it is a manual gate — which is a live argument for
-[[planning/post-v1|post-v1]] P16's nightly-workflow option rather than a reason to leave P16 unchanged.
+**What shipped is the smoke, and not the eval fixture.** `smoke:reclaim-coach` calls no model, so it
+runs in CI like the other three: it asserts the parts mocks cannot reach, and the sharpest of those is
+that five concurrent claims on one moment produce exactly one winner. A conditional `updateMany` that
+silently matches nothing looks identical to one that worked, right up until two tabs open the same
+beat.
+
+The **eval fixture was not built**, and that is a decision rather than an omission. It would need a
+real provider key, so it could only ever be a second manual gate beside `smoke:reclaim-calendar` —
+and the thing it would measure is how a model behaves under these instructions, which is worth
+measuring against a real conversation rather than against fixtures written by the same person who
+wrote the prompt. The honest next step is a leader using it. That strengthens
+[[planning/post-v1|post-v1]] P16's nightly-workflow option rather than settling it.
 
 ---
+
+## Where the source was not followed literally
+
+The source prompt was written for a Claude Project, where a conversation was the only surface there
+was. Several of its beats exist for that reason rather than because a conversation is the best place
+for them, and the Brief says as much: the hybrid design "solves problems the chat version could not".
+Three places where the app deliberately does something else:
+
+- **The calendar export walkthroughs are a screen, not a recital.** The source has the coach read out
+  six steps for Google, six for Outlook, five for Apple. Those are a list you scan while tabbing to
+  another window. They are also the exact content the transcription audit found had been **invented**
+  at some point, with Outlook menu items appearing in no source document — and a model asked to recall
+  menu steps is how that happens again. [[content-source]] had already reached the same conclusion
+  ("shown at the upload step"), so this is the extract's reading rather than a departure from it.
+- **The takeaway is asked once.** `Prompt_Text.md:35` asks "what are you taking away from this?"
+  before the summary; Brief §3 asks sharers "in a sentence, what did you take from this?" afterwards.
+  Both verbatim reads as a repeat. Everyone is asked once, before the summary, and the sharing step
+  carries what they wrote and asks only for permission to quote it.
+- **The phase openings are scripted where they are not data-dependent.** A signpost is the same
+  sentence every time, so a model turn buys nothing and costs a leader's per-minute budget. The four
+  beats that need figures in front of them get a real turn. The takeaway question is on the card for
+  the same reason; the close after it is a turn, because it branches on tier, on history, and on what
+  the leader just said.
 
 ## Decisions taken for stages 3 to 9
 
@@ -400,9 +434,16 @@ It needs a real key, so it is a manual gate — which is a live argument for
 - **Phase 6 is embedded, not routed.** The takeaway becomes a conversation inside the existing panel;
   the summary, consent and referral do not move, because consent is not something a coach may record.
 - **The opening moment is claimed before the turn is generated,** not after.
-- **I6's two-layer claim is corrected rather than quietly satisfied.** The second layer is built in 7a
+- **I6's two-layer claim is corrected rather than quietly satisfied.** The second layer is built
   because the invariant should describe what runs; a rule documented as enforced twice and enforced
   once is worse than a rule enforced once and known to be.
+- **The calendar group's refusal is narrowed by slug, not opened by group.** The grant permits
+  `reclaim_calendar` so the two pre-upload questions can be recorded; the code keeps every computed
+  lane shut. The two layers are deliberately not identical, because a facet cannot express a
+  slug-level rule at all.
+- **"Once only" for the consultation offer is derived, never stored.** A leader who has completed an
+  audit before has already been offered it, so `hasCompletedAudit` answers the question from data
+  that is already correct for other reasons. No flag, no ledger entry, nothing new to keep true.
 
 ---
 

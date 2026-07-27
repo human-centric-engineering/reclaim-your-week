@@ -16,9 +16,14 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { RECLAIM_BUCKETS, bucketToken, RECLAIM_DEEP_WORK_NOTE } from '@/lib/app/programme/content';
 import { buildChartData, truthy, type Answers } from '@/lib/app/programme/chart/series';
-import { CHART_REVEAL_MOMENT, chartRevealState } from '@/lib/app/programme/chart/reveal';
+import {
+  CHART_REVEAL_MOMENT,
+  chartRevealState,
+  everyVisibleAreaHasHours,
+} from '@/lib/app/programme/chart/reveal';
 import { ReclaimChart } from '@/components/app/reclaim/chart/reclaim-chart';
 import { Comparison } from '@/components/app/reclaim/repeat/comparison';
 import { Reflection } from '@/components/app/reclaim/phase/reflection';
@@ -285,6 +290,28 @@ export function Phase1Panel({
         what it means sits beside it, and the reflection below is the leader's own noticing rather
         than ours.
       */}
+      {/*
+        The calendar branch. Unreachable from anywhere in the app since F5 merged — this panel was
+        meant to link to it and never did, which is why the fix belongs on both surfaces rather than
+        only on the conversational one.
+      */}
+      {everyVisibleAreaHasHours(liveAnswers) &&
+        !truthy(liveAnswers['reclaim_calendar_uploaded']) && (
+          <div className="border-border/70 border-t pt-8">
+            <p className="text-foreground text-[1.02rem] leading-relaxed text-balance">
+              If you would like, you can reality-check this against your actual calendar. It is
+              optional, your calendar file is never stored, and the audit works just as well without
+              it.
+            </p>
+            <Link
+              href="/programme/calendar"
+              className="border-border text-foreground mt-5 inline-block rounded-full border px-7 py-2.5 text-sm font-medium"
+            >
+              Look at my calendar
+            </Link>
+          </div>
+        )}
+
       {revealState === 'ready' && (
         <div className="border-border/70 border-t pt-8">
           <p className="text-foreground text-[1.02rem] leading-relaxed text-balance">

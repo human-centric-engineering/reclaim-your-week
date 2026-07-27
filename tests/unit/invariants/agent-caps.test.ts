@@ -12,33 +12,36 @@
  *   - a typed slot cannot be filled with prose alone.
  *
  * Refusals are evaluated against the *real* slot groups (`reclaimSlotDefinitions`), so the guard
- * tracks the actual data rather than a hand-listed set. `facetAllowsWrite` below **mirrors** the
- * group-membership half of `lib/framework/data-slots/capabilities/exposure.ts#facetAllows`, because
- * the allowlist has to hold as *data on the grant* independently of the code that also enforces it —
- * two layers, checked separately. Keep the mirror in step; both write facets restrict by `groups`
- * only.
+ * tracks the actual data rather than a hand-listed set.
+ *
+ * **This file used to define its own `facetAllowsWrite`, and that was the bug.** It mirrored the
+ * group-membership half of the framework's `facetAllows` so the grant data could be asserted
+ * independently — reasonable in isolation, and it meant the guard passed while the runtime enforced
+ * nothing, because `record_answers` never called `facetAllows` at all. A mirror can only ever prove
+ * that the data says what we meant; it cannot prove anything runs it. So the real function is
+ * imported now, and the capability calls it too.
  */
 
 import { describe, it, expect } from 'vitest';
 import { reclaimCoachAgent, RECLAIM_RECORD_ANSWERS_SLUG } from '@/lib/app/programme/agent';
 import { reclaimSlotDefinitions } from '@/lib/app/programme/slots';
+import { facetAllows } from '@/lib/framework/data-slots/capabilities/exposure';
 import {
   checkSlotWrite,
   COACH_REFUSED_GROUPS,
   COACH_WRITABLE_GROUPS,
+  COACH_WRITABLE_SLOTS_IN_REFUSED_GROUPS,
 } from '@/lib/app/programme/coach/writable-slots';
 
 const grants = reclaimCoachAgent.capabilities;
 const slugs = grants.map((c) => c.slug);
 
-/** Mirror of the framework `facetAllows` group check: an undefined facet (or one without `groups`)
- *  allows everything; otherwise the slot's group must be a named member. */
+/** The real framework check, over the grant's own facet. Scope is unrestricted on this grant. */
 function facetAllowsWrite(
   write: { groups?: string[]; scopes?: string[] } | undefined,
   group: string
 ): boolean {
-  if (write === undefined || write.groups === undefined) return true;
-  return write.groups.includes(group);
+  return facetAllows(write, group, null);
 }
 
 /** Every distinct group in the real slot set. */
@@ -52,20 +55,22 @@ function slugInGroup(group: string): string {
 }
 
 describe('I6 — granted capabilities', () => {
-  it('grants the three read tools plus the two writes, and nothing else', () => {
+  it('grants the three read tools plus the one write, and nothing else', () => {
     expect(new Set(slugs)).toEqual(
-      new Set([
-        'get_journey_state',
-        'get_next_steps',
-        'get_state',
-        'fill_slot',
-        RECLAIM_RECORD_ANSWERS_SLUG,
-      ])
+      new Set(['get_journey_state', 'get_next_steps', 'get_state', RECLAIM_RECORD_ANSWERS_SLUG])
     );
   });
 
   it('never grants request_transition (the server owns transitions)', () => {
     expect(slugs).not.toContain('request_transition');
+  });
+
+  it('never grants fill_slot — the last tool whose run a model could choose', () => {
+    // `fill_slot` takes its run from `contextKey`, an argument the model supplies, which is why it
+    // was ever locked to a run-independent group. `record_answers` covers the same group and takes
+    // its run from the server, so the narrower tool is redundant and strictly less safe. Beside
+    // `request_transition` because both are absences that have to stay absences.
+    expect(slugs).not.toContain('fill_slot');
   });
 
   it('the read tools carry no exposure restriction (the agent may read state)', () => {
@@ -82,40 +87,17 @@ describe('I6 — granted capabilities', () => {
   });
 });
 
-describe('I6 — fill_slot selects its run from the model, so it stays on reclaim_profile', () => {
-  const fillSlot = grants.find((c) => c.slug === 'fill_slot');
-  const write = fillSlot?.customConfig?.write;
-
-  it('binds a write facet allowlisting only reclaim_profile', () => {
-    expect(fillSlot).toBeDefined();
-    // Shape matches what the framework `exposureConfigSchema` accepts: a `write` facet keyed on
-    // `groups`, nothing else. The read facet is absent (reads are unrestricted).
-    expect(fillSlot?.customConfig?.read).toBeUndefined();
-    expect(write?.groups).toEqual(['reclaim_profile']);
-    expect(write?.scopes).toBeUndefined();
-  });
-
-  it('refuses reclaim_current and every other run-carrying group', () => {
-    expect(facetAllowsWrite(write, 'reclaim_current')).toBe(false);
-
-    const runCarrying = ALL_GROUPS.filter((g) => g !== 'reclaim_profile');
-    for (const group of runCarrying) {
-      expect(facetAllowsWrite(write, group)).toBe(false);
-    }
-    // Sanity: the set we swept is non-trivial and did include reclaim_current.
-    expect(runCarrying).toContain('reclaim_current');
-    expect(runCarrying.length).toBeGreaterThan(5);
-  });
-});
-
 describe('I6 — record_answers takes its run from the server, so it may write the audit', () => {
   const record = grants.find((c) => c.slug === RECLAIM_RECORD_ANSWERS_SLUG);
   const write = record?.customConfig?.write;
 
-  it('binds a write facet carrying exactly the code-side allowlist', () => {
+  it('binds a write facet naming the permitted groups', () => {
     expect(record).toBeDefined();
     expect(record?.customConfig?.read).toBeUndefined();
-    expect(write?.groups).toEqual([...COACH_WRITABLE_GROUPS]);
+    // The grant is the outer bound and is deliberately WIDER than the code rule: `reclaim_calendar`
+    // is permitted here so the two pre-upload questions can be recorded, while the computed lanes in
+    // that group stay refused below, in code. A facet cannot express a slug-level rule.
+    expect(write?.groups).toEqual([...COACH_WRITABLE_GROUPS, 'reclaim_calendar']);
     expect(write?.scopes).toBeUndefined();
   });
 
@@ -142,13 +124,44 @@ describe('I6 — record_answers takes its run from the server, so it may write t
     if (!check.ok) expect(check.refusal.code).toBe('group_refused');
   });
 
-  it('refuses the computed calendar and composite lanes (I4, I-composite)', () => {
-    for (const group of ['reclaim_calendar', 'reclaim_composite']) {
-      expect(facetAllowsWrite(write, group)).toBe(false);
+  it('refuses the composite lane outright, in the grant and in code (I-composite)', () => {
+    expect(facetAllowsWrite(write, 'reclaim_composite')).toBe(false);
 
-      const check = checkSlotWrite(slugInGroup(group), 12);
-      expect(check.ok).toBe(false);
+    const check = checkSlotWrite(slugInGroup('reclaim_composite'), 12);
+    expect(check.ok).toBe(false);
+    if (!check.ok) expect(check.refusal.code).toBe('group_refused');
+  });
+
+  it('refuses every computed calendar lane in code, though the grant permits the group (I4)', () => {
+    // The two layers doing different jobs. The grant opens the group so the pre-upload questions can
+    // be recorded; the code keeps every computed figure shut, which is what I4's privacy story
+    // actually rests on. If this ever passes, a model-derived number can reach a calendar total.
+    for (const slug of ['reclaim_calendar_hours__deep_work', 'reclaim_calendar_total_hours']) {
+      const check = checkSlotWrite(slug, 12);
+      expect(check.ok, `${slug} must stay refused`).toBe(false);
       if (!check.ok) expect(check.refusal.code).toBe('group_refused');
+    }
+  });
+
+  it('permits the two questions the coach is told to ask before an upload', () => {
+    // `completeness` decides how every later figure is framed, and a conversation that cannot record
+    // the answer to a question it was told to ask captures nothing at the point that matters.
+    for (const slug of COACH_WRITABLE_SLOTS_IN_REFUSED_GROUPS) {
+      expect(facetAllowsWrite(write, 'reclaim_calendar')).toBe(true);
+      const check = checkSlotWrite(slug, undefined);
+      expect(check.ok, `${slug} must be writable`).toBe(true);
+    }
+  });
+
+  it('keeps the other calendar self-reports refused — they belong to the review screen', () => {
+    for (const slug of [
+      'reclaim_calendar_switch_frequency',
+      'reclaim_calendar_reactive_time',
+      'reclaim_calendar_offcal_work',
+      'reclaim_calendar_messaging_load',
+    ]) {
+      const check = checkSlotWrite(slug, undefined);
+      expect(check.ok, `${slug} must stay refused`).toBe(false);
     }
   });
 

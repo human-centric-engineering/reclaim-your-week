@@ -53,6 +53,22 @@ export const compositeResultSchema = z.object({
   variance: z.array(varianceEntrySchema),
 });
 
+/**
+ * The export walkthroughs the upload screen shows, from `GET /api/v1/app/reclaim/config`.
+ *
+ * Declared here rather than imported from the server config so the client carries no dependency on
+ * a module that reaches for Prisma, and validated like every other boundary read.
+ */
+export const calendarExportsSchema = z.object({
+  calendarExportSteps: z
+    .array(z.object({ service: z.string(), steps: z.array(z.string()) }))
+    .default([]),
+});
+
+export type CalendarExportView = z.infer<
+  typeof calendarExportsSchema
+>['calendarExportSteps'][number];
+
 export type CalendarReview = z.infer<typeof calendarReviewSchema>;
 export type ReviewBucket = z.infer<typeof reviewBucketSchema>;
 export type AmbiguousItem = z.infer<typeof ambiguousItemSchema>;

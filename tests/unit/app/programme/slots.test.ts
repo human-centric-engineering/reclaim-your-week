@@ -1,7 +1,7 @@
 /**
  * `reclaim-audit` slot definitions (F2 t-2).
  *
- * The load-bearing test is `pins the exact 105 slugs from slot-spec.md`: the spec warns that
+ * The load-bearing test is `pins the exact 106 slugs from slot-spec.md`: the spec warns that
  * "tests won't catch a plausible rewording" of prose, but an invented or renamed *slug* silently
  * breaks downstream refer-backs (F7) and trend lines (F9). So the expected slug set here is written
  * out independently from the spec's own tables — not imported from the source — and compared as a
@@ -28,7 +28,7 @@ const BUCKET_TOKENS = [
 
 const perBucket = (prefix: string) => BUCKET_TOKENS.map((t) => `${prefix}${t}`);
 
-// The full 105-slug expectation, assembled group-by-group from slot-spec.md.
+// The full 106-slug expectation, assembled group-by-group from slot-spec.md.
 const EXPECTED_SLUGS: string[] = [
   // reclaim_profile (6)
   'reclaim_profile_first_name',
@@ -93,12 +93,13 @@ const EXPECTED_SLUGS: string[] = [
   'reclaim_action_stopping',
   'reclaim_action_how_known',
   'reclaim_action_wanted_not_dutiful',
-  // reclaim_reflection (5)
+  // reclaim_reflection (6)
   'reclaim_reflection_p1',
   'reclaim_reflection_p2',
   'reclaim_reflection_p3',
   'reclaim_reflection_p4',
   'reclaim_reflection_p5',
+  'reclaim_reflection_p6',
   // reclaim_share (6)
   'reclaim_share_with_coach',
   'reclaim_share_age_band',
@@ -119,17 +120,17 @@ const EXPECTED_GROUP_COUNTS: Record<string, number> = {
   reclaim_ideal: 12,
   reclaim_gap: 6,
   reclaim_action: 6,
-  reclaim_reflection: 5,
+  reclaim_reflection: 6,
   reclaim_share: 6,
 };
 
 describe('reclaimSlotDefinitions', () => {
-  it('declares exactly 105 slots', () => {
-    expect(reclaimSlotDefinitions).toHaveLength(105);
-    expect(EXPECTED_SLUGS).toHaveLength(105);
+  it('declares exactly 106 slots', () => {
+    expect(reclaimSlotDefinitions).toHaveLength(106);
+    expect(EXPECTED_SLUGS).toHaveLength(106);
   });
 
-  it('pins the exact 105 slugs from slot-spec.md (no invented or renamed slug)', () => {
+  it('pins the exact 106 slugs from slot-spec.md (no invented or renamed slug)', () => {
     const actual = reclaimSlotDefinitions.map((s) => s.slug).sort();
     expect(actual).toEqual([...EXPECTED_SLUGS].sort());
   });
