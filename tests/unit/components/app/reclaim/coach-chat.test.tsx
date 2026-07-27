@@ -97,6 +97,35 @@ describe('CoachChat', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/chat/conversations/conv-1/messages');
   });
 
+  it('draws a coach turn as the paragraphs it was written in', async () => {
+    // The coach is asked to separate its beats with a blank line: what it heard, then what it is
+    // asking next. Rendered as one block, the question was buried mid-paragraph and the break showed
+    // as a stray empty line, which is the opposite of the pause it was written for.
+    fetchMock.mockResolvedValueOnce(
+      json({
+        messages: [
+          {
+            role: 'assistant',
+            content:
+              'Got it, you spend about 5 hours a week on deep work.\n\nNext, how many hours a week go on reading, courses, or time with a mentor?',
+          },
+        ],
+      })
+    );
+
+    render(<CoachChat runId="run-1" conversationId="conv-1" />);
+
+    const reflection = await screen.findByText(
+      'Got it, you spend about 5 hours a week on deep work.'
+    );
+    const question = screen.getByText(
+      'Next, how many hours a week go on reading, courses, or time with a mentor?'
+    );
+    expect(reflection.tagName).toBe('P');
+    expect(question.tagName).toBe('P');
+    expect(reflection).not.toBe(question);
+  });
+
   it('invites the leader to begin when there is no transcript yet', () => {
     render(<CoachChat runId="run-1" conversationId={null} />);
 
@@ -407,7 +436,7 @@ describe('CoachChat — the frame it is given', () => {
         runId="run-1"
         conversationId={null}
         intro={<p>the signpost</p>}
-        beats={<p>the chart</p>}
+        beats={[{ key: 'chart', node: <p>the chart</p> }]}
         footer={<button type="button">Continue to the next phase</button>}
       />
     );
@@ -415,6 +444,74 @@ describe('CoachChat — the frame it is given', () => {
     expect(screen.getByText('the signpost')).toBeInTheDocument();
     expect(screen.getByText('the chart')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Continue to the next phase' })).toBeInTheDocument();
+  });
+
+  it('keys the beats it is handed, rather than warning about the caller that built them', async () => {
+    // Beats are drawn as arrays (a group under each turn, plus the leading and trailing groups), so
+    // an unkeyed node made React blame the parent component that created it. `CoachBeat.key` exists
+    // for the anchoring, and it is the right identity here too.
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    fetchMock.mockResolvedValueOnce(
+      json({ messages: [{ role: 'assistant', content: 'That is every area accounted for.' }] })
+    );
+
+    render(
+      <CoachChat
+        runId="run-1"
+        conversationId="conv-1"
+        beats={[
+          { key: 'chart-invite', node: <p>show me the week</p> },
+          { key: 'chart', node: <p>the picture of your week</p> },
+        ]}
+      />
+    );
+    await screen.findByText('That is every area accounted for.');
+
+    expect(errors.mock.calls.map((args) => String(args[0])).join('\n')).not.toMatch(/unique "key"/);
+    errors.mockRestore();
+  });
+
+  /**
+   * The bug this pins. A beat used to be one node rendered after the last turn, so it stayed welded
+   * to the foot of the transcript: every question the coach asked afterwards was drawn *above* the
+   * chart, and the leader read their newest question, then the picture, then the composer. Phase 1
+   * asks eleven more things after the reveal, so this was the ordinary case.
+   *
+   * The order of the DOM is the assertion, because the order is the whole defect.
+   */
+  it('leaves a beat where it appeared, so the conversation carries on below it', async () => {
+    fetchMock.mockResolvedValueOnce(
+      json({ messages: [{ role: 'assistant', content: 'That is every area accounted for.' }] })
+    );
+
+    const { rerender } = render(
+      <CoachChat
+        runId="run-1"
+        conversationId="conv-1"
+        beats={[{ key: 'chart', node: <p>the picture of your week</p> }]}
+      />
+    );
+    await screen.findByText('That is every area accounted for.');
+
+    // The next turn arrives. The beat must not float down with it.
+    fetchMock.mockResolvedValueOnce(sse('And where does that block sit?'));
+    rerender(
+      <CoachChat
+        runId="run-1"
+        conversationId="conv-1"
+        beats={[{ key: 'chart', node: <p>the picture of your week</p> }]}
+      />
+    );
+    await userEvent.type(screen.getByLabelText('Your message'), 'no{Enter}');
+    await screen.findByText('And where does that block sit?');
+
+    const order = [...document.querySelectorAll('p')].map((el) => el.textContent);
+    expect(order.indexOf('the picture of your week')).toBeGreaterThan(
+      order.indexOf('That is every area accounted for.')
+    );
+    expect(order.indexOf('the picture of your week')).toBeLessThan(
+      order.indexOf('And where does that block sit?')
+    );
   });
 
   it('takes an explicit height for a caller that is inside a scrolling column', () => {

@@ -25,9 +25,10 @@
  * the reasoning and what replaced the blanket refusal.
  *
  * **Nothing stacks below the conversation any more.** The signpost opens it, the beats (the calendar
- * branch, the reveal, the picture) land at the tail of the transcript where the turns that led to
- * them are, and the move onward sits above the composer. A leader never scrolls past their own
- * conversation to reach the thing they act with.
+ * branch, the reveal, the picture) are dropped into the transcript at the moment they appear and stay
+ * there while the conversation carries on below them, and the move onward sits above the composer. A
+ * leader never scrolls past their own week to reach the question they are being asked — which is what
+ * happened while the beats were pinned to the tail. See `CoachBeat` for why each one carries a key.
  *
  * The form panels are not replaced. A leader who would rather fill in fields can switch, and the two
  * paths write the same slots through the same server path (I3), so switching mid-phase keeps
@@ -47,8 +48,9 @@ import type { CoachOpeningMoment } from '@/lib/app/programme/coach/opening';
 import { phaseCaptureSlots } from '@/lib/app/programme/coach/phase-slots';
 import { reflectionSlugForLeaving } from '@/lib/app/programme/runs/phases';
 import type { PhaseSignpost } from '@/lib/app/programme/runs/signposts';
+import type { PhaseMarks } from '@/lib/app/programme/runs/phase-marks';
 import { ReclaimChart } from '@/components/app/reclaim/chart/reclaim-chart';
-import { CoachChat } from '@/components/app/reclaim/coach-chat';
+import { CoachChat, type CoachBeat } from '@/components/app/reclaim/coach-chat';
 import { CapturedPanel } from '@/components/app/reclaim/coach/captured-panel';
 import { Signpost } from '@/components/app/reclaim/signpost';
 import {
@@ -99,6 +101,8 @@ export interface PhaseConversationProps {
   conversationId: string | null;
   /** The coach-opening moments this run has already had, so none is replayed on a reload. */
   coachOpenings: string[];
+  /** Where each phase's part of the run's one conversation begins, so this phase draws only its own. */
+  phaseMarks?: PhaseMarks;
   /** Re-read the run state after the phase advances, or after a moment fires. */
   onAdvanced: () => void;
   /** Switch this phase to its form panel. */
@@ -113,6 +117,7 @@ export function PhaseConversation({
   signposts,
   conversationId,
   coachOpenings,
+  phaseMarks,
   onAdvanced,
   onSwitchToForm,
 }: PhaseConversationProps) {
@@ -206,6 +211,81 @@ export function PhaseConversation({
   // absent from the run's ledger is passed down, so the common case never troubles the server.
   const openMoment = openMomentFor(phaseKey, coachOpenings, revealing);
 
+  /**
+   * The phase's beats, each with a stable key so `CoachChat` can leave it where it appeared.
+   *
+   * Keys, not positions: the calendar card and the picture arrive at different moments and the
+   * calendar card is withdrawn once an upload has been reconciled, so identifying a beat by its place
+   * in this array would move the chart up the transcript the moment the card above it vanished.
+   */
+  const beats: CoachBeat[] = [];
+
+  // The calendar branch. It had been unreachable since F5 merged: nothing in the app linked to it, on
+  // either surface, so the only way in was to type the URL. Offered once every area has a figure,
+  // which is where the source puts it, and never presented as the better option — the audit is worth
+  // doing without it and several testers were anxious about this step.
+  if (offerCalendar) {
+    beats.push({
+      key: 'calendar-offer',
+      node: (
+        <div className="border-border/70 rounded-2xl border border-dashed px-6 py-5">
+          <p className="text-foreground text-[1.02rem] leading-relaxed text-balance">
+            If you would like, you can reality-check this against your actual calendar. It is
+            optional, your calendar file is never stored, and the audit works just as well without
+            it.
+          </p>
+          <Link
+            href="/programme/calendar"
+            className="border-border text-foreground mt-4 inline-block rounded-full border px-7 py-2.5 text-sm font-medium"
+          >
+            Look at my calendar
+          </Link>
+        </div>
+      ),
+    });
+  }
+
+  // I12 — the picture and its interpretation are separate beats.
+  //
+  // Until every area has a figure there is nothing whole to show. Once there is, the leader asks for
+  // it, and what they get is the chart on its own: no summary beside it, no reading of what it means.
+  // The coach's turn then names the figures, checks they are right, and asks one question. This used
+  // to draw itself the instant one reading landed, which meant the leader met their week one bar at a
+  // time and there was no reveal left to have.
+  if (revealState === 'ready' && !revealing) {
+    beats.push({
+      key: 'chart-invite',
+      node: (
+        <div className="border-border/70 rounded-2xl border px-6 py-5">
+          <p className="text-foreground text-[1.02rem] leading-relaxed text-balance">
+            That is every area accounted for. Whenever you are ready, we can look at the shape of
+            the week you have described.
+          </p>
+          <button
+            type="button"
+            onClick={() => setRevealing(true)}
+            className="bg-primary text-primary-foreground mt-4 rounded-full px-8 py-3 text-[0.95rem] font-medium"
+          >
+            Show me where the week is going
+          </button>
+        </div>
+      ),
+    });
+  }
+
+  // The picture itself. Hoisted into a `const` under its own guard rather than written inline in the
+  // `beats.push` call, so `chart !== null` stays on the lines directly above the render site: that
+  // adjacency is what `tests/unit/invariants/chart-beat.test.ts` reads to hold I12, and burying the
+  // guard five lines up would have left the invariant unable to see a gate that is still there.
+  if (chart !== null) {
+    const picture = (
+      <div className="border-border/70 rounded-2xl border px-4 py-5 sm:px-6">
+        <ReclaimChart data={chart} />
+      </div>
+    );
+    beats.push({ key: 'chart', node: picture });
+  }
+
   const panel = (
     <div className="space-y-6">
       <CapturedPanel
@@ -231,6 +311,8 @@ export function PhaseConversation({
         runId={runId}
         conversationId={conversationId}
         openMoment={openMoment}
+        phaseKey={phaseKey}
+        phaseMarks={phaseMarks}
         onTurnComplete={() => {
           void refresh();
           // The run's ledger has moved if a moment just fired; re-reading it is what stops the
@@ -245,63 +327,7 @@ export function PhaseConversation({
             signposts={signposts}
           />
         }
-        beats={
-          <>
-            {/*
-              The calendar branch. It had been unreachable since F5 merged: nothing in the app linked
-              to it, on either surface, so the only way in was to type the URL. Offered once every
-              area has a figure, which is where the source puts it, and never presented as the better
-              option — the audit is worth doing without it and several testers were anxious about
-              this step.
-            */}
-            {offerCalendar && (
-              <div className="border-border/70 rounded-2xl border border-dashed px-6 py-5">
-                <p className="text-foreground text-[1.02rem] leading-relaxed text-balance">
-                  If you would like, you can reality-check this against your actual calendar. It is
-                  optional, your calendar file is never stored, and the audit works just as well
-                  without it.
-                </p>
-                <Link
-                  href="/programme/calendar"
-                  className="border-border text-foreground mt-4 inline-block rounded-full border px-7 py-2.5 text-sm font-medium"
-                >
-                  Look at my calendar
-                </Link>
-              </div>
-            )}
-
-            {/*
-              I12 — the picture and its interpretation are separate beats.
-
-              Until every area has a figure there is nothing whole to show. Once there is, the leader
-              asks for it, and what they get is the chart on its own: no summary beside it, no reading
-              of what it means. The coach's turn then names the gaps in figures and asks one question,
-              and stops. This used to draw itself the instant one reading landed, which meant the
-              leader met their week one bar at a time and there was no reveal left to have.
-            */}
-            {revealState === 'ready' && !revealing && (
-              <div className="border-border/70 rounded-2xl border px-6 py-5">
-                <p className="text-foreground text-[1.02rem] leading-relaxed text-balance">
-                  That is every area accounted for. Whenever you are ready, we can look at the shape
-                  of the week you have described.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setRevealing(true)}
-                  className="bg-primary text-primary-foreground mt-4 rounded-full px-8 py-3 text-[0.95rem] font-medium"
-                >
-                  Show me where the week is going
-                </button>
-              </div>
-            )}
-
-            {chart !== null && (
-              <div className="border-border/70 rounded-2xl border px-4 py-5 sm:px-6">
-                <ReclaimChart data={chart} />
-              </div>
-            )}
-          </>
-        }
+        beats={beats}
         footer={
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             {canAdvance ? (

@@ -24,6 +24,9 @@ export const currentRunStateSchema = z.object({
       quarter: z.string().nullable(),
       conversationId: z.string().nullable(),
       coachOpenings: z.array(z.string()).default([]),
+      // Where each phase's part of the run's one conversation begins. Defaulted so a response from
+      // before this shipped still parses — every phase then reads from the top, as it used to.
+      phaseMarks: z.record(z.string(), z.string()).default({}),
     })
     .nullable(),
   phases: z.array(phaseViewSchema),

@@ -508,6 +508,7 @@ describe('buildCoachPhaseContext — the branches out of phase 1', () => {
 
   it('hands the coach the figures on the leader’s screen, and tells it to stop after one question', async () => {
     readRunAnswers.mockResolvedValue(everyAreaAnswered());
+    findFirst.mockResolvedValue({ id: 'run-1', coachOpenings: ['phase-1-chart-reveal'] });
 
     const block = await buildCoachPhaseContext('u1');
 
@@ -515,6 +516,114 @@ describe('buildCoachPhaseContext — the branches out of phase 1', () => {
     expect(block).toContain('Total: 40 hours a week.');
     expect(block).toContain('what stands out to you here?');
     expect(block).toContain('Do not interpret');
+  });
+
+  /**
+   * The reveal is the leader's to ask for (I12, I16), so the figures are in context before they press
+   * the button — the coach must not spend them early. Asserting the refusal rather than the prose:
+   * what matters is that nothing tells it to describe the picture or ask the question yet.
+   */
+  it('holds the question back while the leader has not asked to see the picture', async () => {
+    readRunAnswers.mockResolvedValue(everyAreaAnswered());
+
+    const block = await buildCoachPhaseContext('u1');
+
+    expect(block).toContain('the button is theirs to press');
+    expect(block).toContain('do not ask what stands out until they have');
+    expect(block).not.toContain('Do not interpret');
+  });
+
+  /**
+   * The defect this pair pins. The reflection used to be gated on "once the readings above are
+   * captured", and phase 1's capture list holds a slot (`reclaim_current_deep_block_blocker`) that
+   * only exists for a leader with *no* protected block — so for everyone else the list never
+   * completed, the coach kept gathering, and the question the panel promises was never asked.
+   */
+  it('makes the reflection due the moment the picture has been seen, however much of the list is unfilled', async () => {
+    readRunAnswers.mockResolvedValue(everyAreaAnswered());
+    findFirst.mockResolvedValue({ id: 'run-1', coachOpenings: ['phase-1-chart-reveal'] });
+
+    const block = await buildCoachPhaseContext('u1');
+
+    expect(block).toContain('They have now seen the picture, so that moment is here');
+    expect(block).toContain('Readings still missing are not a reason to hold it back');
+    expect(block).not.toContain('Once the readings above are captured');
+  });
+
+  /**
+   * Two failures pull against each other here and the wording has to hold both off. Gating the
+   * reflection on a complete list deadlocks the phase (`reclaim_current_deep_block_blocker` never
+   * arrives for a leader who has a block). Telling the coach the list does not matter licensed it to
+   * skip two thirds of the phase. So: not a gate, and not permission to leave it unasked.
+   */
+  it('never gates a reflection on readings this leader will never have, without licensing a skip', async () => {
+    readRunAnswers.mockResolvedValue(everyAreaAnswered());
+
+    const block = await buildCoachPhaseContext('u1');
+
+    expect(block).not.toContain('Once the readings above are captured');
+    expect(block).toContain('Completing the list is not the condition for closing');
+    expect(block).toContain('only ever apply to some leaders');
+    // The other half, and the one that was missing.
+    expect(block).toContain('a reading nobody asked about is not a reading that does not apply');
+    expect(block).toContain('has not happened yet');
+  });
+
+  /**
+   * The second beat of the reveal. The pause comes first (the source is explicit that the leader's own
+   * noticing precedes any interpretation), and only once it is recorded does the coach give its
+   * reading, offer to correct the figures, and say the phase can be left. Before that, none of it
+   * appears — which is what keeps the two beats from collapsing into one turn.
+   */
+  /**
+   * The accuracy check sits at the picture, not after it. Every bar was drawn from an estimate given
+   * in conversation, so the one moment a leader can tell whether the numbers are right is the moment
+   * they are drawn to scale — and everything downstream (the gap arithmetic, the ideal week, the
+   * trends across audits) is built on them being right.
+   */
+  it('checks the figures are accurate at the picture, before asking what stands out', async () => {
+    readRunAnswers.mockResolvedValue(everyAreaAnswered());
+    findFirst.mockResolvedValue({ id: 'run-1', coachOpenings: ['phase-1-chart-reveal'] });
+
+    const block = await buildCoachPhaseContext('u1');
+
+    // The summary it is checking against.
+    expect(block).toContain('Total: 40 hours a week.');
+    // The check itself, and the slot family a correction is written back to.
+    expect(block).toContain('does anything need changing');
+    expect(block).toContain('reclaim_current_hours__');
+    expect(block).toContain('supersedes the');
+    // The pause still follows it, and the judgement still does not.
+    expect(block).toContain('what stands out to you here?');
+    expect(block).toContain('Their own noticing');
+    expect(block).not.toContain('Judge the pattern, never the person');
+    expect(block).not.toContain('they can move on to the next phase');
+  });
+
+  it('gives the reading and the way onward once the reflection is recorded', async () => {
+    readRunAnswers.mockResolvedValue({
+      ...everyAreaAnswered(),
+      reclaim_reflection_p1: direct('I had no idea relationship building was eating the week.'),
+    });
+    findFirst.mockResolvedValue({ id: 'run-1', coachOpenings: ['phase-1-chart-reveal'] });
+
+    const block = await buildCoachPhaseContext('u1');
+
+    // The judgement, against the figures and the bands it was actually given.
+    expect(block).toContain('Total: 40 hours a week.');
+    expect(block).toContain('total-hours bands');
+    expect(block).toContain('which areas sit away from the guide');
+    expect(block).toContain('Judge the pattern, never the person');
+    // A figure can still be corrected after the pause.
+    expect(block).toContain('record it as above');
+    // The way out of the phase.
+    expect(block).toContain('they can move on to the next phase');
+  });
+
+  it('gives phase 1 the bands it needs to say anything about a weekly total', async () => {
+    readRunAnswers.mockResolvedValue(everyAreaAnswered());
+
+    expect(await buildCoachPhaseContext('u1')).toContain('total-hours bands');
   });
 });
 
@@ -549,5 +658,99 @@ describe('buildCoachPhaseContext — the gap refuses to compute what it was not 
     });
 
     expect(await buildCoachPhaseContext('u1')).toContain('6h wanted, no change');
+  });
+});
+
+/**
+ * The two questions each area is owed.
+ *
+ * The source is exact: "explore each bucket in turn, one at a time, conversationally. For each bucket
+ * ask: roughly how many hours per week …? What does that time actually look like in practice?"
+ * (`sources/Time_Audit_Tool_Prompt_Text.md:119-122`). Handed to the coach as one flat list of
+ * nineteen slugs, the second question never got asked: it took the eight figures, which are concrete
+ * and typed and easy to close, and left all eight "in practice" readings empty. A leader reached the
+ * end of Current reality with a chart and no account of what any of that time actually was.
+ *
+ * These pin the pairing, and the difference between a reading that does not apply and one nobody
+ * asked — which is the distinction the earlier "an unfilled list is not a gate" guidance flattened.
+ */
+describe('buildCoachPhaseContext — the texture of an area, not only its hours', () => {
+  beforeEach(() => {
+    loadPhaseProgress.mockResolvedValue({ phases: [], currentPhaseKey: 'phase-1-current' });
+  });
+
+  it('asks the hours and what the time looks like in the same breath', async () => {
+    readRunAnswers.mockResolvedValue({});
+
+    const block = await buildCoachPhaseContext('u1');
+
+    expect(block).toContain('ask two things in the');
+    expect(block).toContain('what that time actually looks like in');
+    expect(block).toContain('reclaim_current_detail__');
+    // The failure mode, named so it cannot be rediscovered.
+    expect(block).toContain('Do not move through all the areas for figures');
+  });
+
+  it('does not treat the detail as a follow-up that can wait', async () => {
+    readRunAnswers.mockResolvedValue({});
+
+    expect(await buildCoachPhaseContext('u1')).toContain('not a follow-up for later');
+  });
+
+  it('separates a reading that does not apply from one that was never asked', async () => {
+    readRunAnswers.mockResolvedValue({});
+
+    const block = await buildCoachPhaseContext('u1');
+
+    expect(block).toContain('not apply to this leader');
+    expect(block).toContain('a question you have not asked');
+    // The guidance that let two thirds of the list be skipped must not survive verbatim.
+    expect(block).not.toContain('an unfilled list is not a reason to hold this back');
+  });
+
+  it('offers what was never asked before the phase is called done', async () => {
+    readRunAnswers.mockResolvedValue({});
+
+    const block = await buildCoachPhaseContext('u1');
+
+    expect(block).toContain('Before you say this phase is done');
+    // One offer, not a grind: the leader keeps the right to decline.
+    expect(block).toContain('take a no');
+  });
+
+  /**
+   * After the reflection the coach gives its reading and points at the way onward. That beat used to
+   * wave the unfilled readings through ("not worth holding them here for"), which is where the eight
+   * missing ones were finally lost. It now names the specific gap: an area with a figure and nothing
+   * else has not been explored.
+   */
+  it('comes back for an area that has a figure and nothing else, before pointing at the way onward', async () => {
+    readRunAnswers.mockResolvedValue({
+      ...(() => {
+        const answers: Record<string, unknown> = {};
+        for (const area of [
+          'deep_work',
+          'learning_development',
+          'strategic_planning',
+          'team_development',
+          'organisational_oversight',
+          'relationship_building',
+          'delivery_operations',
+          'recovery_white_space',
+        ]) {
+          answers[`reclaim_current_hours__${area}`] = { ...direct('5'), valueJson: 5 };
+        }
+        return answers;
+      })(),
+      reclaim_reflection_p1: direct('Relationship building is eating the week.'),
+    });
+    findFirst.mockResolvedValue({ id: 'run-1', coachOpenings: ['phase-1-chart-reveal'] });
+
+    const block = await buildCoachPhaseContext('u1');
+
+    expect(block).toContain('look at what this phase never asked');
+    expect(block).toContain('an area has a figure and nothing else');
+    expect(block).toContain('they can move on to the next phase');
+    expect(block).not.toContain('is not worth holding them here');
   });
 });

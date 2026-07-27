@@ -30,6 +30,7 @@ import {
   loadOwnedRun,
   transitionRun,
   readCoachOpenings,
+  recordPhaseMark,
 } from '@/app/api/v1/app/reclaim/runs/service';
 
 const transitionSchema = z.object({
@@ -82,6 +83,11 @@ export const POST = withAuth<{ runId: string }>(async (request, session, { param
   }
 
   const { enteredPhaseKey } = await transitionRun(session.user.id, runId, fromPhase);
+
+  // Where the phase just entered begins in the run's one conversation, so each phase can draw its own
+  // part of it rather than the whole audit every time. Best-effort inside; a bookkeeping failure must
+  // not fail a move the leader has already earned.
+  await recordPhaseMark(session.user.id, runId, enteredPhaseKey);
 
   log.info('Reclaim audit run transitioned', { runId, fromPhase, enteredPhaseKey });
   return successResponse({ enteredPhase: enteredPhaseKey });
