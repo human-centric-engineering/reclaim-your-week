@@ -69,8 +69,9 @@ const props = {
   phaseLabel: 'Current reality',
   conversationId: 'conv-1',
   phaseMarks: { 'phase-1-current': 'm2' },
-  returnIndex: 2,
-  returnLabel: 'Energy',
+  // The whole destination phrase, not an index and a label: a finished audit read from the history
+  // returns to its summary rather than to a phase, and only one of those can be built from a number.
+  returnLabel: 'phase 2, Energy',
   onReturn: vi.fn(),
 };
 
@@ -160,5 +161,62 @@ describe('PhaseReview', () => {
 
     const back = await screen.findAllByRole('button', { name: /Back to phase 2, Energy/ });
     expect(back.length).toBeGreaterThan(0);
+  });
+
+  it('names the destination it was given, so a finished audit can return to its summary', async () => {
+    render(<PhaseReview {...props} returnLabel="the summary" />);
+
+    const back = await screen.findAllByRole('button', { name: /Back to the summary/ });
+    expect(back.length).toBeGreaterThan(0);
+  });
+
+  /**
+   * Read-only is the mode a finished audit is read in. The server already refuses the write
+   * (`assertActiveOwnedRun`), so what this pins is that the screen stops *offering* it: a correction
+   * button that can only fail is worse than no button, and it would tell a leader their finished
+   * figures are still in play.
+   */
+  describe('a finished audit, read back', () => {
+    /** One reading the coach inferred, which is what earns the confirm and correct offer. */
+    function anInferredReading() {
+      return {
+        ...everyAreaAnswered(),
+        reclaim_current_hours__deep_work: {
+          value: '5',
+          valueJson: 5,
+          sourceType: 'inferred',
+          confidence: 3,
+        },
+      };
+    }
+
+    it('offers no correction, because the server would refuse the write', async () => {
+      readAnswers.mockResolvedValue(anInferredReading());
+      render(<PhaseReview {...props} readOnly />);
+
+      await screen.findByText('About five.');
+      expect(screen.queryByRole('button', { name: /Yes, that is right/ })).toBeNull();
+      expect(screen.queryByRole('button', { name: /Not quite/ })).toBeNull();
+    });
+
+    it('still offers the correction while the audit is live', async () => {
+      readAnswers.mockResolvedValue(anInferredReading());
+      render(<PhaseReview {...props} />);
+
+      await waitFor(() =>
+        expect(
+          screen.getAllByRole('button', { name: /Yes, that is right/ }).length
+        ).toBeGreaterThan(0)
+      );
+    });
+
+    it('says the audit is finished rather than that the phase is behind them', async () => {
+      render(<PhaseReview {...props} readOnly />);
+
+      // Specific enough to tell this line from the captured panel's own finished-audit note, which
+      // opens with the same words.
+      expect(await screen.findByText(/nothing here changes it/)).toBeInTheDocument();
+      expect(screen.queryByText(/nothing here moves your audit/)).toBeNull();
+    });
   });
 });

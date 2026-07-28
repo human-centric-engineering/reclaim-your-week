@@ -82,6 +82,12 @@ const COACH_VOICED = [
   // the leader's — but it is the coach speaking on screen, and a stray label added here would be too.
   'components/app/reclaim/coach/transcript.tsx',
   'components/app/reclaim/consent-gate.tsx',
+  // The audit history. Everything a leader reads about their own past audits: the list, the link into
+  // it from the entry screen, and a finished audit opened again. Prose about their working life, at a
+  // moment they are deciding whether to do this a second time, so it is coach voice throughout.
+  'components/app/reclaim/history/audit-history.tsx',
+  'components/app/reclaim/history/history-link.tsx',
+  'components/app/reclaim/history/run-review.tsx',
   'components/app/reclaim/phase-rail.tsx',
   // A completed phase, opened again from the spine. It tells the leader what this screen is and what
   // it will not do to their audit, in prose, so it is coach voice by the same reading as the panels.
@@ -133,6 +139,7 @@ const NOT_COACH_VOICED = [
   'components/app/reclaim/calendar/types.ts',
   'components/app/reclaim/chart/palette.ts',
   'components/app/reclaim/format.ts',
+  'components/app/reclaim/history/actions.ts',
   'components/app/reclaim/phase/actions.ts',
   'components/app/reclaim/phase/config.ts',
   'components/app/reclaim/phase/hours.ts',

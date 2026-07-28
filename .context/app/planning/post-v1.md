@@ -54,15 +54,18 @@ parked with a reason. Nothing leaves by being forgotten.
 | P16 | A provider key for CI, or a nightly smoke run               | —       | ready ▲          | gate      | P3's remainder; a cost call |
 | P18 | The audit is seven forms; it was meant to be a conversation | John    | **shipped**      | feature   | [[ryw-conversational]]      |
 | P19 | The conversation shipped laid out as a document             | John    | in flight        | feature   | [[ryw-chat-ux]]             |
+| P20 | A finished audit left the product the moment it finished    | John    | in flight        | feature   | —                           |
 
 **Doing P1–P3 first was deliberate.** They are the three where the repository told a reader something
 untrue, or where a claim the product makes to users was not gated by anything. Every other item was
 honest about its own state; those three were not.
 
-**Everything the team owns is now shipped, with one in flight.** P1–P3, P5–P11 and P4's build landed
+**Everything the team owns is now shipped, with two in flight.** P1–P3, P5–P11 and P4's build landed
 across two branches on 2026-07-26; **P18** landed on 2026-07-27, and **P19** — the surface half of the
-same epic, opened the same day the first real leader used it — is on `feat/ryw-chat-ux`. What remains
-beyond that is the items nobody here can close alone:
+same epic, opened the same day the first real leader used it — is on `feat/ryw-chat-ux`. **P20** joined
+on 2026-07-28, from the same source as P19: someone asked where their finished audits were, and the
+answer was that there was nowhere for them to be. What remains beyond those is the items nobody here
+can close alone:
 **P12** (the eight things Rashmir owes), **P16** (a cost decision about a provider key in CI), and the
 three parked scope items — plus **P4's copy sign-off**, since the pages exist and the words in them
 are a draft until she reads them.
@@ -398,6 +401,39 @@ its own phase gate. Owner decision to permit it — the point of the coach is to
 articulate themselves, and a textarea under the transcript is the opposite of that. I9 is untouched;
 what replaced the refusal is three narrower guards (this phase only, never inferred, always visible
 and editable). Full reasoning in [[ryw-chat-ux]] and in [[invariants]] I6.
+
+_Owner:_ John · _Status:_ in flight · _Class:_ feature
+
+### P20 · A finished audit left the product the moment it finished
+
+`GET /runs/current` filters on `in_progress`, which is right for the question it answers and was the
+only question anyone asked. The consequence was that completion **removed** the audit: the phases,
+the transcript, the readings and the summary were all still in the database and still owned by the
+leader, and nothing in the product could reach any of it. What survived was the tokenised share link,
+and only for the people who chose to make one.
+
+That is a poor bargain in a tool whose whole proposition is that the record belongs to the person who
+made it, and it undercuts the repeat audit the product is built around: Brief §1 names coming back as
+the success measure, and the second audit opened with no way to look at the first. `TrendLines` was
+the only backward-looking surface, it needs **two** completed audits before it draws anything, and it
+links to nothing.
+
+**Three things landed, and the read-only rule is the load-bearing one.**
+
+- `GET /runs` and `GET /runs/:runId`, both session-scoped, the second ownership-checked by
+  `loadOwnedRun`. Neither filters on status, which is the whole point.
+- `/programme/history`, and `/programme/history/[runId]` for one audit: its summary, with any phase
+  of the conversation behind it. The open audit is handed to `/programme` rather than rendered here,
+  because that is the surface that can continue it.
+- **A finished audit cannot be edited, and the screen is the least of the three things that say so.**
+  `saveRunAnswer` refuses a run that is not in progress, `loadCoachTurnTarget` refuses a coach turn on
+  one, and the journey engine refuses to complete a node that is not active. All three predate this
+  work. What was added is `readOnly` on `PhaseReview` and `CapturedPanel`, so the screen stops
+  _offering_ a correction the server would reject: an affordance that can only fail is worse than
+  none, and it would tell a leader that figures they have already acted on are still provisional.
+
+No new plan document: this is one PR against an existing surface, which is the bar [[post-v1]] sets
+for plan-first.
 
 _Owner:_ John · _Status:_ in flight · _Class:_ feature
 

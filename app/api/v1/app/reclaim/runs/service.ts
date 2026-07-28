@@ -422,3 +422,108 @@ export async function loadCurrentRunState(userId: string): Promise<CurrentRunSta
     ...progress,
   };
 }
+
+/**
+ * One audit in the leader's own history.
+ *
+ * Dates rather than a rendered string: how a date reads is the surface's business, and the two
+ * surfaces that show one (the list, the review header) already disagree about how much of it to show.
+ */
+export interface RunListItem {
+  id: string;
+  quarter: string | null;
+  status: string;
+  startedAt: Date;
+  completedAt: Date | null;
+  /** Whether there is a transcript to read back, or only the answers a form recorded. */
+  hasConversation: boolean;
+  /**
+   * Where an unfinished audit has got to. `null` for a finished one, which has no "here" left.
+   */
+  progress: { phaseKey: string; phaseLabel: string; phaseIndex: number } | null;
+}
+
+/**
+ * Every audit this leader has run, newest first.
+ *
+ * **Only the unfinished one costs a journey read**, which is why the loop below is not the N+1 it
+ * looks like: `createRun` refuses a second `in_progress` run and a partial-unique index backs that
+ * up, so at most one iteration ever takes the branch. A finished audit's phases are all complete by
+ * definition, and saying so would tell the list nothing it does not already know from `completedAt`.
+ */
+export async function listRuns(userId: string): Promise<RunListItem[]> {
+  const runs = await prisma.reclaimAuditRun.findMany({
+    where: { userId },
+    orderBy: { startedAt: 'desc' },
+  });
+
+  return Promise.all(
+    runs.map(async (run): Promise<RunListItem> => {
+      let progress: RunListItem['progress'] = null;
+      if (run.status === RUN_STATUS.inProgress) {
+        const { phases, currentPhaseKey } = await loadPhaseProgress(userId, run.id);
+        const index = phases.findIndex((p) => p.key === currentPhaseKey);
+        if (index > -1) {
+          progress = {
+            phaseKey: currentPhaseKey,
+            phaseLabel: phases[index].label,
+            phaseIndex: index,
+          };
+        }
+      }
+      return {
+        id: run.id,
+        quarter: run.quarter,
+        status: run.status,
+        startedAt: run.startedAt,
+        completedAt: run.completedAt,
+        hasConversation: run.conversationId !== null,
+        progress,
+      };
+    })
+  );
+}
+
+/**
+ * One audit, whatever state it is in — the single enriched read the review surface loads on mount.
+ *
+ * Deliberately **not** `loadCurrentRunState` with an id: that read exists to answer "where is this
+ * leader now", so it filters on `in_progress` and returns `null` for everything that is finished,
+ * which is exactly the audit somebody coming back wants to see. This one is keyed on the run and
+ * carries `status` plus both dates, so the surface can tell a finished audit from an open one and
+ * refuse to pretend the finished one is still live.
+ *
+ * Ownership is `loadOwnedRun`, so a run id belonging to somebody else is a 404 and not a read.
+ */
+export interface RunState {
+  run: {
+    id: string;
+    quarter: string | null;
+    status: string;
+    startedAt: Date;
+    completedAt: Date | null;
+    conversationId: string | null;
+    coachOpenings: string[];
+    phaseMarks: PhaseMarks;
+  };
+  phases: PhaseView[];
+  currentPhaseKey: string;
+}
+
+export async function loadRunState(userId: string, runId: string): Promise<RunState> {
+  const run = await loadOwnedRun(runId, userId);
+  const progress = await loadPhaseProgress(userId, run.id);
+  return {
+    run: {
+      id: run.id,
+      quarter: run.quarter,
+      status: run.status,
+      startedAt: run.startedAt,
+      completedAt: run.completedAt,
+      conversationId: run.conversationId,
+      coachOpenings: run.coachOpenings,
+      phaseMarks: readPhaseMarks(run.phaseMarks),
+    },
+    ...progress,
+  };
+}

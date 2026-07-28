@@ -42,6 +42,7 @@ import { Signpost } from '@/components/app/reclaim/signpost';
 import { FINAL_PHASE_KEY } from '@/lib/app/programme/runs/phases';
 import { PhaseConversation } from '@/components/app/reclaim/coach/phase-conversation';
 import { BeginAudit } from '@/components/app/reclaim/begin-audit';
+import { HistoryLink } from '@/components/app/reclaim/history/history-link';
 import { ConsentGate } from '@/components/app/reclaim/consent-gate';
 import { SetupPanel } from '@/components/app/reclaim/phase/setup-panel';
 import { Phase1Panel } from '@/components/app/reclaim/phase/phase1-panel';
@@ -184,10 +185,14 @@ export function ProgrammeShell() {
     // leader's page is unchanged.
     // `TrendLines` returns null until there are two audits with something to plot, and it carries its
     // own wrapper so a first-time leader's page has no empty container in it either.
+    // The history sits under the invitation rather than over it: a returning leader should meet the
+    // door forward first. `HistoryLink` renders nothing until there is an audit behind them, so a
+    // first-time leader's entry screen is unchanged.
     return (
       <Frame>
         <TrendLines />
         <BeginAudit onStarted={() => void load()} />
+        <HistoryLink />
       </Frame>
     );
   }
@@ -247,8 +252,7 @@ export function ProgrammeShell() {
               signposts={signposts ?? undefined}
               conversationId={state.run.conversationId}
               phaseMarks={state.run.phaseMarks}
-              returnIndex={currentIndex}
-              returnLabel={currentPhase.label}
+              returnLabel={`phase ${currentIndex}, ${currentPhase.label}`}
               onReturn={() => setReviewingKey(null)}
             />
           ) : talking ? (
