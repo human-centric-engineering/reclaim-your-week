@@ -78,8 +78,14 @@ const COACH_VOICED = [
   // them is the tool speaking about itself mid-conversation, which is exactly where I1's "never in
   // the first person" is easiest to break.
   'components/app/reclaim/coach/status.ts',
+  // Reading the transcript and drawing a turn. No copy of its own — it renders the coach's words and
+  // the leader's — but it is the coach speaking on screen, and a stray label added here would be too.
+  'components/app/reclaim/coach/transcript.tsx',
   'components/app/reclaim/consent-gate.tsx',
   'components/app/reclaim/phase-rail.tsx',
+  // A completed phase, opened again from the spine. It tells the leader what this screen is and what
+  // it will not do to their audit, in prose, so it is coach voice by the same reading as the panels.
+  'components/app/reclaim/phase-review.tsx',
   'components/app/reclaim/phase/advance-controls.tsx',
   'components/app/reclaim/phase/fields.tsx',
   'components/app/reclaim/phase/phase1-panel.tsx',

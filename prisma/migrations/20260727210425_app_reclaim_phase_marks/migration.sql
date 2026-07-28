@@ -1,0 +1,24 @@
+-- Where each phase's part of the coaching conversation begins (`{ [phaseKey]: messageId }`).
+--
+-- A run has one conversation across all seven phases, so the transcript was drawn whole on every
+-- phase: a leader on phase 2 met the Phase 2 signpost sitting on top of the entire phase 0 and 1
+-- exchange. This records the boundary so each phase draws its own part, with the earlier turns one
+-- disclosure away. Nothing the model sees changes — this is what the screen renders.
+--
+-- NOTE (the `migrate dev` footgun — .context/database/prisma-unmodelled-objects.md):
+-- `prisma migrate dev` generated this migration with a block of `DropForeignKey` / `DropIndex`
+-- statements ahead of the line below: the framework's hand-written FKs
+-- (framework_slot_value_userId_fkey, framework_user_journey_userId_fkey, the eleven app_reclaim_*
+-- user FKs, …) and the unmodelled indexes (the three HNSW vector indexes, the ai_knowledge_chunk
+-- tsvector GIN index), plus an `ALTER … DROP DEFAULT` on that generated column. Prisma cannot
+-- represent those objects, so it reads them as drift and moves to drop them. **All of those
+-- statements were removed by hand**, as the migration that created these tables
+-- (20260724204549_app_reclaim_shell) also had to do.
+--
+-- Use `--create-only` when regenerating. Applying the generated SQL unedited drops 25 constraints
+-- and 4 indexes before failing on the generated column — which is exactly what happened while
+-- writing this migration, and had to be repaired by replaying the DDL out of the migration history.
+-- This migration adds one column and nothing else.
+
+-- AlterTable
+ALTER TABLE "app_reclaim_audit_run" ADD COLUMN     "phaseMarks" JSONB NOT NULL DEFAULT '{}';

@@ -65,6 +65,29 @@ model ReclaimAuditRun {
   /// `recordNodeProgress` seam lands, this ledger moves there and the column goes.
   coachOpenings String[] @default([])
 
+  /// Where each phase's part of the conversation begins: `{ [phaseKey]: messageId }`, the id of the
+  /// **last message that already existed** when that phase was entered.
+  ///
+  /// A run has one conversation across all seven phases (I15 keeps it live until the run completes),
+  /// and the transcript was drawn whole on every phase. So a leader on phase 2 met the Phase 2
+  /// signpost sitting on top of the entire phase 0 and 1 exchange — a card introducing a
+  /// conversation that had already happened. Scrolling to your current question meant scrolling past
+  /// an hour of the audit.
+  ///
+  /// **An id, not a count.** A count is an index into a list the client re-fetches and re-filters
+  /// (system rows, tool rows, empty capture turns, our own synthetic triggers all drop out), so the
+  /// two coordinate systems would have to agree forever. An id survives any of that: the client
+  /// splits on "everything after this message", whatever it decided to render.
+  ///
+  /// **Written on transition, never on the way back.** Only entering a phase records a mark, so a
+  /// leader re-reading phase 1 cannot move phase 2's boundary. A phase with no mark (phase 0, or a
+  /// run whose conversation did not exist yet at transition) starts at the beginning, which is
+  /// correct in both cases: there is nothing before it.
+  ///
+  /// Nothing is lost by this — the model's context is untouched, and the earlier turns stay one
+  /// disclosure away on screen. It is what the transcript *draws*, not what the audit holds.
+  phaseMarks Json @default("{}")
+
   startedAt   DateTime  @default(now())
   completedAt DateTime?
   updatedAt   DateTime  @updatedAt

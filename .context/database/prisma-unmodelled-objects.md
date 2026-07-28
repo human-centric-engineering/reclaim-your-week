@@ -89,6 +89,40 @@ DROPs — `postgresqlExtensions` only manages the extension, not its indexes, an
 `prisma-extension-pgvector` is a client query helper, not a migration tool. The
 `--create-only` habit plus the drift probes above is the supported answer.
 
+## Recovering after the DROPs have been applied
+
+This has now happened twice, so the way back is written down. Running plain
+`prisma migrate dev` against this schema emits ~25 `DropForeignKey` + 4
+`DropIndex` statements and then **fails** on `ALTER TABLE "ai_knowledge_chunk"
+ALTER COLUMN "searchVector" DROP DEFAULT` (`42601` — it is a generated column).
+The failure is not a rollback: Postgres applied every statement before it, so
+the FKs and indexes are gone and the migration is recorded as failed.
+
+`npm run db:drift-check` is what tells you the extent — it fails loudly with one
+line per lost object.
+
+The recovery, in order:
+
+1. **Clear the failed state** so migrations can run again:
+   `npx prisma migrate resolve --rolled-back <migration_name>`
+2. **Replay the lost DDL out of the migration history.** Every dropped object was
+   created by an earlier migration, so its exact definition is already in the
+   tree — nothing needs to be reinvented, and no new migration is needed. Collect
+   the `ADD CONSTRAINT` / `CREATE INDEX` statements for the names the generated
+   SQL dropped (they are listed in the failed migration file, which is the record
+   of what to restore) and apply them in one transaction with
+   `psql -v ON_ERROR_STOP=1 -1 -f`. The statements span several lines, so extract
+   them to the terminating `;` rather than line-by-line.
+3. **Verify with `npm run db:drift-check`** — all probes must pass. It checks the
+   `ON DELETE` rule on each FK as well as its existence, so it catches a
+   constraint restored with the wrong cascade.
+4. **Rewrite the migration by hand** to contain only the statements you meant,
+   then `npx prisma migrate deploy`.
+
+Do **not** reach for `prisma migrate reset` here. It is the reflex, it is
+destructive, and step 2 is both safe and complete: the objects are recoverable
+from the tree because they were created there.
+
 ## Adding a new unmodelled object
 
 When a future change requires a Postgres feature Prisma can't model:

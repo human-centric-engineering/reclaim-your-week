@@ -20,6 +20,7 @@ import { grantReferralUnlock } from '@/lib/app/programme/access/referrals';
 import { emitReclaimAccessEvent } from '@/lib/app/programme/access/events';
 import { RECLAIM_MAP_SLUG } from '@/lib/app/programme/map';
 import { RECLAIM_MODULE_SLUG } from '@/lib/app/programme/module';
+import { readPhaseMarks, type PhaseMarks } from '@/lib/app/programme/runs/phase-marks';
 import {
   enterFirstPhase,
   advancePhase,
@@ -196,6 +197,61 @@ export async function linkRunConversation(runId: string, conversationId: string)
 }
 
 /**
+ * Record where a phase's part of the conversation begins, as it is entered.
+ *
+ * The mark is the id of the **last message that already exists** at this moment, so the phase being
+ * entered owns everything after it. See `runs/phase-marks.ts` for the arithmetic both surfaces read
+ * it with.
+ *
+ * Three properties, each of them load-bearing:
+ *
+ *  - **Written on entry only.** A leader re-reading phase 1 from phase 4 must not be able to move
+ *    phase 2's boundary, so nothing but a transition writes here.
+ *  - **Never overwritten.** The merge preserves an existing mark for the same phase. Transitions only
+ *    go forward, so this should not arise; if it ever does, the first boundary is the true one and a
+ *    second write would silently re-cut a phase the leader has already read.
+ *  - **Best-effort.** A leader who has just finished a phase must not be held at it because a
+ *    bookkeeping write failed. The cost of a missing mark is that the phase reads from further back
+ *    than it should, which is exactly the behaviour this replaced.
+ */
+export async function recordPhaseMark(
+  userId: string,
+  runId: string,
+  phaseKey: string
+): Promise<void> {
+  try {
+    const run = await prisma.reclaimAuditRun.findFirst({
+      where: { id: runId, userId },
+      select: { conversationId: true, phaseMarks: true },
+    });
+    // No conversation yet means the leader has taken the forms this far and there is nothing to
+    // divide. Leaving the mark absent is correct: whatever they say next opens the phase.
+    if (run?.conversationId === null || run?.conversationId === undefined) return;
+
+    const marks = readPhaseMarks(run.phaseMarks);
+    if (marks[phaseKey] !== undefined) return;
+
+    const last = await prisma.aiMessage.findFirst({
+      where: { conversationId: run.conversationId },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true },
+    });
+    if (last === null) return;
+
+    await prisma.reclaimAuditRun.update({
+      where: { id: runId },
+      data: { phaseMarks: { ...marks, [phaseKey]: last.id } },
+    });
+  } catch (error: unknown) {
+    logger.warn('Reclaim: could not record the phase mark', {
+      runId,
+      phaseKey,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+/**
  * What a coach turn needs about the run it is happening in (the conversational stage-1 read).
  *
  * The run is verified as the caller's and in progress here, so the route never has to, and the phase
@@ -337,6 +393,11 @@ export interface CurrentRunState {
      * conditional claim in the route is the backstop for the race this list cannot see.
      */
     coachOpenings: string[];
+    /**
+     * Where each phase's part of the conversation begins. The surface draws a phase from its own
+     * mark rather than from the top of a transcript that spans the whole audit.
+     */
+    phaseMarks: PhaseMarks;
   } | null;
   phases: PhaseView[];
   currentPhaseKey: string;
@@ -356,6 +417,7 @@ export async function loadCurrentRunState(userId: string): Promise<CurrentRunSta
       quarter: run.quarter,
       conversationId: run.conversationId,
       coachOpenings: run.coachOpenings,
+      phaseMarks: readPhaseMarks(run.phaseMarks),
     },
     ...progress,
   };

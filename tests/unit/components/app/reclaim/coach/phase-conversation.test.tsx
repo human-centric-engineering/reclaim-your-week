@@ -13,6 +13,7 @@
  * asserted: it is the one place the form had crept back into the coaching surface.
  */
 
+import React from 'react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -41,12 +42,17 @@ vi.mock('@/components/app/reclaim/coach-chat', () => ({
   }: {
     onTurnComplete?: () => void;
     intro?: React.ReactNode;
-    beats?: React.ReactNode;
+    beats?: { key: string; node: React.ReactNode }[];
     footer?: React.ReactNode;
   }) => (
     <div>
       {intro}
-      {beats}
+      {/* Keyed beats, as the real chat takes them: it anchors each one to the turn it appeared
+          under, which a stub has no turns to do. Rendering the nodes in order is the part that
+          matters here. */}
+      {beats?.map((beat) => (
+        <React.Fragment key={beat.key}>{beat.node}</React.Fragment>
+      ))}
       <button type="button" onClick={() => onTurnComplete?.()}>
         finish a turn
       </button>

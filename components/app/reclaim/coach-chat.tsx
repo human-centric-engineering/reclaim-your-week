@@ -38,27 +38,51 @@
  * reads like a form validating; the same question at a steady pace reads like someone speaking.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { z } from 'zod';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { parseSseBlock } from '@/lib/api/sse-parser';
 import { parseChatStreamEvent } from '@/components/admin/orchestration/chat/chat-events';
 import { ThinkingIndicator } from '@/components/admin/orchestration/chat/thinking-indicator';
 import { useTypingAnimation } from '@/lib/hooks/use-typing-animation';
-import { parseEnvelope } from '@/components/app/reclaim/calendar/types';
 import { leaderFacingStatus } from '@/components/app/reclaim/coach/status';
+import type { CoachOpeningMoment } from '@/lib/app/programme/coach/opening';
 import {
-  isCoachSyntheticMessage,
-  type CoachOpeningMoment,
-} from '@/lib/app/programme/coach/opening';
+  loadTranscript,
+  splitParagraphs,
+  CoachLine,
+  LeaderLine,
+} from '@/components/app/reclaim/coach/transcript';
+import { phaseWindow, sliceByWindow, type PhaseMarks } from '@/lib/app/programme/runs/phase-marks';
 
+/** A turn on screen. Ids come from the transcript; a turn still being spoken has none yet. */
 interface Turn {
+  id: string;
   role: 'leader' | 'coach';
   text: string;
 }
 
-const transcriptEnvelope = z.object({
-  messages: z.array(z.object({ role: z.string(), content: z.string() })),
-});
+/** A turn the leader has just produced, before the server has given it an id. */
+let pendingSeq = 0;
+const pendingId = () => `pending-${(pendingSeq += 1)}`;
+
+/**
+ * One of the phase's beats — the calendar branch, the reveal button, the picture itself.
+ *
+ * A beat carries a **stable key** rather than being an opaque node, and that key is the whole point.
+ * These used to be a single `ReactNode` rendered after the last turn, which pinned them to the foot of
+ * the transcript for as long as their condition held: the picture stayed welded above the composer, so
+ * every question the coach asked afterwards was drawn *above* the chart and the leader read their
+ * newest question, then a card, then their week, then the box they were meant to type in. Phase 1 asks
+ * eleven more things after the reveal, so this was the common case rather than the tail of one.
+ *
+ * A beat belongs at the point in the conversation where it appeared. The key is what lets this
+ * component remember that point, so the transcript carries on underneath it exactly as it would under
+ * anything else the coach said.
+ */
+export interface CoachBeat {
+  /** Stable across renders — it is the identity the anchor is remembered against. */
+  key: string;
+  node: React.ReactNode;
+}
 
 /** How close to the bottom still counts as "following along", in pixels. */
 const FOLLOWING_THRESHOLD = 120;
@@ -66,35 +90,8 @@ const FOLLOWING_THRESHOLD = 120;
 /** Set the (in-flight) coach turn — always the last turn — to `text`, immutably. */
 function setCoachText(turns: Turn[], text: string): Turn[] {
   const next = [...turns];
-  next[next.length - 1] = { role: 'coach', text };
+  next[next.length - 1] = { ...next[next.length - 1], role: 'coach', text };
   return next;
-}
-
-/**
- * Read the run's transcript back.
- *
- * Only `user` and `assistant` rows become turns: a conversation also carries system and tool rows,
- * and an assistant row can be empty when a turn did nothing but call a capability (which is exactly
- * what a silent `record_answers` call looks like). Best-effort — a leader whose transcript cannot be
- * read should be able to carry on talking, not be locked out of their own audit.
- */
-async function loadTranscript(conversationId: string): Promise<Turn[]> {
-  try {
-    const res = await fetch(`/api/v1/chat/conversations/${conversationId}/messages`);
-    if (!res.ok) return [];
-    const { messages } = parseEnvelope(await res.json(), transcriptEnvelope);
-    return (
-      messages
-        .filter((m) => (m.role === 'user' || m.role === 'assistant') && m.content.trim().length > 0)
-        // The trigger that makes the coach speak first is stored as a user row, because `streamChat`
-        // has no other shape to put it in. It is ours, not the leader's, so it never comes back as
-        // something they said. See `coach/opening.ts` for why it has to exist at all.
-        .filter((m) => !isCoachSyntheticMessage(m.role, m.content))
-        .map((m) => ({ role: m.role === 'user' ? 'leader' : 'coach', text: m.content }))
-    );
-  } catch {
-    return [];
-  }
 }
 
 export interface CoachChatProps {
@@ -114,6 +111,16 @@ export interface CoachChatProps {
    * second tab cannot replay a beat the leader has already had.
    */
   openMoment?: CoachOpeningMoment | null;
+  /**
+   * The phase this conversation is in, and where each phase's part of the transcript begins.
+   *
+   * A run has one conversation across all seven phases, so without these the transcript is drawn
+   * whole on every phase and a leader on phase 2 reads the Phase 2 card sitting on top of the whole
+   * of phase 0 and 1. Omitted (phase 6's close, a test) draws everything, which is what it did
+   * before.
+   */
+  phaseKey?: string;
+  phaseMarks?: PhaseMarks;
   /** Placeholder before there is any transcript, where the leader is expected to speak first. */
   opener?: string;
   /**
@@ -125,11 +132,13 @@ export interface CoachChatProps {
    */
   intro?: React.ReactNode;
   /**
-   * The phase's beats — the chart reveal, the picture itself, the calendar branch — rendered at the
-   * tail of the transcript, in sequence with the turns that led to them. These used to stack below
-   * the chat, which put a leader's own week further from them the more of it they had described.
+   * The phase's beats — the chart reveal, the picture itself, the calendar branch — each dropped into
+   * the transcript where it first appeared and left there, so the conversation continues below it.
+   * These used to stack below the chat, which put a leader's own week further from them the more of it
+   * they had described; then at the tail of the transcript, which put it between them and every
+   * question that followed. See `CoachBeat`.
    */
-  beats?: React.ReactNode;
+  beats?: CoachBeat[];
   /** Rendered directly above the composer, where a move onward belongs: always in reach, never lost. */
   footer?: React.ReactNode;
   /**
@@ -149,13 +158,18 @@ export function CoachChat({
   conversationId,
   onTurnComplete,
   openMoment = null,
+  phaseKey,
+  phaseMarks,
   opener,
   intro,
-  beats,
+  beats = [],
   footer,
   className = 'min-h-0 flex-1',
 }: CoachChatProps) {
   const [turns, setTurns] = useState<Turn[]>([]);
+  /** The audit before this phase, kept back but never discarded. */
+  const [earlier, setEarlier] = useState<Turn[]>([]);
+  const [showEarlier, setShowEarlier] = useState(false);
   const [draft, setDraft] = useState('');
   const [streaming, setStreaming] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
@@ -198,9 +212,33 @@ export function CoachChat({
     if (hydratedRef.current === conversationId) return;
     hydratedRef.current = conversationId;
     void loadTranscript(conversationId).then((prior) => {
-      if (prior.length > 0) setTurns((current) => (current.length === 0 ? prior : current));
+      // The run holds one conversation for the whole audit, so what belongs on screen is this
+      // phase's part of it. `earlier` keeps the rest for the disclosure below rather than throwing
+      // it away — it is the leader's own conversation, and it is one press from being read.
+      const mine =
+        phaseKey === undefined || phaseMarks === undefined
+          ? prior
+          : sliceByWindow(prior, phaseWindow(phaseMarks, phaseKey));
+      const cut = mine.length === 0 ? 0 : prior.findIndex((m) => m.id === mine[0].id);
+      const before =
+        cut <= 0
+          ? mine.length === prior.length
+            ? []
+            : prior.slice(0, prior.length - mine.length)
+          : prior.slice(0, cut);
+      setEarlier(
+        before.filter((m) => !m.synthetic).map((m) => ({ id: m.id, role: m.role, text: m.text }))
+      );
+      const visible = mine
+        .filter((m) => !m.synthetic)
+        .map((m) => ({ id: m.id, role: m.role, text: m.text }));
+      if (visible.length > 0) setTurns((current) => (current.length === 0 ? visible : current));
       setHydrated(true);
     });
+    // `phaseKey` / `phaseMarks` are read to cut the transcript and deliberately not dependencies:
+    // re-running on a phase change would re-fetch into a conversation that is already on screen, and
+    // the component is remounted per phase anyway.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId]);
 
   /**
@@ -217,10 +255,14 @@ export function CoachChat({
     followingRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < FOLLOWING_THRESHOLD;
   }, []);
 
+  // Keyed on the beats present rather than on the array, which is rebuilt by the parent every render:
+  // a beat appearing changes the height of the column and is worth following down, a re-render that
+  // changes nothing is not.
+  const beatKeys = beats.map((b) => b.key).join('|');
   useEffect(() => {
     if (!followingRef.current) return;
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
-  }, [turns, displayText, streaming, beats, footer]);
+  }, [turns, displayText, streaming, beatKeys, footer]);
 
   // Cancel any in-flight stream on unmount — otherwise the reader keeps running,
   // sets state after unmount, and holds the server generation open (chat-interface.tsx pattern).
@@ -250,8 +292,10 @@ export function CoachChat({
       followingRef.current = true;
       setTurns((t) => [
         ...t,
-        ...(leaderText !== null ? [{ role: 'leader' as const, text: leaderText }] : []),
-        { role: 'coach' as const, text: '' },
+        ...(leaderText !== null
+          ? [{ id: pendingId(), role: 'leader' as const, text: leaderText }]
+          : []),
+        { id: pendingId(), role: 'coach' as const, text: '' },
       ]);
       setStreaming(true);
 
@@ -369,6 +413,103 @@ export function CoachChat({
   /** While a turn is in flight, or still being spoken, the tail of the transcript is the animation. */
   const speaking = streaming || isAnimating;
 
+  /**
+   * Where each beat goes: the index of the turn it first appeared under, remembered from then on.
+   *
+   * Written during render rather than from an effect, which is deliberate. An effect runs after paint,
+   * so a beat would be drawn at the tail for one frame and then jump up the transcript, with the
+   * autoscroll chasing it. The write is idempotent — a key already anchored keeps its first value —
+   * so a double render under StrictMode settles on the same map.
+   *
+   * A beat that appears before anyone has spoken anchors at `-1` and is drawn above the first turn.
+   * Nothing is ever evicted: a beat whose condition stops holding simply stops being passed, and if it
+   * comes back it comes back where it was.
+   *
+   * **On reload the anchors start empty**, so beats re-anchor to the foot of the rehydrated transcript
+   * — which is where the leader is standing anyway — and the conversation resumes below them. Pinning
+   * them to their true historical position would mean persisting it, and a run's ledger is the wrong
+   * place to record where a card was drawn.
+   *
+   * **Nothing is anchored before the transcript has loaded.** `turns` is empty on the first render of
+   * a run that is half-way through a phase, so a beat placed then would take `-1` and spend the rest
+   * of the session above a conversation it came out of. Until `hydrated`, beats are simply drawn at
+   * the tail and left unplaced.
+   */
+  const beatAnchors = useRef(new Map<string, number>());
+  const beatsByAnchor = new Map<number, React.ReactNode[]>();
+  const unplacedBeats: React.ReactNode[] = [];
+  for (const beat of beats) {
+    // Every group below is rendered as an array, so each beat needs a key of its own or React warns
+    // about the parent's element rather than about this list. `beat.key` is the identity the anchors
+    // are already kept against, so it is stable across the parent rebuilding the array each render,
+    // and a `Fragment` carries it without adding a wrapper the column's `space-y-6` would have to
+    // reach through.
+    const node = <Fragment key={beat.key}>{beat.node}</Fragment>;
+    let anchor = beatAnchors.current.get(beat.key);
+    if (anchor === undefined) {
+      if (!hydrated) {
+        unplacedBeats.push(node);
+        continue;
+      }
+      // While a turn is in flight the last entry is the coach's placeholder, and the beat belongs
+      // under it: that is the turn the leader is watching arrive.
+      anchor = turns.length - 1;
+      beatAnchors.current.set(beat.key, anchor);
+    }
+    const group = beatsByAnchor.get(anchor);
+    if (group === undefined) beatsByAnchor.set(anchor, [node]);
+    else group.push(node);
+  }
+  /** Beats that predate the first turn, drawn under the signpost where the conversation starts. */
+  const leadingBeats = beatsByAnchor.get(-1);
+  /** Not yet placed, or anchored past the end (only reachable if turns were dropped): never lost. */
+  const trailingBeats = [
+    ...unplacedBeats,
+    ...[...beatsByAnchor.entries()]
+      .filter(([anchor]) => anchor >= turns.length)
+      .flatMap(([, nodes]) => nodes),
+  ];
+
+  /** One turn, drawn. Split out so the map can put the beats of that moment underneath it. */
+  const renderTurn = (turn: Turn, i: number) => {
+    if (turn.role === 'leader') return <LeaderLine text={turn.text} />;
+    const live = i === lastIndex && speaking;
+    const text = live ? displayText : turn.text;
+    // Nothing said yet on a turn that is running: the wait *is* the state, so it is named rather
+    // than left as an empty paragraph with a blinking bar in it.
+    if (live && text.length === 0) {
+      return <ThinkingIndicator message={status} className="py-1" />;
+    }
+    const paragraphs = splitParagraphs(text);
+    return (
+      <div className="space-y-1.5">
+        {/* `space-y-4`, a little wider than the line spacing inside a paragraph: enough that the
+            question at the end reads as its own beat, not so much that one turn looks like
+            several. The caret rides the last paragraph so it stays where the words are arriving. */}
+        <div className="max-w-[92%] space-y-4">
+          {paragraphs.map((paragraph, p) => (
+            <p
+              key={p}
+              className="text-foreground text-[1.02rem] leading-relaxed whitespace-pre-wrap"
+            >
+              {paragraph}
+              {live && p === paragraphs.length - 1 && (
+                <span className="bg-primary ml-0.5 inline-block h-[1.1em] w-[2px] translate-y-[0.15em] animate-pulse" />
+              )}
+            </p>
+          ))}
+        </div>
+        {/* Once there are words, the status stops being the headline and becomes a note under
+            them — a leader reading an answer should not lose it to a spinner. */}
+        {live && status !== null && (
+          <p className="text-muted-foreground text-xs italic" role="status">
+            {status}
+          </p>
+        )}
+      </div>
+    );
+  };
+
   return (
     <section className={`flex flex-col ${className}`} aria-label="Conversation with the coach">
       <div
@@ -379,62 +520,57 @@ export function CoachChat({
         <div className="mx-auto max-w-3xl space-y-6">
           {intro}
 
+          {/* The rest of the audit. Kept out of the way rather than out of reach: this is the
+              leader's own conversation, and a phase that hid it for good would be a worse answer
+              than the endless scroll it replaced. */}
+          {earlier.length > 0 &&
+            (showEarlier ? (
+              <div className="border-border/60 space-y-6 border-b pb-6">
+                {earlier.map((turn) =>
+                  turn.role === 'leader' ? (
+                    <LeaderLine key={turn.id} text={turn.text} />
+                  ) : (
+                    <CoachLine key={turn.id} text={turn.text} />
+                  )
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowEarlier(false)}
+                  className="text-muted-foreground hover:text-foreground text-xs underline underline-offset-4"
+                >
+                  Hide what came before
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowEarlier(true)}
+                className="text-muted-foreground hover:text-foreground text-xs underline underline-offset-4"
+              >
+                Read what came earlier in this audit
+              </button>
+            ))}
+
+          {leadingBeats}
+
           {turns.length === 0 ? (
             <p className="text-muted-foreground max-w-md pt-2 text-[0.95rem] leading-relaxed">
               {opener ??
                 'When you are ready, say hello and we will begin. Take your time; there are no wrong answers here.'}
             </p>
           ) : (
-            turns.map((turn, i) => {
-              if (turn.role === 'leader') {
-                // `bg-accent`, not `bg-muted`. Full-strength cream is this app's *section band* —
-                // the signpost, the phase-4 panel, the calendar review, the summary all wear it — so
-                // dressing the leader's own words in it made their speech look like another card the
-                // app was showing them, directly under a signpost of exactly the same colour. The
-                // low-chroma teal tint is the one other surface token the brand defines in both
-                // modes, and cool-against-warm separates at a glance.
-                //
-                // `w-fit` is the other half. A `<p>` is a block, so "hello" was drawn as an
-                // 85%-wide band with the text stranded at its left edge — a section, not an
-                // utterance. Short answers are most of a time audit ("3", "about 5"), so this is
-                // the common case, not the edge one. `max-w` still caps a long answer.
-                return (
-                  <p
-                    key={i}
-                    className="bg-accent text-foreground ml-auto w-fit max-w-[85%] rounded-2xl rounded-tr-sm px-4 py-3 text-[0.95rem] leading-relaxed"
-                  >
-                    {turn.text}
-                  </p>
-                );
-              }
-              const live = i === lastIndex && speaking;
-              const text = live ? displayText : turn.text;
-              // Nothing said yet on a turn that is running: the wait *is* the state, so it is named
-              // rather than left as an empty paragraph with a blinking bar in it.
-              if (live && text.length === 0) {
-                return <ThinkingIndicator key={i} message={status} className="py-1" />;
-              }
-              return (
-                <div key={i} className="space-y-1.5">
-                  <p className="text-foreground max-w-[92%] text-[1.02rem] leading-relaxed whitespace-pre-wrap">
-                    {text}
-                    {live && (
-                      <span className="bg-primary ml-0.5 inline-block h-[1.1em] w-[2px] translate-y-[0.15em] animate-pulse" />
-                    )}
-                  </p>
-                  {/* Once there are words, the status stops being the headline and becomes a note
-                      under them — a leader reading an answer should not lose it to a spinner. */}
-                  {live && status !== null && (
-                    <p className="text-muted-foreground text-xs italic" role="status">
-                      {status}
-                    </p>
-                  )}
-                </div>
-              );
-            })
+            turns.map((turn, i) => (
+              // The turn, then whatever the leader was shown at that point in the conversation. A
+              // `Fragment` rather than a wrapper, so the column's `space-y-6` spaces a beat from the
+              // turn above it exactly as it spaces two turns.
+              <Fragment key={i}>
+                {renderTurn(turn, i)}
+                {beatsByAnchor.get(i)}
+              </Fragment>
+            ))
           )}
 
-          {beats}
+          {trailingBeats}
 
           {error !== null && (
             <p className="text-muted-foreground border-border border-t pt-3 text-sm" role="status">

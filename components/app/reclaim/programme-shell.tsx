@@ -35,6 +35,7 @@ import {
 } from '@/components/app/reclaim/types';
 import type { PhaseSignpost } from '@/lib/app/programme/runs/signposts';
 import { PhaseRail } from '@/components/app/reclaim/phase-rail';
+import { PhaseReview } from '@/components/app/reclaim/phase-review';
 import { ProgrammeChrome } from '@/components/app/reclaim/programme-chrome';
 import { TrendLines } from '@/components/app/reclaim/repeat/trend-lines';
 import { Signpost } from '@/components/app/reclaim/signpost';
@@ -70,6 +71,14 @@ export function ProgrammeShell() {
    * orientation at all because a config read did not come back.
    */
   const [signposts, setSignposts] = useState<PhaseSignpost[] | null>(null);
+  /**
+   * A finished phase the leader has gone back to look at, or `null` for "wherever the audit is".
+   *
+   * Held here rather than in the URL because it is a view, not a position: the run's phase is the
+   * position, it lives on the server, and nothing about reading an earlier phase changes it. Reset to
+   * `null` by the way out, and by selecting the current phase in the spine.
+   */
+  const [reviewingKey, setReviewingKey] = useState<string | null>(null);
 
   /**
    * Read the run state.
@@ -189,17 +198,33 @@ export function ProgrammeShell() {
   );
   const currentPhase = state.phases[currentIndex];
 
+  // Where the leader has gone back to, if anywhere. A key that is no longer in the journey, or that
+  // is the phase they are on anyway, resolves to "not reviewing" rather than to a broken screen.
+  const reviewIndex =
+    reviewingKey === null ? -1 : state.phases.findIndex((p) => p.key === reviewingKey);
+  const reviewing =
+    reviewIndex > -1 && state.phases[reviewIndex].key !== state.currentPhaseKey
+      ? state.phases[reviewIndex]
+      : null;
+
   const talking = phaseMode === 'conversation' && currentPhase.key !== FINAL_PHASE_KEY;
+  const headingIndex = reviewing !== null ? reviewIndex : currentIndex;
+  const headingPhase = reviewing ?? currentPhase;
 
   return (
     <>
-      <ProgrammeChrome here={`Phase ${currentIndex} · ${currentPhase.label}`} />
+      <ProgrammeChrome here={`Phase ${headingIndex} · ${headingPhase.label}`} />
 
       <div className="flex min-h-0 flex-1">
         {/* The spine keeps its own column on a wide screen, and its own scroll: seven phases fit, but
             a short viewport should not clip the last of them. */}
         <aside className="border-border/60 hidden w-60 shrink-0 overflow-y-auto border-r px-6 py-8 lg:block">
-          <PhaseRail phases={state.phases} currentPhaseKey={state.currentPhaseKey} />
+          <PhaseRail
+            phases={state.phases}
+            currentPhaseKey={state.currentPhaseKey}
+            viewingPhaseKey={reviewing?.key ?? state.currentPhaseKey}
+            onSelect={setReviewingKey}
+          />
         </aside>
 
         <main className="flex min-h-0 flex-1 flex-col">
@@ -207,11 +232,26 @@ export function ProgrammeShell() {
             <PhaseRail
               phases={state.phases}
               currentPhaseKey={state.currentPhaseKey}
+              viewingPhaseKey={reviewing?.key ?? state.currentPhaseKey}
+              onSelect={setReviewingKey}
               variant="compact"
             />
           </div>
 
-          {talking ? (
+          {reviewing !== null ? (
+            <PhaseReview
+              runId={state.run.id}
+              phaseKey={reviewing.key}
+              phaseIndex={reviewIndex}
+              phaseLabel={reviewing.label}
+              signposts={signposts ?? undefined}
+              conversationId={state.run.conversationId}
+              phaseMarks={state.run.phaseMarks}
+              returnIndex={currentIndex}
+              returnLabel={currentPhase.label}
+              onReturn={() => setReviewingKey(null)}
+            />
+          ) : talking ? (
             <PhaseConversation
               runId={state.run.id}
               phaseKey={currentPhase.key}
@@ -220,6 +260,7 @@ export function ProgrammeShell() {
               signposts={signposts ?? undefined}
               conversationId={state.run.conversationId}
               coachOpenings={state.run.coachOpenings}
+              phaseMarks={state.run.phaseMarks}
               // Quiet, and this is the call site the flag exists for: it fires after *every* coach
               // turn, not only when the phase moves, so a loud reload would unmount the transcript
               // mid-answer each time the coach finished speaking.

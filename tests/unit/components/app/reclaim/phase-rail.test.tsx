@@ -11,7 +11,8 @@
  * is the bug the vertical rail was written to avoid, and the compact form must not reintroduce it.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import userEvent from '@testing-library/user-event';
 import { render, screen } from '@testing-library/react';
 import { PhaseRail } from '@/components/app/reclaim/phase-rail';
 import type { PhaseView } from '@/components/app/reclaim/types';
@@ -68,5 +69,77 @@ describe('PhaseRail — the compact strip', () => {
       screen.getByRole('navigation', { name: 'Your progress through the audit' })
     ).toBeInTheDocument();
     expect(screen.getByText('0 · Setup')).toBeInTheDocument();
+  });
+});
+
+/**
+ * Going back to a phase already finished.
+ *
+ * The spine listed six phases behind the leader and opened none of them, which made it a table of
+ * contents for a book that could not be turned back through. What it must not become is a way to skip
+ * ahead: the audit is sequential and the server enforces it (I9), so an upcoming phase offers a door
+ * that would only ever refuse.
+ */
+describe('PhaseRail — going back', () => {
+  it('opens a phase already finished, and the one the leader is on', async () => {
+    const onSelect = vi.fn();
+    render(<PhaseRail phases={phases} currentPhaseKey="phase-2-energy" onSelect={onSelect} />);
+
+    await userEvent.click(screen.getByRole('button', { name: /Current reality/ }));
+    expect(onSelect).toHaveBeenCalledWith('phase-1-current');
+
+    // The current phase is reachable too: it is the way back from a visit.
+    await userEvent.click(screen.getByRole('button', { name: /Energy/ }));
+    expect(onSelect).toHaveBeenCalledWith('phase-2-energy');
+  });
+
+  it('offers no way to skip ahead to a phase not reached yet', () => {
+    render(<PhaseRail phases={phases} currentPhaseKey="phase-2-energy" onSelect={vi.fn()} />);
+
+    for (const label of ['Ideal week', 'Gap analysis', 'Action plan', 'Summary']) {
+      expect(screen.queryByRole('button', { name: new RegExp(label) })).not.toBeInTheDocument();
+      expect(screen.getByText(label)).toBeInTheDocument();
+    }
+  });
+
+  it('stays a display of progress when no one is listening', () => {
+    render(<PhaseRail phases={phases} currentPhaseKey="phase-2-energy" />);
+
+    expect(screen.queryAllByRole('button')).toHaveLength(0);
+  });
+
+  it('keeps "here" on the run’s own position while an earlier phase is being read', () => {
+    render(
+      <PhaseRail
+        phases={phases}
+        currentPhaseKey="phase-2-energy"
+        viewingPhaseKey="phase-1-current"
+        onSelect={vi.fn()}
+      />
+    );
+
+    // "here" is where the audit has got to, and reading phase 1 has not moved it.
+    const here = screen.getByText('here').closest('button');
+    expect(here).toHaveTextContent('Energy');
+    expect(screen.getByRole('button', { name: /Current reality/ })).toHaveAttribute(
+      'aria-current',
+      'page'
+    );
+  });
+
+  it('gives the compact dots a name and a target worth tapping', async () => {
+    const onSelect = vi.fn();
+    render(
+      <PhaseRail
+        phases={phases}
+        currentPhaseKey="phase-2-energy"
+        onSelect={onSelect}
+        variant="compact"
+      />
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Go to phase 1, Current reality' }));
+    expect(onSelect).toHaveBeenCalledWith('phase-1-current');
+    expect(screen.queryByRole('button', { name: /Go to phase 4/ })).not.toBeInTheDocument();
   });
 });

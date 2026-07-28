@@ -41,6 +41,7 @@ import {
 import {
   CHART_REVEAL_PHASE,
   chartRevealReady,
+  chartRevealed,
   everyVisibleAreaHasHours,
 } from '@/lib/app/programme/chart/reveal';
 import {
@@ -101,17 +102,50 @@ function contentForPhase(
       parts.push(`- ${bucket.title} (${bucket.benchmark.note}): ${bucket.description}`);
     }
     if (phaseKey === 'phase-1-current') {
-      parts.push('', 'On deep work, which cuts across the others:', content.deepWorkNote);
+      parts.push(
+        '',
+        'On deep work, which cuts across the others:',
+        content.deepWorkNote,
+        '',
+        // The source is exact about the shape of this phase, and it is two questions per area asked
+        // together, not a sweep for figures followed by a sweep for detail: "explore each bucket in
+        // turn, one at a time, conversationally. For each bucket ask: roughly how many hours per
+        // week …? What does that time actually look like in practice?"
+        // (`sources/Time_Audit_Tool_Prompt_Text.md:119-122`). Asked as two lists, the second list
+        // never happened: the coach took the eight figures, which are concrete and typed, and left
+        // all eight "in practice" readings empty. An audit of eight numbers and no texture is the
+        // survey this tool exists not to be.
+        'How to explore an area. Take them one at a time, in this order, and ask two things in the',
+        'same breath: roughly how many hours a week go here, and what that time actually looks like in',
+        'practice. The second is not optional and it is not a follow-up for later. It is where the',
+        'audit stops being a set of numbers: a figure tells you they spend fifteen hours on',
+        'relationships; what that time looks like tells you whether it is board management, a team',
+        'that needs them, or a habit nobody has questioned, and every phase after this one reads',
+        'better for having it.',
+        'Record both together: reclaim_current_hours__<area> with the figure in valueJson, and',
+        'reclaim_current_detail__<area> in their own words. If they give you only the number, ask what',
+        'it looks like before moving to the next area. If they describe it richly without landing on a',
+        'figure, offer one back and let them agree it. Do not move through all the areas for figures',
+        'and then come back for the detail.'
+      );
     }
   }
 
-  if (phaseKey === 'phase-4-gap') {
+  // The bands read a weekly total, and phase 1 is where a leader first sees theirs. Giving them only
+  // to the gap phase left the reveal able to name a total it could not say anything about, so the
+  // coach either said nothing about it or invented a threshold of its own.
+  if (phaseKey === 'phase-1-current' || phaseKey === 'phase-4-gap') {
     parts.push(
       '',
       'The total-hours bands, for reading what their weekly total means:',
       ...content.hourBands.map(
         (band) => `- ${band.lowerHours} to ${band.upperHours ?? 'more'} hours: ${band.label}`
-      ),
+      )
+    );
+  }
+
+  if (phaseKey === 'phase-4-gap') {
+    parts.push(
       '',
       'Where the gap points to a leader carrying delivery that could be led through others, this is the',
       'invitation to offer, close to these words. It is an invitation and never a diagnosis:',
@@ -258,7 +292,9 @@ async function closingContext(userId: string, answers: Answers): Promise<string[
 function momentForPhase(
   phaseKey: string,
   answers: Answers,
-  bucketLabels: Record<string, string>
+  bucketLabels: Record<string, string>,
+  revealed: boolean,
+  reflected: boolean
 ): string[] {
   if (phaseKey === CHART_REVEAL_PHASE) {
     // Two beats live in this phase and they run in this order in the source: the calendar branch is
@@ -331,10 +367,63 @@ function momentForPhase(
             ]
           : []),
         '',
-        'When they arrive at this moment, name what the figures show, specifically and in numbers. Then',
-        'ask one question, close to "what stands out to you here?", and stop. Do not interpret, do not',
-        'add observations, and do not move them on. After they answer, acknowledge what they noticed and',
-        'only then add what they may have missed.'
+        ...(!revealed
+          ? [
+              'They have not asked to see this yet, and the button is theirs to press. Do not describe the',
+              'picture, do not summarise these figures, and do not ask what stands out until they have',
+              'looked. Carry on with the readings below.',
+            ]
+          : !reflected
+            ? [
+                'The leader has asked to see this and the picture is on their screen now. That makes this',
+                'beat the live one, and it comes before anything on the capture list below: do not return',
+                'to gathering readings until it has run its course. Two steps, in this order.',
+                '',
+                'First, summarise what they are looking at: the total for the week, and which areas',
+                'sit above or below the guide, specifically and in numbers. Then ask whether it is right:',
+                'does that look like their week, is anything wrong, does anything need changing? Ask it',
+                'plainly and mean it. Every bar here was drawn from an estimate they gave in',
+                'conversation, and a figure that felt about right when spoken often looks wrong once it',
+                'is drawn to scale beside the others. Checking it is not doubting them; it is what makes',
+                'everything built on these numbers worth anything.',
+                '',
+                'If they revise a figure, record the corrected number with record_answers against the',
+                'same reclaim_current_hours__ slot, with the new figure in valueJson. It supersedes the',
+                'old one and the picture on their screen is redrawn from it, so confirm the change in',
+                'words rather than describing a chart they can see. Never argue a figure down: it is',
+                'their week, and a correction is information, not a retraction. Where a change moves the',
+                'total or crosses a guide, say so in a sentence, then ask again whether the picture is',
+                'right now.',
+                '',
+                'Second, once they are content that the figures are accurate, ask one question, close to',
+                '"what stands out to you here?", and stop. Do not interpret, do not add observations, and',
+                'do not move them on. Their own noticing comes first; your reading of it comes after, and',
+                'only after.',
+              ]
+            : [
+                'They have seen the picture, checked the figures and said what stands out to them, so the',
+                'pause is over and this is where your own reading belongs. Do it in one pass, and do it',
+                'before returning to anything still unfilled on the capture list below.',
+                '',
+                'Acknowledge what they noticed, in their words. Say what their weekly total says about',
+                'the shape of the week, using the bands above. Then give your reading of how they are',
+                'spending it: which areas sit away from the guide, what that pattern suggests about how',
+                'they are leading at the moment, and what they may have missed in their own answer.',
+                'Judge the pattern, never the person, and stay inside the governing frame. This is not',
+                'a review of how efficient they are.',
+                '',
+                'They can still change a figure at any point, and if they do, record it as above and',
+                'reflect the change back.',
+                '',
+                'Then look at what this phase never asked. Every area was meant to give you two things,',
+                'the hours and what that time actually looks like, and the second is the one that gets',
+                'dropped. Where an area has a figure and nothing else, that is the conversation this',
+                'phase is for and it has not happened yet. Pick the two or three that matter most',
+                'here, the areas furthest from their guide and any they have said nothing about, and',
+                'ask what that time actually looks like. One offer, in their own language, take a no.',
+                'Then tell them they can move on to the next phase whenever they are ready. The button',
+                'to do that is on their screen and pressing it is theirs.',
+              ])
       );
     }
 
@@ -389,9 +478,14 @@ function typedValueNote(dataType: string): string {
 export async function buildCoachPhaseContext(userId: string): Promise<string> {
   const run = await prisma.reclaimAuditRun.findFirst({
     where: { userId, status: 'in_progress' },
-    select: { id: true },
+    select: { id: true, coachOpenings: true },
   });
   if (run === null) return '';
+
+  // The reveal is claimed on the run *before* the turn is generated (`coach/stream/route.ts`), so on
+  // the very turn the leader asks to see their week this already reads true. That ordering is what
+  // lets the reveal beat and its question be one turn instead of two.
+  const revealed = chartRevealed(run.coachOpenings ?? []);
 
   const { currentPhaseKey } = await loadPhaseProgress(userId, run.id);
   const phase = RECLAIM_PHASES.find((p) => p.key === currentPhaseKey);
@@ -439,14 +533,31 @@ export async function buildCoachPhaseContext(userId: string): Promise<string> {
   // described beside them: the coach reads the capture list as its worklist, and a gate mentioned in
   // a footnote is a gate the model treats as somebody else's problem. It carries its own state
   // because it is the one reading that cannot be inferred and cannot be recorded early.
+  //
+  // **What it must never say is "once the readings above are captured".** That was the condition, and
+  // on phase 1 it cannot be met: the capture list holds nineteen slugs, one of which
+  // (`reclaim_current_deep_block_blocker`) exists only for a leader who has *no* protected block, so a
+  // leader who has one leaves a slot that will never be filled. The coach read the list as its
+  // worklist, found it unfinished, and kept gathering — while the panel beneath the composer promised
+  // a question that could therefore never arrive. A phase's closing beat cannot be gated on a list
+  // that includes readings which do not apply to this leader.
+  //
+  // Phase 1 gets a trigger that is an event rather than a count: the reveal. The leader has seen the
+  // picture, so the question follows it — that is I12's shape, and the same beat `momentForPhase`
+  // opens. Every other phase gets the un-deadlockable wording instead of a threshold, because "enough
+  // of the phase has been covered" is a judgement and inventing a fraction to stand in for it would
+  // only move the arbitrary line rather than remove it.
   const reflectionSlug = reflectionSlugForLeaving(currentPhaseKey);
   const reflectionRecorded = reflectionSlug === null ? undefined : answers[reflectionSlug];
+  const reflectionDueNow = currentPhaseKey === CHART_REVEAL_PHASE && revealed;
   const reflectionNote =
     reflectionSlug === null
       ? 'This phase has no reflection pause.'
       : reflectionRecorded !== undefined
         ? `The reflection for this phase is recorded (${reflectionSlug}): "${reflectionRecorded.value}". Do not ask for it again. The leader can change it beside the conversation whenever they like, and the move to the next phase is theirs to take.`
-        : `This phase closes with the leader's own reflection (${reflectionSlug}), and the phase cannot be left until it is recorded. Once the readings above are captured, ask one genuine question, close to "what stands out to you here?", and stop. When they answer, offer back what you heard in their own words and record it with record_answers as ${reflectionSlug}. Never infer it and never write it before they have said it: an inferred reflection is refused. Then leave the move to the next phase to them.`;
+        : reflectionDueNow
+          ? `This phase closes with the leader's own reflection (${reflectionSlug}), and the phase cannot be left until it is recorded. They have now seen the picture, so that moment is here: ask the question, and ask it before you return to anything on the list above. Readings still missing are not a reason to hold it back. When they answer, offer back what you heard in their own words and record it with record_answers as ${reflectionSlug}. Never infer it and never write it before they have said it: an inferred reflection is refused. Then leave the move to the next phase to them.`
+          : `This phase closes with the leader's own reflection (${reflectionSlug}), and the phase cannot be left until it is recorded. Completing the list is not the condition for closing: some readings only ever apply to some leaders, and waiting for those would be a gate nobody can pass. But a reading nobody asked about is not a reading that does not apply, so cover the substance of this phase first, and where most of it is still unasked, that is a phase that has not happened yet rather than one ready to close. When it has been covered, ask one genuine question, close to "what stands out to you here?", and stop. When they answer, offer back what you heard in their own words and record it with record_answers as ${reflectionSlug}. Never infer it and never write it before they have said it: an inferred reflection is refused. Then leave the move to the next phase to them.`;
 
   const cardLines = cardLinesFor(currentPhaseKey, signposts);
 
@@ -455,7 +566,13 @@ export async function buildCoachPhaseContext(userId: string): Promise<string> {
     '',
     ...contentForPhase(currentPhaseKey, content, fundraisingRelevant),
     ...cardLines,
-    ...momentForPhase(currentPhaseKey, answers, bucketLabels),
+    ...momentForPhase(
+      currentPhaseKey,
+      answers,
+      bucketLabels,
+      revealed,
+      reflectionRecorded !== undefined
+    ),
     '',
     'What this phase captures, and what this run has so far. Anything listed as not yet captured has',
     'not been said in this audit, whatever earlier values appear elsewhere in your context.',
@@ -466,8 +583,21 @@ export async function buildCoachPhaseContext(userId: string): Promise<string> {
     'clear, including readings the leader gave in passing while answering something else. Do not ask',
     'again for anything already captured unless the leader revisits it themselves. A slot that needs a',
     'figure or a yes or no is refused without one, so offer a specific value and record it once the',
-    'leader agrees. When every reading here is captured, say so and leave the decision to move on to',
-    'them.',
+    'leader agrees. A reading the leader corrects is recorded again with the new value, which',
+    'supersedes the old one, so offer that whenever they say a figure looks wrong.',
+    '',
+    // Two different reasons a reading is missing, and they were being treated as one. Some readings
+    // genuinely do not apply — a leader who has a protected deep-work block is never asked what gets
+    // in its way — and holding a phase open for those would be a gate nobody can pass. But "not yet
+    // captured" mostly means "not yet asked", and the guidance that stopped the list being a gate
+    // was read as licence to leave two thirds of it alone.
+    'Two things can put a reading in the "not yet captured" list, and they are not the same. Some do',
+    'not apply to this leader. Nobody with a protected deep-work block is asked what gets in its way,',
+    'and those are complete as they are. Everything else is simply a question you have not asked',
+    'yet, and a phase whose readings are mostly unasked has not been explored, however comfortably it',
+    'is going. Before you say this phase is done, look at what is still missing, and offer the ones',
+    "that were never asked: name two or three of them in the leader's own language rather than",
+    'reading the list out, and take a no. Then say so and leave the decision to move on to them.',
     reflectionNote,
   ].join('\n');
 }
