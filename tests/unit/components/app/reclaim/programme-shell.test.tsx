@@ -14,6 +14,14 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useEffect } from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
+
+/*
+ * The bar's two corner controls stand in as nothing here. Both reach for a provider this suite has no
+ * reason to mount (`useTheme`, `useAnalytics`), and neither is what any assertion below is about; each
+ * has its own suite. Stubbing them keeps this file about the surface it names.
+ */
+vi.mock('@/components/app/reclaim/theme-switch', () => ({ ThemeSwitch: () => null }));
+vi.mock('@/components/app/reclaim/account-menu', () => ({ AccountMenu: () => null }));
 import userEvent from '@testing-library/user-event';
 
 /**
@@ -193,11 +201,20 @@ describe('ProgrammeShell — before there is a run', () => {
     expect(await screen.findByTestId('conversation')).toBeInTheDocument();
   });
 
-  it('keeps the way out on screen even at the gates', async () => {
+  /**
+   * This used to look for "Leave the audit", the single link the bar carried. The link is gone and
+   * what it was protecting is not: a leader stopped at the consent gate must still have the bar, and
+   * with it the trail back to the audit and the menu that holds their account. The corner controls
+   * are stubbed at the top of this file, so what is asserted here is the frame reaching the gates.
+   */
+  it('keeps the bar on screen even at the gates', async () => {
     respond(runState({ run: null }));
     render(<ProgrammeShell />);
 
-    expect(await screen.findByRole('link', { name: 'Leave the audit' })).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: 'Reclaim your week' })).toHaveAttribute(
+      'href',
+      '/programme'
+    );
   });
 });
 
@@ -259,6 +276,45 @@ describe('ProgrammeShell — the frame around a run', () => {
 
     // Still the same mount: the data was swapped underneath the conversation, not around it.
     expect(mounts.conversation).toBe(1);
+  });
+
+  it('remounts the conversation when the phase moves, or the new phase opens on the old one’s turns', async () => {
+    // The other half of the same decision, and the one that was missing. A run holds ONE conversation
+    // across all seven phases, and `CoachChat` cuts this phase's part out of it once, on hydration,
+    // then keeps the result in state. So the quiet reload that is exactly right mid-phase is exactly
+    // wrong across a phase boundary: same element, same position, React reconciles, the hydration
+    // guard short-circuits, and phase 3 renders its signpost on top of every phase-2 turn — the
+    // defect `phaseMarks` exists to fix, surviving the fix. `key={currentPhase.key}` is what makes
+    // the remount real, and counting mounts is the only way to see it.
+    let state: unknown = runState();
+    fetchMock.mockImplementation((url: string) => {
+      if (url.includes('/runs/current')) {
+        return Promise.resolve({ ok: true, json: async () => ({ success: true, data: state }) });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ success: true, data: { strategyMirror: false, phaseSignposts: [] } }),
+      });
+    });
+
+    render(<ProgrammeShell />);
+    await screen.findByTestId('conversation');
+    expect(mounts.conversation).toBe(1);
+
+    // The transition landed, so the next read comes back on the following phase.
+    state = runState({
+      currentPhaseKey: 'phase-3-ideal',
+      phases: PHASES.map((phase) =>
+        phase.key === 'phase-2-energy'
+          ? { ...phase, status: 'completed' as const }
+          : phase.key === 'phase-3-ideal'
+            ? { ...phase, status: 'active' as const }
+            : phase
+      ),
+    });
+    await userEvent.click(screen.getByRole('button', { name: 'advance' }));
+
+    await waitFor(() => expect(mounts.conversation).toBe(2));
   });
 
   it('re-reads the run when a phase advances, on either surface', async () => {

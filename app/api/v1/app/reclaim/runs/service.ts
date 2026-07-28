@@ -21,6 +21,7 @@ import { emitReclaimAccessEvent } from '@/lib/app/programme/access/events';
 import { RECLAIM_MAP_SLUG } from '@/lib/app/programme/map';
 import { RECLAIM_MODULE_SLUG } from '@/lib/app/programme/module';
 import { readPhaseMarks, type PhaseMarks } from '@/lib/app/programme/runs/phase-marks';
+import { FIRST_PHASE_KEY } from '@/lib/app/programme/runs/phases';
 import {
   enterFirstPhase,
   advancePhase,
@@ -220,28 +221,7 @@ export async function recordPhaseMark(
   phaseKey: string
 ): Promise<void> {
   try {
-    const run = await prisma.reclaimAuditRun.findFirst({
-      where: { id: runId, userId },
-      select: { conversationId: true, phaseMarks: true },
-    });
-    // No conversation yet means the leader has taken the forms this far and there is nothing to
-    // divide. Leaving the mark absent is correct: whatever they say next opens the phase.
-    if (run?.conversationId === null || run?.conversationId === undefined) return;
-
-    const marks = readPhaseMarks(run.phaseMarks);
-    if (marks[phaseKey] !== undefined) return;
-
-    const last = await prisma.aiMessage.findFirst({
-      where: { conversationId: run.conversationId },
-      orderBy: { createdAt: 'desc' },
-      select: { id: true },
-    });
-    if (last === null) return;
-
-    await prisma.reclaimAuditRun.update({
-      where: { id: runId },
-      data: { phaseMarks: { ...marks, [phaseKey]: last.id } },
-    });
+    await claimPhaseMark(userId, runId, phaseKey);
   } catch (error: unknown) {
     logger.warn('Reclaim: could not record the phase mark', {
       runId,
@@ -249,6 +229,104 @@ export async function recordPhaseMark(
       error: error instanceof Error ? error.message : String(error),
     });
   }
+}
+
+/**
+ * Recover a mark that was never written, from the moment the phase was entered.
+ *
+ * **Why a read path writes.** `recordPhaseMark` is best-effort and a mark is written once and never
+ * revised, so the two are a bad pair on their own: a single failed bookkeeping write — or a run that
+ * was already in flight when phase marks shipped — leaves that leader drawing the whole audit under
+ * every later phase, permanently and silently. That is a leader on phase 2 reading the end of phase 1
+ * and being told to move on from a phase they have already left.
+ *
+ * The journey knows when the phase was entered, and the boundary is defined by that moment, so the
+ * mark can be derived rather than remembered. Called from `loadCurrentRunState` only when the current
+ * phase has no mark, which means it runs at most once per phase per run and never at all for a run
+ * whose transitions recorded normally.
+ *
+ * `enteredAt` is what makes this safe to run late: the boundary is where the conversation *was* when
+ * the phase opened, not where it is now, so a leader who has since spoken in this phase still gets the
+ * cut in the right place.
+ */
+export async function backfillPhaseMark(
+  userId: string,
+  runId: string,
+  phaseKey: string,
+  enteredAt: Date
+): Promise<string | null> {
+  try {
+    return await claimPhaseMark(userId, runId, phaseKey, enteredAt);
+  } catch (error: unknown) {
+    logger.warn('Reclaim: could not backfill the phase mark', {
+      runId,
+      phaseKey,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
+/**
+ * Write a phase's mark if it has none, and answer with the id it now carries.
+ *
+ * `before` bounds the search to messages that already existed at a moment — absent for a mark written
+ * as the phase is entered (the moment is now), present for one recovered afterwards.
+ *
+ * Never overwrites: an existing mark is returned as it stands. Callers wrap this, because neither of
+ * them may fail on it.
+ */
+async function claimPhaseMark(
+  userId: string,
+  runId: string,
+  phaseKey: string,
+  before?: Date
+): Promise<string | null> {
+  const run = await prisma.reclaimAuditRun.findFirst({
+    where: { id: runId, userId },
+    select: { conversationId: true, phaseMarks: true },
+  });
+  // No conversation yet means the leader has taken the forms this far and there is nothing to
+  // divide. Leaving the mark absent is correct: whatever they say next opens the phase.
+  if (run?.conversationId === null || run?.conversationId === undefined) return null;
+
+  const marks = readPhaseMarks(run.phaseMarks);
+  const existing = marks[phaseKey];
+  if (existing !== undefined) return existing;
+
+  // The mark has to be an id the *surface* can find, not merely the newest row in the table.
+  // `loadTranscript` keeps only `user`/`assistant` rows with non-empty text, so a `tool` row or the
+  // empty assistant row a silent `record_answers` turn leaves behind would be marked here and then
+  // never appear in the list the client searches. `sliceByWindow` reads that miss as an erased
+  // message and falls back to the open end — so the phase would draw the whole audit, permanently,
+  // because a mark is written once and never revised. Matching the reader's predicate is what makes
+  // "an id survives whatever the client decided to render" (the schema's claim) actually true.
+  // The `where` does the work — it excludes every `tool` row and every empty assistant row, which
+  // is all the tail a long capability round-trip can leave. The small `take` and the trim below
+  // cover the one case SQL's `not: ''` misses, a row that is whitespace and nothing else; five rows
+  // of headroom is generous for something that should not occur at all.
+  const recent = await prisma.aiMessage.findMany({
+    where: {
+      conversationId: run.conversationId,
+      role: { in: ['user', 'assistant'] },
+      content: { not: '' },
+      ...(before === undefined ? {} : { createdAt: { lt: before } }),
+    },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true, content: true },
+    take: 5,
+  });
+  const last = recent.find((message) => message.content.trim().length > 0);
+  // Nothing the leader would see yet, so there is no boundary to draw and no mark to write. The
+  // phase opens at the start of the transcript, which is where it should open when nothing precedes
+  // it.
+  if (last === undefined) return null;
+
+  await prisma.reclaimAuditRun.update({
+    where: { id: runId },
+    data: { phaseMarks: { ...marks, [phaseKey]: last.id } },
+  });
+  return last.id;
 }
 
 /**
@@ -408,16 +486,45 @@ export async function loadCurrentRunState(userId: string): Promise<CurrentRunSta
     where: { userId, status: RUN_STATUS.inProgress },
     orderBy: { startedAt: 'desc' },
   });
-  if (run === null) return { run: null, ...emptyPhaseProgress() };
+  if (run === null) {
+    const { phases, currentPhaseKey } = emptyPhaseProgress();
+    return { run: null, phases, currentPhaseKey };
+  }
 
-  const progress = await loadPhaseProgress(userId, run.id);
+  // Destructured away rather than spread: the entry time is here to recover a mark, and nothing on
+  // the wire has any use for it.
+  const { currentPhaseEnteredAt, ...progress } = await loadPhaseProgress(userId, run.id);
+  const phaseMarks = readPhaseMarks(run.phaseMarks);
+
+  // A phase with no mark draws the whole audit under itself, which is the fallback working as
+  // designed for a run that has never had a conversation and a silent disaster for one that has. So
+  // where the mark is missing and the moment it should have been written is known, derive it now.
+  // The first phase is skipped because it is the one phase that correctly has no mark: nothing was
+  // entered to reach it, and its part of the conversation starts at the top.
+  if (
+    run.conversationId !== null &&
+    currentPhaseEnteredAt !== null &&
+    progress.currentPhaseKey !== FIRST_PHASE_KEY &&
+    phaseMarks[progress.currentPhaseKey] === undefined
+  ) {
+    const recovered = await backfillPhaseMark(
+      userId,
+      run.id,
+      progress.currentPhaseKey,
+      currentPhaseEnteredAt
+    );
+    // Applied to this response rather than left for the next read: the leader is looking at the
+    // phase now, and a fix that lands one refresh later is a fix they still had to see the bug for.
+    if (recovered !== null) phaseMarks[progress.currentPhaseKey] = recovered;
+  }
+
   return {
     run: {
       id: run.id,
       quarter: run.quarter,
       conversationId: run.conversationId,
       coachOpenings: run.coachOpenings,
-      phaseMarks: readPhaseMarks(run.phaseMarks),
+      phaseMarks,
     },
     ...progress,
   };
@@ -512,7 +619,13 @@ export interface RunState {
 
 export async function loadRunState(userId: string, runId: string): Promise<RunState> {
   const run = await loadOwnedRun(runId, userId);
-  const progress = await loadPhaseProgress(userId, run.id);
+  // Same reason as `loadCurrentRunState`: the entry time is not part of this response. No backfill
+  // here — this read serves a finished audit being read back, where a missing mark widens a phase's
+  // window rather than emptying it, and where nothing is being written to any more.
+  const { currentPhaseEnteredAt: _enteredAt, ...progress } = await loadPhaseProgress(
+    userId,
+    run.id
+  );
   return {
     run: {
       id: run.id,

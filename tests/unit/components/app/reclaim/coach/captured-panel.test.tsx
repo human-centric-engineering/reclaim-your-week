@@ -48,7 +48,9 @@ describe('CapturedPanel', () => {
       />
     );
 
-    expect(screen.getByText(/1 of 3 in this phase/)).toBeInTheDocument();
+    // Two, not three: the week grid was never built, so `reclaim_energy_peak_windows` is not a
+    // reading this phase can capture and does not sit here waiting to be filled.
+    expect(screen.getByText(/1 of 2 in this phase/)).toBeInTheDocument();
   });
 
   it('leaves a reading the leader stated plainly alone', () => {

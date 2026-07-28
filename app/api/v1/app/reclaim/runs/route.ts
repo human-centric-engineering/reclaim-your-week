@@ -34,7 +34,7 @@ export const POST = withAuth(async (request, session) => {
   const run = await createRun(session.user.id, body.quarter);
 
   log.info('Reclaim audit run created', { runId: run.id, userId: session.user.id });
-  return successResponse({ runId: run.id, status: run.status }, { status: 201 });
+  return successResponse({ runId: run.id, status: run.status }, undefined, { status: 201 });
 });
 
 export const GET = withAuth(async (request, session) => {

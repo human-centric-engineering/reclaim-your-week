@@ -8,14 +8,19 @@
 
 import { describe, it, expect } from 'vitest';
 import {
+  ARRIVAL_MOMENTS,
+  COACH_ARRIVAL_TRIGGER,
   COACH_OPENING_MOMENTS,
   COACH_OPENING_PHASES,
   COACH_OPENING_TRIGGER,
   COACH_SYNTHETIC_MESSAGES,
+  arrivalMomentFor,
+  isArrivalMoment,
   isCoachSyntheticMessage,
   openingBelongsToPhase,
+  openingTriggerFor,
 } from '@/lib/app/programme/coach/opening';
-import { RECLAIM_PHASE_KEYS } from '@/lib/app/programme/runs/phases';
+import { FINAL_PHASE_KEY, RECLAIM_PHASE_KEYS } from '@/lib/app/programme/runs/phases';
 
 describe('the moments', () => {
   it('every moment names a phase the map actually has', () => {
@@ -38,18 +43,71 @@ describe('the moments', () => {
   });
 });
 
+describe('the phase arrivals', () => {
+  it('gives every phase the leader converses through a moment that opens it', () => {
+    // The point of the change: nothing waits for the leader to say hello. Phase 6 is the exception
+    // and it is not conversed through at all, so it carries no arrival.
+    const conversed = RECLAIM_PHASE_KEYS.filter((key) => key !== FINAL_PHASE_KEY);
+    expect(conversed.filter((key) => arrivalMomentFor(key) === null)).toEqual([]);
+    expect(arrivalMomentFor(FINAL_PHASE_KEY)).toBeNull();
+  });
+
+  it('points each arrival at the phase it opens, so the route can never refuse one', () => {
+    // An arrival mapped to a phase other than its own would be claimed and then rejected forever:
+    // the route checks the moment against the journey's phase, and the claim happens first.
+    for (const [phaseKey, moment] of Object.entries(ARRIVAL_MOMENTS)) {
+      expect(openingBelongsToPhase(moment, phaseKey)).toBe(true);
+    }
+  });
+
+  it('treats the two beats that are also arrivals as arrivals', () => {
+    // Phases 4 and 5 open on figures the leader has already produced, so one moment does both jobs.
+    expect(isArrivalMoment('phase-4-gap')).toBe(true);
+    expect(isArrivalMoment('phase-5-action')).toBe(true);
+    // The reveal is not one. It fires mid-phase, when the leader asks to look (I12).
+    expect(isArrivalMoment('phase-1-chart-reveal')).toBe(false);
+    expect(isArrivalMoment('phase-6-close')).toBe(false);
+  });
+
+  it('opens an arrival with the trigger that introduces the phase, and a beat with the other', () => {
+    expect(openingTriggerFor('phase-2-open')).toBe(COACH_ARRIVAL_TRIGGER);
+    expect(openingTriggerFor('phase-1-chart-reveal')).toBe(COACH_OPENING_TRIGGER);
+  });
+
+  it('tells the coach to speak first and to ask rather than to wait', () => {
+    // The trigger is the only instruction the model gets on an arrival turn that the cached phase
+    // block cannot carry, so these three are the whole of the behaviour change in one string.
+    expect(COACH_ARRIVAL_TRIGGER).toContain('You speak first');
+    expect(COACH_ARRIVAL_TRIGGER).toContain('worth their time');
+    expect(COACH_ARRIVAL_TRIGGER).toContain('end on your first question');
+    expect(COACH_ARRIVAL_TRIGGER).toContain('Do not wait for them to begin');
+  });
+});
+
 describe('the synthetic trigger', () => {
-  it('is in the list of everything we have ever sent', () => {
+  it('is in the list of everything we have ever sent, and so is every other trigger', () => {
     // The list is what the filters read. A trigger changed without being appended here would start
     // appearing in leaders' transcripts as though they had written it.
     expect(COACH_SYNTHETIC_MESSAGES).toContain(COACH_OPENING_TRIGGER);
+    expect(COACH_SYNTHETIC_MESSAGES).toContain(COACH_ARRIVAL_TRIGGER);
+    for (const moment of COACH_OPENING_MOMENTS) {
+      expect(COACH_SYNTHETIC_MESSAGES).toContain(openingTriggerFor(moment));
+    }
   });
 
   it('reads as a stage direction rather than as something a leader would type', () => {
     // It stays in the model's history for the rest of the run, so it has to make sense to a model
     // reading back over the conversation, and to anyone who finds it in a database row.
-    expect(COACH_OPENING_TRIGGER.startsWith('(')).toBe(true);
-    expect(COACH_OPENING_TRIGGER).toContain('has not spoken yet');
+    for (const trigger of [COACH_OPENING_TRIGGER, COACH_ARRIVAL_TRIGGER]) {
+      expect(trigger.startsWith('(')).toBe(true);
+      expect(trigger).toContain('has not spoken yet');
+    }
+  });
+
+  it('keeps a leader’s own transcript clear of every trigger, not only the first one', () => {
+    expect(isCoachSyntheticMessage('user', COACH_ARRIVAL_TRIGGER)).toBe(true);
+    expect(isCoachSyntheticMessage('user', ` ${COACH_ARRIVAL_TRIGGER} `)).toBe(true);
+    expect(isCoachSyntheticMessage('assistant', COACH_ARRIVAL_TRIGGER)).toBe(false);
   });
 
   it('is recognised only on a user row, and tolerates surrounding whitespace', () => {

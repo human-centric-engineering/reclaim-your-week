@@ -114,13 +114,42 @@ export function buildChartData(answers: Answers, labels: Record<string, string> 
     (b) => answers[`reclaim_composite_hours__${bucketToken(b.slug)}`] !== undefined
   );
   const source: ChartData['source'] = uploaded && compositePresent ? 'composite' : 'current';
+  return chartSeries(answers, labels, `reclaim_${source}_hours__`, source);
+}
+
+/**
+ * The same series, read from the week the leader **designed** rather than the one they reported.
+ *
+ * Nine `reclaim_ideal_hours__<token>` lanes, the same benchmarks, the same arithmetic. Extracted
+ * rather than hand-rolled beside it because "which areas sit away from the guide" has to mean the
+ * same thing in both weeks or the comparison between them is not a comparison. The only difference
+ * between the two callers is the slug prefix.
+ *
+ * `source` stays `'current'` here: that field distinguishes reported hours from calendar-reconciled
+ * ones, a question the ideal week does not have, and widening its meaning would change a published
+ * shape the client already reads.
+ */
+export function buildIdealChartData(
+  answers: Answers,
+  labels: Record<string, string> = {}
+): ChartData {
+  return chartSeries(answers, labels, 'reclaim_ideal_hours__', 'current');
+}
+
+/** The shared body: rows, total, percentages, benchmark status, and the zero-hour list. */
+function chartSeries(
+  answers: Answers,
+  labels: Record<string, string>,
+  prefix: string,
+  source: ChartData['source']
+): ChartData {
   const fundraisingRelevant = truthy(answers['reclaim_setup_fundraising_relevant']);
 
   const rows = RECLAIM_BUCKETS.filter(
     (b) => b.slug !== 'fundraising-capital' || fundraisingRelevant
   ).map((b) => {
     const token = bucketToken(b.slug);
-    const hours = round1(num(answers[`reclaim_${source}_hours__${token}`]));
+    const hours = round1(num(answers[`${prefix}${token}`]));
     return { bucket: b, token, hours };
   });
 

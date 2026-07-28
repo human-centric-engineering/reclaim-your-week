@@ -126,10 +126,14 @@ describe('CoachChat', () => {
     expect(reflection).not.toBe(question);
   });
 
-  it('invites the leader to begin when there is no transcript yet', () => {
+  it('never asks the leader to open the conversation itself', () => {
+    // This used to read "when you are ready, say hello and we will begin", which asked someone who
+    // came to be guided to do the guiding. Every phase opens with a coach turn now, so the empty
+    // state is the gap before that turn arrives rather than an invitation to fill it.
     render(<CoachChat runId="run-1" conversationId={null} />);
 
-    expect(screen.getByText(/say hello and we will begin/)).toBeInTheDocument();
+    expect(screen.queryByText(/say hello/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/coach is opening this part/i)).toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -427,7 +431,7 @@ describe('CoachChat — the frame it is given', () => {
     render(<CoachChat runId="run-1" conversationId={null} opener="Tell me about your energy." />);
 
     expect(screen.getByText('Tell me about your energy.')).toBeInTheDocument();
-    expect(screen.queryByText(/say hello and we will begin/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/coach is opening this part/i)).not.toBeInTheDocument();
   });
 
   it('renders the phase’s intro, beats and footer around the transcript', () => {

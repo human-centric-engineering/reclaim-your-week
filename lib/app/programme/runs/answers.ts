@@ -63,7 +63,10 @@
 import { z } from 'zod';
 import { prisma } from '@/lib/db/client';
 
-const provenanceRunIdSchema = z.object({ runId: z.string() });
+// `verbatim` is optional and read leniently: it arrived after the first runs were captured, so every
+// row written before it exists without one, and a row that has it must not be discarded for having
+// it. `runId` is the only field this schema is a guarantee about.
+const provenanceRunIdSchema = z.object({ runId: z.string(), verbatim: z.string().optional() });
 
 /**
  * One slot's value for a run — the prose `value`, the typed `valueJson` (numbers/booleans), and how
@@ -82,6 +85,13 @@ export interface RunAnswer {
   sourceType: string;
   /** 1–10. A form answer is 10; a coach's inference is lower and is worth checking. */
   confidence: number;
+  /**
+   * The leader's own sentence, where the writer captured one. Absent on every form-path row (the
+   * leader typed it, so `value` already is their words) and on everything written before the coach
+   * could record one. Read it through `presentAnswer` rather than directly, so the presentation
+   * policy decides which of the two a given surface shows.
+   */
+  verbatim?: string;
 }
 
 /**
@@ -145,6 +155,7 @@ export async function readRunAnswers(
       valueJson: row.valueJson,
       sourceType: row.sourceType,
       confidence: row.confidence,
+      ...(parsed.data.verbatim !== undefined ? { verbatim: parsed.data.verbatim } : {}),
     };
   }
   return out;

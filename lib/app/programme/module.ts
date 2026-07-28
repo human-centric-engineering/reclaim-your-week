@@ -187,6 +187,51 @@ export const reclaimConfigSchema = z.object({
   strategyMirrorMode: z.enum(['off', 'always', 'repeat_only']).default('always'),
 
   /**
+   * Whether a surface shows the leader's own sentence or the coach's reading of it.
+   *
+   * Conversational capture records both: `value` is the coach's rendering, "close to the leader's own
+   * words", and `provenance.verbatim` is the sentence itself where the coach caught one. Which to show
+   * is a judgement about register rather than a fact about the data, and it differs by surface — a
+   * capture list reads better as clean readings, a quote read back to someone has to be theirs — so it
+   * is a policy Rashmir can move rather than something baked into each call site.
+   *
+   * `paraphrase` is the default because most surfaces are lists of what was heard. The override map is
+   * what makes the exceptions cheap: the two refer-back slots are quoted back to the leader at the gap
+   * (I13), where a paraphrase would be the tool putting words in their mouth, so they lean verbatim
+   * whatever the global setting says. A slot with no verbatim recorded falls back to `value` under
+   * either mode, so this can never blank a reading.
+   */
+  answerPresentation: z.enum(['verbatim', 'paraphrase']).default('paraphrase'),
+  answerPresentationOverrides: z.record(z.string(), z.enum(['verbatim', 'paraphrase'])).default({
+    reclaim_setup_keeping_me_up: 'verbatim',
+    reclaim_setup_why_now: 'verbatim',
+  }),
+
+  /**
+   * How the coach works through a phase's readings.
+   *
+   * Both of these select between prose blocks authored in this repo and guarded by
+   * `product-voice.test.ts`; neither lets an operator write prompt text. That distinction is
+   * load-bearing — see the note on why no coaching prose is a config key.
+   *
+   * `pairing: 'paired'` asks a reading and its partner in one breath, which is what the source
+   * describes for the areas ("roughly how many hours per week …? What does that time actually look
+   * like in practice?") and for the energy pair. `one-at-a-time` is the older behaviour, kept as an
+   * escape hatch rather than as a recommendation: asked singly, the hours arrive and the texture does
+   * not, which is the failure the pairing exists to prevent.
+   *
+   * `opportunistic` lets the leader set the route. The capture list says what is still outstanding, so
+   * a coach that follows them onto a later reading cannot lose its place; turning it off restores a
+   * fixed running order.
+   */
+  questioning: z
+    .object({
+      pairing: z.enum(['paired', 'one-at-a-time']).default('paired'),
+      opportunistic: z.boolean().default(true),
+    })
+    .default({ pairing: 'paired', opportunistic: true }),
+
+  /**
    * **The Phase 2 coaching signal is gone, deliberately** (plan.md open item 11, decided 2026-07-26).
    *
    * `phase2CoachingSignal` used to live here, default off, pending Rashmir's ruling on a conflict:

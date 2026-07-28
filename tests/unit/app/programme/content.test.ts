@@ -29,6 +29,12 @@ import {
   RECLAIM_STRATEGY_MIRROR,
   RECLAIM_PHASE2_COACHING_SIGNAL,
   RECLAIM_RECENT_AUDIT_CONFIRM,
+  RECLAIM_IDEAL_WEEK_FRAMING,
+  RECLAIM_IDEAL_WEEK_CHALLENGE,
+  RECLAIM_HOURS_55_NOTE,
+  RECLAIM_PERMISSION_CHALLENGE,
+  RECLAIM_WANTED_NOT_DUTIFUL,
+  RECLAIM_ACTION_SPECIFICITY,
 } from '@/lib/app/programme/content';
 
 const CONTENT_SOURCE = join(process.cwd(), '.context', 'app', 'content-source.md');
@@ -139,6 +145,17 @@ describe('I11 hop 2 — config defaults are verbatim from content-source.md', ()
     ['closing affirmation', RECLAIM_CLOSING_AFFIRMATION, 'takes courage'],
     ['strategy mirror', RECLAIM_STRATEGY_MIRROR, 'If a stranger read your calendar'],
     ['Phase 2 coaching signal', RECLAIM_PHASE2_COACHING_SIGNAL, 'can go much further here'],
+    // The six the conversational coach needs. Three were already extracted and simply had no
+    // constant; three needed a blockquote adding, and the two Brief ones were the §6 coaching-craft
+    // bullets, which `extractBlockquotes` never saw because bullets are not blockquotes. So "May I
+    // offer a challenge?" — the tool's one licensed piece of directness — was guarded by nothing at
+    // all until now.
+    ['ideal-week framing', RECLAIM_IDEAL_WEEK_FRAMING, 'a realistic target, not a fantasy'],
+    ['ideal-week challenge', RECLAIM_IDEAL_WEEK_CHALLENGE, 'suspiciously similar'],
+    ['55+ hours note', RECLAIM_HOURS_55_NOTE, 'the most strategic thing a leader can do is stop'],
+    ['permission challenge', RECLAIM_PERMISSION_CHALLENGE, 'May I offer a challenge?'],
+    ['wanted, not dutiful', RECLAIM_WANTED_NOT_DUTIFUL, 'or something you think you should?'],
+    ['action specificity', RECLAIM_ACTION_SPECIFICITY, 'non-negotiable deep work block'],
   ])('%s config default is character-identical to source (F7, I11)', (_name, constant, needle) => {
     expect(constant).toBe(quoteContaining(needle));
   });

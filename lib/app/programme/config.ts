@@ -13,6 +13,7 @@
 import { prisma } from '@/lib/db/client';
 import { hasCompletedAudit } from '@/lib/app/programme/compare';
 import type { PhaseSignpost } from '@/lib/app/programme/runs/signposts';
+import type { PresentationPolicy } from '@/lib/app/programme/slots/present';
 import {
   reclaimConfigSchema,
   RECLAIM_MODULE_SLUG,
@@ -112,16 +113,44 @@ export interface ReclaimCoachContent {
   buckets: ReclaimConfig['buckets'];
   deepWorkNote: string;
   hourBands: ReclaimConfig['hourBands'];
+  /** Which of a reading's two strings the prompt shows. See `slots/present.ts`. */
+  presentation: PresentationPolicy;
+  /** How the coach works through a phase's readings: paired or singly, opportunistic or in order. */
+  questioning: ReclaimConfig['questioning'];
+  /** Whether the strategy mirror is live for this leader. Resolved, not the raw mode. */
+  strategyMirror: boolean;
 }
 
-export async function readReclaimCoachContent(): Promise<ReclaimCoachContent> {
+/**
+ * The coach's view of the config, resolved for one leader.
+ *
+ * `userId` is what makes `strategyMirror` answerable: the mode is `off | always | repeat_only`, and
+ * only the last of those depends on who is asking. Resolving it here rather than in the prompt builder
+ * keeps one home for the policy — `readReclaimUiConfig` answers the same question for the form panel
+ * through the same helper, so the two surfaces cannot drift into disagreeing about whether the mirror
+ * is on.
+ */
+export async function readReclaimCoachContent(userId: string): Promise<ReclaimCoachContent> {
   const config = await readReclaimConfig();
   return {
     governingFrame: config.governingFrame,
     buckets: config.buckets,
     deepWorkNote: config.deepWorkNote,
     hourBands: config.hourBands,
+    presentation: {
+      lean: config.answerPresentation,
+      overrides: config.answerPresentationOverrides,
+    },
+    questioning: config.questioning,
+    strategyMirror: await resolveStrategyMirror(config, userId),
   };
+}
+
+/** Whether the strategy mirror is live for this leader. One reading of the mode, two callers. */
+async function resolveStrategyMirror(config: ReclaimConfig, userId: string): Promise<boolean> {
+  if (config.strategyMirrorMode === 'off') return false;
+  if (config.strategyMirrorMode === 'always') return true;
+  return hasCompletedAudit(userId);
 }
 
 /** Read + parse the stored module config, falling back to the schema defaults. */
@@ -142,23 +171,34 @@ async function readReclaimConfig(): Promise<ReclaimConfig> {
  */
 export async function readReclaimUiConfig(userId: string): Promise<ReclaimUiConfig> {
   const config = await readReclaimConfig();
-  const phaseSignposts = config.phaseSignposts;
-  const calendarExportSteps = config.calendarExportSteps;
-  if (config.strategyMirrorMode === 'off')
-    return { strategyMirror: false, phaseSignposts, calendarExportSteps };
-  if (config.strategyMirrorMode === 'always')
-    return { strategyMirror: true, phaseSignposts, calendarExportSteps };
-  return { strategyMirror: await hasCompletedAudit(userId), phaseSignposts, calendarExportSteps };
+  return {
+    strategyMirror: await resolveStrategyMirror(config, userId),
+    phaseSignposts: config.phaseSignposts,
+    calendarExportSteps: config.calendarExportSteps,
+  };
 }
 
 /**
- * The signposts alone, for the server-side readers (the coach's phase context).
+ * The signposts alone, for a reader that wants nothing else.
  *
- * Separate from `readReclaimUiConfig` because that one resolves `repeat_only` with a database read
- * per call, and the coach context has no use for the strategy-mirror answer.
+ * Separate from `readReclaimUiConfig` and `readReclaimCoachContent` because both of those resolve
+ * `repeat_only` with a database read per call. The smoke script checks the cards are seeded and has
+ * no leader to resolve anything for, so it takes this one.
  */
 export async function readReclaimSignposts(): Promise<PhaseSignpost[]> {
   return (await readReclaimConfig()).phaseSignposts;
+}
+
+/**
+ * The presentation policy alone, for a reader that has no leader to resolve anything else for.
+ *
+ * The refer-back is built beside the phase block rather than inside it, so it cannot borrow the config
+ * that block already read. This is the narrow read that keeps it honest about whether it is serving a
+ * quote — one indexed lookup, no user query, no `repeat_only` resolution.
+ */
+export async function readReclaimPresentation(): Promise<PresentationPolicy> {
+  const config = await readReclaimConfig();
+  return { lean: config.answerPresentation, overrides: config.answerPresentationOverrides };
 }
 
 /** Read the access policy (F8): client-window durations, the open-signup door, the policy version. */

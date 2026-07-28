@@ -22,7 +22,7 @@
  * for the spine, and one bounded region for the phase — and **only the phase scrolls**. Everything a
  * leader acts with stays where they left it, which is how every chat surface they already use behaves.
  *
- * The height comes from the route group's layout (`app/(programme)/programme/layout.tsx`), which is
+ * The height comes from the route group's layout (`app/(programme)/layout.tsx`), which is
  * where the reasoning for leaving `(protected)` is written down.
  */
 
@@ -256,7 +256,14 @@ export function ProgrammeShell() {
               onReturn={() => setReviewingKey(null)}
             />
           ) : talking ? (
+            /* Keyed on the phase, which is what makes the phase window real. `CoachChat` hydrates
+               the transcript once per conversation and holds this phase's slice in state, and a run
+               keeps ONE conversation across all seven phases — so without a key React reconciles the
+               same instance across a transition, the hydration guard short-circuits, and phase 2
+               opens on phase 1's turns. The key changes only when the phase does, so the quiet
+               reload after every coach turn still leaves the transcript alone. */
             <PhaseConversation
+              key={currentPhase.key}
               runId={state.run.id}
               phaseKey={currentPhase.key}
               phaseIndex={currentIndex}

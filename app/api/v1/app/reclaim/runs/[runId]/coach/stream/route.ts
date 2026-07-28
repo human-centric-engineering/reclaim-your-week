@@ -23,11 +23,13 @@
  * frame. That replaces the timestamp guess `linkRunConversation` used to make (see the note there):
  * this run's transcript is the one this run's turns happened in, whatever else the leader has open.
  *
- * **The coach can open a moment.** Four beats need figures in front of the leader before anyone
- * speaks, and a scripted signpost card cannot name a gap it has not seen. Those arrive as
- * `kind: 'opening'` with a moment name; the phase they belong to is checked against the journey, and
- * the moment is claimed once per run. Everything else about a phase opens from the card
- * (`runs/signposts.ts`), which costs nothing.
+ * **The coach opens.** Every phase arrives as `kind: 'opening'` with a moment name: the coach says
+ * why this part is worth the leader's time and asks the first question, rather than the screen
+ * inviting them to say hello into a silence. Some of those moments are also beats that need figures
+ * in front of the leader before anyone speaks, because a scripted signpost card cannot name a gap it
+ * has not seen. Either way the phase the moment belongs to is checked against the journey, the
+ * moment is claimed once per run, and the trigger sent in the leader's place is chosen by the moment
+ * (`openingTriggerFor`). The card (`runs/signposts.ts`) still orients them first, and costs nothing.
  *
  * **The claim happens before generation and that ordering is deliberate.** A moment marked but never
  * generated costs the leader nothing — they speak first, as they always could. A moment generated
@@ -60,10 +62,11 @@ import {
 } from '@/lib/framework/guidance/surface';
 import { RECLAIM_MODULE_SLUG } from '@/lib/app/programme/identity';
 import { buildCoachScope } from '@/lib/app/programme/coach/scope';
+import { runCaptureSweep } from '@/lib/app/programme/coach/capture-sweep';
 import {
   COACH_OPENING_MOMENTS,
-  COACH_OPENING_TRIGGER,
   openingBelongsToPhase,
+  openingTriggerFor,
 } from '@/lib/app/programme/coach/opening';
 import {
   loadCoachTurnTarget,
@@ -127,6 +130,52 @@ async function* linkingConversation(
   }
 }
 
+/**
+ * Sweep the exchange for readings the coach did not record, then let the turn finish.
+ *
+ * **Why it sits here, between the last token and the `done` frame.** The client refreshes the
+ * captured panel on `done` (`CoachChat`'s `onTurnComplete`), so a sweep that ran after it would leave
+ * the leader looking at a panel that is one turn behind everything they have said. Running it before
+ * costs them nothing they can see: the coach's reply has already streamed and is on screen, so the
+ * wait is spent under a message they are still reading rather than under a blank one.
+ *
+ * **Why after the coach rather than beside it.** The sweep asks what is still outstanding, and the
+ * honest answer to that only exists once the coach's own `record_answers` calls have landed. Run in
+ * parallel, the two writers would both fill the same slots from the same sentence and the run would
+ * carry a duplicate version of everything the coach got right. Sequenced, the conversational writer
+ * goes first and this one covers what it missed, which is exactly the division of labour the sweep
+ * was built for.
+ *
+ * Its failures are its own. `runCaptureSweep` never throws, and a sweep that could not run is logged
+ * and forgotten: capture then falls back to what the coach recorded, which is where this started.
+ */
+async function* sweepingCapture(
+  events: AsyncIterable<ChatEvent>,
+  sweep: () => Promise<void>,
+  runId: string,
+  log: Awaited<ReturnType<typeof getRouteLogger>>
+): AsyncIterable<ChatEvent> {
+  let swept = false;
+  for await (const event of events) {
+    // `done` is the terminal frame of a completed turn. An `error` frame is not swept: a turn that
+    // failed part-way has no settled transcript to read, and re-reading a half-written exchange is
+    // how a sweep would record something the leader never finished saying.
+    if (event.type === 'done' && !swept) {
+      swept = true;
+      // `runCaptureSweep` is documented never to throw, and this does not take its word for it. A
+      // capture pass is bookkeeping; a turn is the leader's conversation. The day the contract stops
+      // holding, the cost should be an unswept turn and not a broken one.
+      await sweep().catch((error: unknown) => {
+        log.warn('Reclaim capture sweep threw; finishing the turn regardless', {
+          runId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+    }
+    yield event;
+  }
+}
+
 export const POST = withAuth<{ runId: string }>(async (request, session, { params }) => {
   const userLimit = consumerChatLimiter.check(session.user.id);
   if (!userLimit.success) return createRateLimitResponse(userLimit);
@@ -145,7 +194,7 @@ export const POST = withAuth<{ runId: string }>(async (request, session, { param
   // An opening turn is the coach speaking first, so two things are checked here that a leader turn
   // does not need: that the moment belongs to the phase the leader is actually on (the client sends
   // the moment, the server owns the phase), and that this run has not already had it.
-  let message = body.kind === 'leader' ? body.message : COACH_OPENING_TRIGGER;
+  let message = body.kind === 'leader' ? body.message : openingTriggerFor(body.moment);
   if (body.kind === 'opening') {
     if (!openingBelongsToPhase(body.moment, target.phaseKey)) {
       return errorResponse('That moment does not belong to this phase.', {
@@ -161,7 +210,7 @@ export const POST = withAuth<{ runId: string }>(async (request, session, { param
       log.info('Reclaim coach opening already fired', { runId, moment: body.moment });
       return successResponse({ opened: false });
     }
-    message = COACH_OPENING_TRIGGER;
+    message = openingTriggerFor(body.moment);
   }
 
   // The agent identity and its visibility ACL come from the module binding, so the coach is the same
@@ -200,7 +249,42 @@ export const POST = withAuth<{ runId: string }>(async (request, session, { param
     signal: request.signal,
   });
 
-  return sseResponse(linkingConversation(events, runId, target.conversationId !== undefined), {
-    signal: request.signal,
-  });
+  // The run's conversation, for the sweep. Known already on a resumed turn; on the first turn of a
+  // run it arrives on the `start` frame, so it is captured there and read when the sweep fires.
+  let conversationId = target.conversationId;
+
+  /**
+   * The deterministic half of capture (`coach/capture-sweep.ts`).
+   *
+   * Only on a leader turn: an opening is the coach speaking into a silence the leader has not filled,
+   * so there is nothing in it to record and a sweep would only re-read the turn before.
+   */
+  const sweep = async (): Promise<void> => {
+    if (body.kind !== 'leader') return;
+    const result = await runCaptureSweep({
+      userId: session.user.id,
+      runId,
+      phaseKey: target.phaseKey,
+      ...(conversationId !== undefined ? { conversationId } : {}),
+    });
+    if (result.recorded.length > 0 || result.refused.length > 0) {
+      // Slugs and counts, never values — the app log is not covered by erasure.
+      log.info('Reclaim capture sweep', {
+        runId,
+        phaseKey: target.phaseKey,
+        recorded: result.recorded,
+        refused: result.refused,
+      });
+    }
+  };
+
+  const linked = linkingConversation(events, runId, target.conversationId !== undefined);
+  const observed = (async function* () {
+    for await (const event of linked) {
+      if (event.type === 'start') conversationId = event.conversationId;
+      yield event;
+    }
+  })();
+
+  return sseResponse(sweepingCapture(observed, sweep, runId, log), { signal: request.signal });
 });

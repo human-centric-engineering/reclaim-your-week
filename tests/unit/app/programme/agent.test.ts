@@ -29,6 +29,17 @@ describe('reclaimCoachAgent identity', () => {
   it('names a role the module actually offers (a seat, not a free-text field)', () => {
     expect(reclaimAuditModule.agentRoles).toContain(reclaimCoachAgent.role);
   });
+
+  it('pins a provider and a model rather than inheriting whatever the install resolves to', () => {
+    // An empty binding is filled by `resolveAgentProviderAndModel` from the system default-model
+    // map, which on an OpenAI install is `gpt-4o-mini`. This coach captures the entire audit through
+    // silent, unprompted, multi-slot tool calls, and a mini model drops them: observed live, it
+    // narrated "I'll record that…" and called nothing, leaving the leader's panel empty. Both halves
+    // are pinned because a named model with an empty provider is routed to the first keyed candidate,
+    // which need not be the one that serves it.
+    expect(reclaimCoachAgent.provider).toBe('openai');
+    expect(reclaimCoachAgent.model).toBe('gpt-4o');
+  });
 });
 
 describe('reclaimCoachAgent authored content', () => {

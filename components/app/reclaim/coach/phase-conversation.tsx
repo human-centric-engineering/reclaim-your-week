@@ -44,8 +44,8 @@ import {
   chartRevealState,
   everyVisibleAreaHasHours,
 } from '@/lib/app/programme/chart/reveal';
-import type { CoachOpeningMoment } from '@/lib/app/programme/coach/opening';
-import { phaseCaptureSlots } from '@/lib/app/programme/coach/phase-slots';
+import { arrivalMomentFor, type CoachOpeningMoment } from '@/lib/app/programme/coach/opening';
+import { phaseCaptureSlots, slotApplies } from '@/lib/app/programme/coach/phase-slots';
 import { reflectionSlugForLeaving } from '@/lib/app/programme/runs/phases';
 import type { PhaseSignpost } from '@/lib/app/programme/runs/signposts';
 import type { PhaseMarks } from '@/lib/app/programme/runs/phase-marks';
@@ -63,10 +63,15 @@ import {
 /**
  * Which moment, if any, the coach should open here.
  *
- * The three data moments each have their own trigger, and they differ in kind. Phase 4 and phase 5
- * open as soon as the leader arrives, because the figures they need are already captured. Phase 1's
- * waits for the leader to ask, because the whole point of that beat is that they choose when to look
- * (I12, I16 — the decision stays with them).
+ * **Every phase opens with the coach speaking.** Arriving is enough: the leader reads the card, and
+ * the coach then says why this part is worth their time and asks the first question. What used to
+ * stand here was the screen saying "when you are ready, say hello and we will begin", which asks
+ * someone who came to be guided to do the guiding.
+ *
+ * Phase 1 has two moments and their order is the whole of I12. The arrival fires on entry like every
+ * other phase. The reveal waits for the leader to press the button, because the point of that beat is
+ * that they choose when to look, so it is checked first: by the time they press it the arrival has
+ * long since been claimed, and while they have not pressed it there is nothing to check.
  *
  * A moment already in the run's ledger returns `null`, so a reload never replays a beat.
  */
@@ -75,18 +80,40 @@ function openMomentFor(
   coachOpenings: string[],
   revealing: boolean
 ): CoachOpeningMoment | null {
-  const due: CoachOpeningMoment | null =
-    phaseKey === CHART_REVEAL_PHASE
-      ? revealing
-        ? CHART_REVEAL_MOMENT
-        : null
-      : phaseKey === 'phase-4-gap'
-        ? 'phase-4-gap'
-        : phaseKey === 'phase-5-action'
-          ? 'phase-5-action'
-          : null;
-  if (due === null || coachOpenings.includes(due)) return null;
-  return due;
+  if (
+    phaseKey === CHART_REVEAL_PHASE &&
+    revealing &&
+    !coachOpenings.includes(CHART_REVEAL_MOMENT)
+  ) {
+    return CHART_REVEAL_MOMENT;
+  }
+  const arrival = arrivalMomentFor(phaseKey);
+  if (arrival === null || coachOpenings.includes(arrival)) return null;
+  return arrival;
+}
+
+/**
+ * How much of a phase has to be covered before the way onward is offered.
+ *
+ * Not all of it, and the shortfall is the point. A phase whose every applicable reading must land
+ * would be held open by one question a leader would rather not answer, and there is no way for them
+ * to say so: the coach cannot record a decline. Leaving room for roughly one in ten means the common
+ * case — a leader who has genuinely been through the phase and left one thing — is not a hostage.
+ */
+const PHASE_COVERED = 0.9;
+
+/**
+ * At or below this, an inferred reading is the coach's guess and not the leader's answer.
+ *
+ * The same number the captured panel uses to decide what to offer back for checking, and the same
+ * band `answer-quality.ts` calls `unconfirmed`. A guess counts towards the picture but not towards
+ * "this phase has happened": a phase whose coverage was made of inferences is a phase where the
+ * coach filled in the leader's audit for them.
+ */
+const GUESS_CONFIDENCE = 6;
+
+function isAGuess(answer: RunAnswers[string]): boolean {
+  return answer.sourceType === 'inferred' && answer.confidence <= GUESS_CONFIDENCE;
 }
 
 export interface PhaseConversationProps {
@@ -155,26 +182,54 @@ export function PhaseConversation({
   const capturedCount = captureSlots.filter((s) => answers[s.slug] !== undefined).length;
   const reflected = reflectionSlug === null || answers[reflectionSlug] !== undefined;
 
+  // What this phase still owes, and what counts as owed. Readings whose condition came back the other
+  // way are not outstanding, they are finished — `slotApplies` answers that from the run's own data,
+  // so a leader with no fundraising in their role is not held behind a question about their
+  // development team.
+  const applicable = captureSlots.filter((s) => slotApplies(s.askOnlyIf, answers) !== false);
+  const settled = applicable.filter((s) => {
+    const answer = answers[s.slug];
+    return answer !== undefined && !isAGuess(answer);
+  }).length;
+  const outstanding = applicable.length - settled;
+
   // I12, the reveal as an event rather than a running total. `revealing` folds in the click that has
   // not yet reached the run's ledger, so the chart and the coach's beat start together.
   const revealState =
     phaseKey === CHART_REVEAL_PHASE ? chartRevealState(answers, coachOpenings) : null;
   const revealed = revealState === 'revealed' || (revealState === 'ready' && revealing);
 
-  // A leader who has said nothing yet has nothing to move on from, so the button waits rather than
-  // letting them skip a phase they have not had. Both gates are the server's (I9 for the reflection,
-  // I12 for the reveal); this only avoids offering a move that would be refused.
-  const canAdvance = capturedCount > 0 && reflected && (revealState === null || revealed);
+  // The move onward, offered when the phase has actually happened.
+  //
+  // **This used to be `capturedCount > 0`**, which offered the way out of Phase 0 the moment the
+  // leader's first name landed. One reading in fifteen is not a phase, and a button that says
+  // "continue" beside a panel reading five of fifteen is the product telling them they are finished
+  // when the coach is on question three. A leader who takes it loses everything the phase was for and
+  // the audit is built on what it did not ask.
+  //
+  // Both hard gates are still the server's (I9 for the reflection, I12 for the reveal). This is the
+  // one the client owns, and it is a judgement about coverage rather than a rule about data, which is
+  // why it lives here rather than in the transition route.
+  //
+  // **The risk it introduces, named rather than hidden.** A threshold can strand a leader who will
+  // not answer something. Three things keep that from being a trap: inapplicable readings are
+  // excluded rather than waited for, the threshold leaves room for one or two unanswered, and the
+  // form panel is one click away and writes the same slots. If a leader still gets stuck, the fix is
+  // to let them record a decline, not to lower this back to one.
+  const covered = applicable.length > 0 && settled >= Math.ceil(applicable.length * PHASE_COVERED);
+  const canAdvance = covered && reflected && (revealState === null || revealed);
 
   /** Why the move is not offered yet, in one sentence, because a dimmed button explains nothing. */
   const waitingOn =
     capturedCount === 0
       ? 'The conversation records as you go.'
-      : revealState !== null && !revealed
-        ? 'Have a look at the shape of your week before moving on.'
-        : !reflected
-          ? 'The coach will ask what stands out to you before this phase closes.'
-          : null;
+      : !covered
+        ? `There ${outstanding === 1 ? 'is one thing' : `are ${outstanding} things`} still to cover in this part.`
+        : revealState !== null && !revealed
+          ? 'Have a look at the shape of your week before moving on.'
+          : !reflected
+            ? 'The coach will ask what stands out to you before this phase closes.'
+            : null;
 
   const advance = async () => {
     setBusy(true);
@@ -207,8 +262,8 @@ export function PhaseConversation({
     everyVisibleAreaHasHours(answers) &&
     !truthy(answers['reclaim_calendar_uploaded']);
 
-  // The moment the coach opens, or `null` for a phase the leader leads. Only a moment that is due and
-  // absent from the run's ledger is passed down, so the common case never troubles the server.
+  // The moment the coach opens with. Only a moment that is due and absent from the run's ledger is
+  // passed down, so a phase already under way never troubles the server.
   const openMoment = openMomentFor(phaseKey, coachOpenings, revealing);
 
   /**

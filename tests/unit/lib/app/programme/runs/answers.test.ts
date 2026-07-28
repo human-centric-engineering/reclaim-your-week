@@ -50,7 +50,7 @@ function write(
   value: string,
   runId: string,
   valueJson: unknown = null,
-  how: { sourceType?: string; confidence?: number } = {}
+  how: { sourceType?: string; confidence?: number; verbatim?: string } = {}
 ) {
   const existing = rows().filter((r) => r.userId === userId && r.slotSlug === slotSlug);
   for (const row of existing) row.supersededAt = new Date();
@@ -60,7 +60,13 @@ function write(
     version: existing.length + 1,
     value,
     valueJson,
-    provenance: { runId, conversationId: 'c1' },
+    // A row written before `verbatim` existed has no such key — `how.verbatim` unset reproduces that
+    // shape exactly (no `verbatim: undefined` sitting in the object), rather than merely being falsy.
+    provenance: {
+      runId,
+      conversationId: 'c1',
+      ...(how.verbatim !== undefined ? { verbatim: how.verbatim } : {}),
+    },
     // Defaults match a form answer: stated directly, at full confidence.
     sourceType: how.sourceType ?? 'direct',
     confidence: how.confidence ?? 10,
@@ -235,5 +241,36 @@ describe('readRunAnswers — within one run', () => {
     expect((await readRunAnswers('u1', 'run-1'))['reclaim_current_hours__deep_work']?.value).toBe(
       '10'
     );
+  });
+});
+
+describe('readRunAnswers — verbatim round trip', () => {
+  it('still parses a row written before `verbatim` existed, with no verbatim key on the answer', async () => {
+    // Every row from before the field shipped has `provenance: { runId, conversationId }` and nothing
+    // else — `provenanceRunIdSchema` must accept that shape rather than discarding the row.
+    write('u1', 'reclaim_setup_why_now', 'A hard quarter', 'run-1');
+
+    const answers = await readRunAnswers('u1', 'run-1');
+
+    expect(answers['reclaim_setup_why_now']).toEqual(stated('A hard quarter'));
+    expect(answers['reclaim_setup_why_now']).not.toHaveProperty('verbatim');
+  });
+
+  it('round-trips a distinct verbatim through the provenance blob', async () => {
+    write('u1', 'reclaim_setup_why_now', 'They are worried about the team coping', 'run-1', null, {
+      sourceType: 'inferred',
+      confidence: 6,
+      verbatim: "I don't think they'd cope, honestly.",
+    });
+
+    const answers = await readRunAnswers('u1', 'run-1');
+
+    expect(answers['reclaim_setup_why_now']).toEqual({
+      value: 'They are worried about the team coping',
+      valueJson: null,
+      sourceType: 'inferred',
+      confidence: 6,
+      verbatim: "I don't think they'd cope, honestly.",
+    });
   });
 });

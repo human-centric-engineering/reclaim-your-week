@@ -52,9 +52,15 @@ const unit: SeedUnit = {
     }
 
     // 4. Seed the coach agent. `public` is required by `resolveModuleSurface`: the module surface is
-    //    end-user-facing, and a non-public agent yields no surface (→ 404). Empty model/provider =
-    //    dynamic resolution on fresh installs (agent-resolver.ts). Re-seed only re-marks isSystem so
-    //    admin edits to the prose survive.
+    //    end-user-facing, and a non-public agent yields no surface (→ 404). Re-seed only re-marks
+    //    isSystem so admin edits to the prose, and to the binding below, survive.
+    //
+    //    **The binding is pinned rather than left empty.** This used to author `model: ''` /
+    //    `provider: ''` for dynamic resolution, which on an OpenAI install fills in `gpt-4o-mini` —
+    //    and a mini model does not reliably make the silent, unprompted, multi-slot tool calls this
+    //    coach's entire capture path is built on. Seen live: it narrated "I'll record that…" and
+    //    called nothing, so the leader's panel stayed empty. See `RECLAIM_COACH_MODEL` in
+    //    `lib/app/programme/agent.ts` for the full reasoning and for what a replacement must satisfy.
     const agent = await prisma.aiAgent.upsert({
       where: { slug: reclaimCoachAgent.slug },
       update: { isSystem: true },
@@ -67,8 +73,8 @@ const unit: SeedUnit = {
         guardrails: reclaimCoachAgent.guardrails,
         brandVoiceInstructions: reclaimCoachAgent.brandVoiceInstructions,
         visibility: 'public',
-        model: '',
-        provider: '',
+        model: reclaimCoachAgent.model,
+        provider: reclaimCoachAgent.provider,
         isActive: true,
         isSystem: true,
         createdBy: serviceAccount.id,

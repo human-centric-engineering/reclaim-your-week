@@ -10,6 +10,8 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import type { ReactElement } from 'react';
 
 const { readAnswers, readLabels, saveAnswer } = vi.hoisted(() => ({
   readAnswers: vi.fn(),
@@ -61,6 +63,11 @@ const conversation = [
     synthetic: false,
   },
 ];
+
+/** Renders with a ready `userEvent` instance, for the tests below that click through the drawer. */
+function renderWithUser(ui: ReactElement) {
+  return { user: userEvent.setup(), ...render(ui) };
+}
 
 const props = {
   runId: 'run-1',
@@ -218,5 +225,106 @@ describe('PhaseReview', () => {
       expect(await screen.findByText(/nothing here changes it/)).toBeInTheDocument();
       expect(screen.queryByText(/nothing here moves your audit/)).toBeNull();
     });
+
+    /**
+     * `readOnly` reaches `CapturedPanel`, which is where the correction buttons actually live and
+     * where the server-refusal risk actually sits — the assertions above already cover that they
+     * never render. This confirms the prop is threaded through rather than merely accepted and
+     * dropped, by checking the line the panel itself only shows in the finished-audit case.
+     */
+    it('tells CapturedPanel the audit is finished, not just the transcript banner', async () => {
+      render(<PhaseReview {...props} readOnly />);
+
+      await screen.findByText('About five.');
+      expect(
+        await screen.findByText(/This audit is finished, so these are as you left them/)
+      ).toBeInTheDocument();
+    });
+  });
+
+  /**
+   * The panel has no column of its own below `xl`, so it is one tap away instead (the "What the
+   * coach noted" link). Below pins that it actually opens, and that either of its two ways to close
+   * it — the backdrop and the "Close" link — actually close it, rather than the drawer being stuck
+   * open or the buttons being decorative.
+   */
+  describe('the panel drawer below `xl`', () => {
+    it('opens a second copy of what the coach noted when tapped', async () => {
+      const { user } = renderWithUser(<PhaseReview {...props} />);
+      await screen.findByText('About five.');
+
+      // Closed: only the always-present sidebar copy exists.
+      expect(
+        screen.getAllByRole('complementary', { name: 'What the coach has recorded' })
+      ).toHaveLength(1);
+
+      await user.click(screen.getByRole('button', { name: 'What the coach noted' }));
+
+      expect(
+        screen.getAllByRole('complementary', { name: 'What the coach has recorded' })
+      ).toHaveLength(2);
+    });
+
+    it('closes again from the backdrop, back down to the one sidebar copy', async () => {
+      const { user } = renderWithUser(<PhaseReview {...props} />);
+      await screen.findByText('About five.');
+      await user.click(screen.getByRole('button', { name: 'What the coach noted' }));
+      expect(
+        screen.getAllByRole('complementary', { name: 'What the coach has recorded' })
+      ).toHaveLength(2);
+
+      await user.click(screen.getByRole('button', { name: 'Close what the coach has noted' }));
+
+      expect(
+        screen.getAllByRole('complementary', { name: 'What the coach has recorded' })
+      ).toHaveLength(1);
+    });
+
+    it('closes again from the drawer’s own "Close" link', async () => {
+      const { user } = renderWithUser(<PhaseReview {...props} />);
+      await screen.findByText('About five.');
+      await user.click(screen.getByRole('button', { name: 'What the coach noted' }));
+
+      // Two "Close…" affordances exist once open (backdrop + link); the link is named exactly "Close".
+      await user.click(screen.getByRole('button', { name: 'Close' }));
+
+      expect(
+        screen.getAllByRole('complementary', { name: 'What the coach has recorded' })
+      ).toHaveLength(1);
+    });
+  });
+
+  it('re-reads the run after a correction is saved, so the figure it shows is the one just confirmed', async () => {
+    readAnswers.mockResolvedValueOnce({
+      ...everyAreaAnswered(),
+      reclaim_current_hours__deep_work: {
+        value: '5',
+        valueJson: 5,
+        sourceType: 'inferred',
+        confidence: 3,
+      },
+    });
+    readAnswers.mockResolvedValue(everyAreaAnswered());
+    saveAnswer.mockResolvedValue(undefined);
+
+    const { user } = renderWithUser(<PhaseReview {...props} />);
+
+    const confirm = await screen.findByRole('button', { name: /Yes, that is right/ });
+    await user.click(confirm);
+
+    // The save landed, and the panel re-read the run rather than only trusting local state.
+    await waitFor(() => expect(saveAnswer).toHaveBeenCalled()); // test-review:accept no_arg_called — callback-fired guard;
+    await waitFor(() => expect(readAnswers).toHaveBeenCalledTimes(2));
+  });
+
+  it('still shows the transcript and picture when the answers for this phase fail to load', async () => {
+    readAnswers.mockRejectedValue(new Error('network down'));
+
+    render(<PhaseReview {...props} />);
+
+    // The conversation does not depend on the answers call, so it still reads.
+    expect(await screen.findByText('About five.')).toBeInTheDocument();
+    // No figures came back, so there is nothing to check and no crash from the rejection.
+    expect(screen.queryByRole('button', { name: /Yes, that is right/ })).toBeNull();
   });
 });

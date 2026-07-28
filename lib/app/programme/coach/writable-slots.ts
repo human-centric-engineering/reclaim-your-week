@@ -130,6 +130,52 @@ export const COACH_WRITABLE_SLOTS_IN_REFUSED_GROUPS: readonly string[] = [
   'reclaim_calendar_period',
 ];
 
+/**
+ * The typed form of a reading, read out of the prose when the coach did not send one separately.
+ *
+ * **This does not soften the typed-value rule; it stops the rule firing on cases it was never
+ * about.** The rule exists because "about eight, some weeks more" must not reach a chart as a number
+ * — a figure invented from a hedge is worse than no figure, and it fails silently. That reasoning
+ * has nothing to say about "25", which is a figure the leader gave and the coach passed on in the
+ * only field it had for it. Refusing that spends a turn asking the coach to move a value from one
+ * key to another, and in practice the coach moved on to the next question instead and the reading
+ * was lost. (Observed: a leader who answered six slots in one sentence and got an empty panel.)
+ *
+ * So the derivation is deliberately narrow and admits nothing that requires interpretation:
+ *
+ * - **number** — the whole trimmed string is a finite number. "25" yes; "about 25", "25 hours",
+ *   "twenty five" all no, because each of those needs a reading rather than a parse.
+ * - **boolean** — the whole trimmed string is one of the four words a yes or a no is written as.
+ *   Anything longer is a sentence, and a sentence about a yes-or-no slot is the coach's summary of
+ *   an answer rather than the answer.
+ * - **date** — an ISO-8601 string, which `validateTypedValue` then re-checks on its own terms.
+ * - **json** — never. There is no unambiguous structure to read out of prose, and the slots that
+ *   want one (the three action options) are built by the coach rather than spoken by the leader.
+ *
+ * Everything derived here goes back through `validateTypedValue` below, so this widens what may be
+ * *offered* as a typed value and changes nothing about what may be *stored* as one.
+ */
+export function deriveTypedValue(dataType: string, value: string): unknown {
+  const text = value.trim();
+  switch (dataType) {
+    case SLOT_DATA_TYPE.number: {
+      if (!/^-?\d+(\.\d+)?$/.test(text)) return undefined;
+      const n = Number(text);
+      return Number.isFinite(n) ? n : undefined;
+    }
+    case SLOT_DATA_TYPE.boolean: {
+      const word = text.toLowerCase().replace(/[.!]$/, '');
+      if (word === 'yes' || word === 'true') return true;
+      if (word === 'no' || word === 'false') return false;
+      return undefined;
+    }
+    case SLOT_DATA_TYPE.date:
+      return text;
+    default:
+      return undefined;
+  }
+}
+
 /** Slug → definition, built once. Mirrors the lookup `saveAnswer` does for masking. */
 const DEFINITION_BY_SLUG = new Map(reclaimSlotDefinitions.map((d) => [d.slug, d]));
 
@@ -159,16 +205,21 @@ export interface SlotWriteAccepted {
 export type SlotWriteCheck =
   { ok: true; accepted: SlotWriteAccepted } | { ok: false; refusal: SlotWriteRefusal };
 
-/** What the *server* knows about the turn proposing a write. Never anything the model supplied. */
+/** What else is known about the turn proposing a write, beyond the slug and the typed value. */
 export interface SlotWriteConditions {
   /**
    * The phase from the dispatch scope (`scope.nodeKey`). Absent means the turn carries no phase, and
    * a reflection is refused rather than guessed at — the same stance `readCoachScope` takes about a
-   * missing run.
+   * missing run. **Server-supplied**, which is what makes it the one genuinely enforced guard.
    */
   phaseKey?: string;
   /** How the model says it came by the reading. Only `inferred` changes the decision. */
   sourceType?: string;
+  /**
+   * The prose reading, when the caller has it. Read only as a fallback source for a typed slot's
+   * typed value, and only where the prose is unambiguous — see `deriveTypedValue`.
+   */
+  value?: string;
 }
 
 /**
@@ -252,7 +303,17 @@ export function checkSlotWrite(
   const dataType = definition.dataType ?? SLOT_DATA_TYPE.text;
   if (dataType === SLOT_DATA_TYPE.text) return { ok: true, accepted: { slotSlug } };
 
-  const typed = validateTypedValue(dataType, valueJson);
+  // The typed form the caller sent, or the one its own prose plainly is. The fallback is why a coach
+  // that answered "25" in the only field it had for the count no longer loses the reading over which
+  // key it used; `deriveTypedValue` is exact about how little it will read out of prose.
+  const proposed =
+    valueJson !== undefined
+      ? valueJson
+      : conditions.value !== undefined
+        ? deriveTypedValue(dataType, conditions.value)
+        : undefined;
+
+  const typed = validateTypedValue(dataType, proposed);
   if (typed === null) {
     return {
       ok: false,

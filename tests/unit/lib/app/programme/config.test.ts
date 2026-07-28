@@ -23,8 +23,19 @@ import {
   readReclaimUiConfig,
   readReclaimAccessConfig,
   readReclaimSignposts,
+  readReclaimCalendarExports,
+  readReclaimCoachContent,
+  readReclaimPresentation,
+  readReclaimJoinConfig,
+  readReclaimShortcutConfig,
+  readReclaimNudgeConfig,
+  readReclaimAdminConfig,
 } from '@/lib/app/programme/config';
-import { RECLAIM_PROCESS_OUTLINE } from '@/lib/app/programme/content';
+import {
+  RECLAIM_PROCESS_OUTLINE,
+  RECLAIM_CALENDAR_EXPORT_STEPS,
+} from '@/lib/app/programme/content';
+import { DEFAULT_PRESENTATION } from '@/lib/app/programme/slots/present';
 
 beforeEach(() => {
   moduleFindUnique.mockReset();
@@ -175,5 +186,158 @@ describe('readReclaimAccessConfig (F8)', () => {
   it('falls back to CLOSED when the stored config is malformed, rather than failing open', async () => {
     moduleFindUnique.mockResolvedValue({ config: { openSignup: 'yes-please' } });
     expect((await readReclaimAccessConfig()).openSignup).toBe(false);
+  });
+});
+
+describe('readReclaimCalendarExports', () => {
+  it('serves the shipped walkthroughs on an unedited row', async () => {
+    moduleFindUnique.mockResolvedValue({ config: {} });
+    expect(await readReclaimCalendarExports()).toEqual(RECLAIM_CALENDAR_EXPORT_STEPS);
+  });
+
+  it("serves Rashmir's rewording once she has edited the walkthroughs", async () => {
+    moduleFindUnique.mockResolvedValue({
+      config: { calendarExportSteps: [{ service: 'Fake Cal', steps: ['Click here'] }] },
+    });
+    expect(await readReclaimCalendarExports()).toEqual([
+      { service: 'Fake Cal', steps: ['Click here'] },
+    ]);
+  });
+});
+
+describe('readReclaimCoachContent — the coach’s prompt context', () => {
+  it('resolves governing frame, presentation, and questioning from an unedited row', async () => {
+    moduleFindUnique.mockResolvedValue({ config: {} });
+
+    const content = await readReclaimCoachContent(USER);
+
+    expect(content.presentation).toEqual(DEFAULT_PRESENTATION);
+    expect(content.questioning).toEqual({ pairing: 'paired', opportunistic: true });
+    expect(content.strategyMirror).toBe(true); // default mode is `always`
+    expect(content.governingFrame.length).toBeGreaterThan(0);
+  });
+
+  it('reflects an edited presentation lean and per-slug overrides, the same as the UI reads', async () => {
+    moduleFindUnique.mockResolvedValue({
+      config: {
+        answerPresentation: 'verbatim',
+        answerPresentationOverrides: { reclaim_action_stopping: 'paraphrase' },
+      },
+    });
+
+    const content = await readReclaimCoachContent(USER);
+
+    expect(content.presentation).toEqual({
+      lean: 'verbatim',
+      overrides: { reclaim_action_stopping: 'paraphrase' },
+    });
+  });
+
+  it('resolves `repeat_only` per leader, exactly as `readReclaimUiConfig` does', async () => {
+    moduleFindUnique.mockResolvedValue({ config: { strategyMirrorMode: 'repeat_only' } });
+    runFindFirst.mockResolvedValue(null);
+
+    expect((await readReclaimCoachContent(USER)).strategyMirror).toBe(false);
+  });
+});
+
+describe('readReclaimPresentation — the narrow read for the refer-back', () => {
+  it('reads the lean + overrides alone, with no user query at all', async () => {
+    moduleFindUnique.mockResolvedValue({ config: {} });
+
+    expect(await readReclaimPresentation()).toEqual(DEFAULT_PRESENTATION);
+    expect(runFindFirst).not.toHaveBeenCalled();
+  });
+
+  it("honours Rashmir's stored lean and overrides", async () => {
+    moduleFindUnique.mockResolvedValue({
+      config: { answerPresentation: 'verbatim', answerPresentationOverrides: {} },
+    });
+
+    expect(await readReclaimPresentation()).toEqual({ lean: 'verbatim', overrides: {} });
+  });
+
+  it('propagates a database failure rather than swallowing it — the caller supplies the fallback', async () => {
+    // `lib/app/context-contributors.ts` does `readReclaimPresentation().catch(() => DEFAULT_PRESENTATION)`
+    // — a leader must never meet a phase with no orientation just because a config read failed. That
+    // recovery only works if this function actually rejects rather than resolving to a silent default
+    // of its own; a swallowed error here would make the `.catch` downstream dead code.
+    const dbError = new Error('connection reset');
+    moduleFindUnique.mockRejectedValue(dbError);
+
+    await expect(readReclaimPresentation()).rejects.toBe(dbError);
+  });
+});
+
+describe('readReclaimJoinConfig (F11)', () => {
+  it('defaults the mint-form values and the ceiling', async () => {
+    moduleFindUnique.mockResolvedValue({ config: {} });
+    expect(await readReclaimJoinConfig()).toEqual({
+      joinLinkDefaultMaxClaims: 10,
+      joinLinkDefaultDays: 7,
+      joinLinkMaxClaims: 50,
+    });
+  });
+
+  it('honours a stored ceiling — both the admin form and the mint path read the same row', async () => {
+    moduleFindUnique.mockResolvedValue({
+      config: { joinLinkDefaultMaxClaims: 20, joinLinkDefaultDays: 14, joinLinkMaxClaims: 100 },
+    });
+    expect(await readReclaimJoinConfig()).toEqual({
+      joinLinkDefaultMaxClaims: 20,
+      joinLinkDefaultDays: 14,
+      joinLinkMaxClaims: 100,
+    });
+  });
+});
+
+describe('readReclaimShortcutConfig (F9 t-2)', () => {
+  it('defaults the confirm line and the recency window', async () => {
+    moduleFindUnique.mockResolvedValue({ config: {} });
+    const config = await readReclaimShortcutConfig();
+    expect(config.recentAuditWithinDays).toBe(31);
+    expect(config.recentAuditConfirm.length).toBeGreaterThan(0);
+  });
+
+  it('honours a stored confirm line and window', async () => {
+    moduleFindUnique.mockResolvedValue({
+      config: { recentAuditConfirm: 'Use last time?', recentAuditWithinDays: 60 },
+    });
+    expect(await readReclaimShortcutConfig()).toEqual({
+      recentAuditConfirm: 'Use last time?',
+      recentAuditWithinDays: 60,
+    });
+  });
+});
+
+describe('readReclaimNudgeConfig (F9 t-3)', () => {
+  it('defaults both ends of the window', async () => {
+    moduleFindUnique.mockResolvedValue({ config: {} });
+    expect(await readReclaimNudgeConfig()).toEqual({ nudgeAfterDays: 90, nudgeUntilDays: 200 });
+  });
+
+  it('honours a stored window', async () => {
+    moduleFindUnique.mockResolvedValue({ config: { nudgeAfterDays: 60, nudgeUntilDays: 150 } });
+    expect(await readReclaimNudgeConfig()).toEqual({ nudgeAfterDays: 60, nudgeUntilDays: 150 });
+  });
+});
+
+describe('readReclaimAdminConfig (F10)', () => {
+  it('defaults the stall rule and the anonymity floor', async () => {
+    moduleFindUnique.mockResolvedValue({ config: {} });
+    expect(await readReclaimAdminConfig()).toEqual({
+      abandonedAfterDays: 21,
+      aggregateMinimumCohort: 5,
+    });
+  });
+
+  it('honours a stored stall rule and anonymity floor', async () => {
+    moduleFindUnique.mockResolvedValue({
+      config: { abandonedAfterDays: 45, aggregateMinimumCohort: 10 },
+    });
+    expect(await readReclaimAdminConfig()).toEqual({
+      abandonedAfterDays: 45,
+      aggregateMinimumCohort: 10,
+    });
   });
 });

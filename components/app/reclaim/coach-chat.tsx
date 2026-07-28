@@ -26,7 +26,7 @@
  * unbounded document, which is a scroll region that can never scroll: the child grew to its content,
  * the page grew with it, and the autoscroll call was a no-op against a container that was never
  * overflowing. Everything above this component had to change for this line to work (see
- * `app/(programme)/programme/layout.tsx`), which is why the fix is a frame rather than a class.
+ * `app/(programme)/layout.tsx`), which is why the fix is a frame rather than a class.
  *
  * **The turn is narrated.** `status` frames were arriving all along and being dropped, so the whole
  * of a tool round-trip looked like nothing happening. They now drive a thinking indicator, translated
@@ -121,7 +121,15 @@ export interface CoachChatProps {
    */
   phaseKey?: string;
   phaseMarks?: PhaseMarks;
-  /** Placeholder before there is any transcript, where the leader is expected to speak first. */
+  /**
+   * What stands in the transcript's place before anything has been said.
+   *
+   * Rarely seen and deliberately not an invitation any more. Every phase now opens with a coach turn
+   * (`coach/opening.ts`), so a coach placeholder appears within a frame of arriving and this is the
+   * gap before it, or the case where a moment was claimed by a turn that never generated. Either
+   * way, telling the leader to say hello would be telling them to do the one thing the change was
+   * made to stop asking of them.
+   */
   opener?: string;
   /**
    * The phase's opening card, at the head of the transcript.
@@ -236,8 +244,10 @@ export function CoachChat({
       setHydrated(true);
     });
     // `phaseKey` / `phaseMarks` are read to cut the transcript and deliberately not dependencies:
-    // re-running on a phase change would re-fetch into a conversation that is already on screen, and
-    // the component is remounted per phase anyway.
+    // re-running on a phase change would re-fetch into a conversation that is already on screen. What
+    // makes that safe is the `key={currentPhase.key}` on `PhaseConversation` in `programme-shell.tsx`
+    // — the remount is what re-cuts the window, and without it this effect's guard would hold a new
+    // phase on the old phase's turns. The key and this dep list are one decision; move neither alone.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId]);
 
@@ -556,7 +566,7 @@ export function CoachChat({
           {turns.length === 0 ? (
             <p className="text-muted-foreground max-w-md pt-2 text-[0.95rem] leading-relaxed">
               {opener ??
-                'When you are ready, say hello and we will begin. Take your time; there are no wrong answers here.'}
+                'The coach is opening this part. Take your time; there are no wrong answers here.'}
             </p>
           ) : (
             turns.map((turn, i) => (
