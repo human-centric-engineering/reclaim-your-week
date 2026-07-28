@@ -169,7 +169,7 @@ export function PhaseConversation({
   /** Why the move is not offered yet, in one sentence, because a dimmed button explains nothing. */
   const waitingOn =
     capturedCount === 0
-      ? 'The conversation records as you go. There will be something to move on from shortly.'
+      ? 'The conversation records as you go.'
       : revealState !== null && !revealed
         ? 'Have a look at the shape of your week before moving on.'
         : !reflected
