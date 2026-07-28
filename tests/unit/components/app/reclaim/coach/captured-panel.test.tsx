@@ -180,7 +180,7 @@ describe('CapturedPanel', () => {
   /**
    * The reflection is shown, and that is the change (2026-07-27). It used to be absent by
    * construction, because the coach could not write one; now that it can, the leader seeing the
-   * sentence — and being able to replace it in one click — is what keeps the authorship theirs.
+   * sentence is what keeps the authorship theirs.
    */
   it("shows the reflection this run holds, in the leader's own words", () => {
     render(
@@ -206,8 +206,13 @@ describe('CapturedPanel', () => {
     expect(screen.queryByRole('button', { name: 'Yes, that is right' })).not.toBeInTheDocument();
   });
 
-  it('writes a changed reflection over the top, through the leader path', async () => {
-    render(
+  /**
+   * One route asks the question, one route types it. A leader who would rather write their own
+   * reflection takes "I would rather fill this in myself" and gets the phase panel's field; a second
+   * textarea here would be the form creeping back in beside the conversation they chose instead.
+   */
+  it('offers no way to type a reflection, recorded or not', () => {
+    const { rerender } = render(
       <CapturedPanel
         runId="run-1"
         phaseKey="phase-1-current"
@@ -223,17 +228,23 @@ describe('CapturedPanel', () => {
       />
     );
 
-    await userEvent.click(screen.getByRole('button', { name: 'Change this' }));
-    const box = screen.getByRole('textbox', { name: 'Your reflection' });
-    await userEvent.clear(box);
-    await userEvent.type(box, 'That I never stop');
-    await userEvent.click(screen.getByRole('button', { name: 'Save this' }));
+    expect(screen.getByText('How little recovery there is')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Change this' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: 'Your reflection' })).not.toBeInTheDocument();
 
-    expect(saveAnswer).toHaveBeenCalledWith('run-1', {
-      slotSlug: 'reclaim_reflection_p1',
-      value: 'That I never stop',
-    });
-    expect(onSaved).toHaveBeenCalled();
+    // And before the coach has asked: the panel says what is coming, and offers no box for it.
+    rerender(
+      <CapturedPanel
+        runId="run-1"
+        phaseKey="phase-1-current"
+        answers={answers()}
+        onSaved={onSaved}
+      />
+    );
+
+    expect(screen.getByText(/The coach will ask before this phase closes/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Write it myself' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: 'Your reflection' })).not.toBeInTheDocument();
   });
 
   it('never lists a sharing choice, whatever the run holds (I6)', () => {

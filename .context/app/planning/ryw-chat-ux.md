@@ -107,11 +107,11 @@ being asked by a textarea in a tool whose source says "not a form".
 
 So the group is permitted, and three narrower guards stand in place of the blanket refusal:
 
-| Guard                    | Holds because                                                                                                          |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
-| **This phase only**      | The phase comes from the dispatch scope the route builds from the journey. Phase 2 cannot write phase 4's reflection.  |
-| **Never `inferred`**     | Refused for a reflection — but the model picks the value, so this disciplines the honest path, it does not enforce it. |
-| **Visible and editable** | It renders in the captured panel as "In your words", and a change writes over the top through the leader's own path.   |
+| Guard                       | Holds because                                                                                                                                                                                                                                                                     |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **This phase only**         | The phase comes from the dispatch scope the route builds from the journey. Phase 2 cannot write phase 4's reflection.                                                                                                                                                             |
+| **Never `inferred`**        | Refused for a reflection — but the model picks the value, so this disciplines the honest path, it does not enforce it.                                                                                                                                                            |
+| **Visible and correctable** | It renders in the captured panel as "In your words". The panel itself carries no box — a leader changes it by saying so, or by taking "I would rather fill this in myself" and using the phase panel's reflection field, which writes over the top through the leader's own path. |
 
 **I9 did not change.** The transition route still returns `422 REFLECTION_REQUIRED` when the slot is
 absent for this run. The gate was never "the leader typed into a box"; it was "nobody leaves a phase
