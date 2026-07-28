@@ -11,6 +11,14 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
+/*
+ * The bar's two corner controls stand in as nothing here. Both reach for a provider this suite has no
+ * reason to mount (`useTheme`, `useAnalytics`), and neither is what any assertion below is about; each
+ * has its own suite. Stubbing them keeps this file about the surface it names.
+ */
+vi.mock('@/components/app/reclaim/theme-switch', () => ({ ThemeSwitch: () => null }));
+vi.mock('@/components/app/reclaim/account-menu', () => ({ AccountMenu: () => null }));
+
 const { readRuns } = vi.hoisted(() => ({ readRuns: vi.fn() }));
 vi.mock('@/components/app/reclaim/history/actions', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/components/app/reclaim/history/actions')>()),

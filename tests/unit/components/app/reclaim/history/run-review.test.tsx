@@ -13,7 +13,16 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+
+/*
+ * The bar's two corner controls stand in as nothing here. Both reach for a provider this suite has no
+ * reason to mount (`useTheme`, `useAnalytics`), and neither is what any assertion below is about; each
+ * has its own suite. Stubbing them keeps this file about the surface it names.
+ */
+vi.mock('@/components/app/reclaim/theme-switch', () => ({ ThemeSwitch: () => null }));
+vi.mock('@/components/app/reclaim/account-menu', () => ({ AccountMenu: () => null }));
 
 const { readRun } = vi.hoisted(() => ({ readRun: vi.fn() }));
 vi.mock('@/components/app/reclaim/history/actions', async (importOriginal) => ({
@@ -125,10 +134,10 @@ describe('RunReview', () => {
     expect(fetchSummary).not.toHaveBeenCalled();
   });
 
-  it('offers the way back to the list rather than out of the product', async () => {
+  it('sits inside the list in the trail, rather than offering a way out of the product', async () => {
     render(<RunReview runId="run-1" />);
 
-    const link = await screen.findByRole('link', { name: 'Back to your audits' });
+    const link = await screen.findByRole('link', { name: 'Your audits' });
     expect(link).toHaveAttribute('href', '/programme/history');
   });
 
@@ -153,5 +162,87 @@ describe('RunReview', () => {
 
     await screen.findByText('Protect Tuesday mornings');
     expect(screen.queryByText('here')).toBeNull();
+  });
+
+  it('retries the load when "Try again" is pressed after a failure', async () => {
+    readRun.mockRejectedValueOnce(new Error('nope'));
+    readRun.mockResolvedValue(runState());
+    const user = userEvent.setup();
+    render(<RunReview runId="run-1" />);
+
+    await screen.findByText(/could not open that audit/);
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+
+    // The retry actually re-ran the load rather than the button being inert.
+    expect(await screen.findByText('Protect Tuesday mornings')).toBeInTheDocument();
+    expect(readRun).toHaveBeenCalledTimes(2);
+  });
+
+  describe('opening a phase from the spine', () => {
+    it('reads that phase, and hands back to the summary', async () => {
+      const user = userEvent.setup();
+      render(<RunReview runId="run-1" />);
+
+      await screen.findByText('Protect Tuesday mornings');
+      const [phaseButton] = screen.getAllByRole('button', { name: /Current reality/ });
+      await user.click(phaseButton);
+
+      // Phase 1's own screen is now on, not the summary.
+      expect(
+        await screen.findByText(/no conversation recorded for this part/i)
+      ).toBeInTheDocument();
+      expect(screen.queryByText('Protect Tuesday mornings')).toBeNull();
+
+      const [back] = await screen.findAllByRole('button', { name: /Back to the summary/ });
+      await user.click(back);
+
+      // Handed back to the summary, not stuck on the phase.
+      expect(await screen.findByText('Protect Tuesday mornings')).toBeInTheDocument();
+    });
+
+    it('is also reachable from the "look back at a phase" list below the spine', async () => {
+      const user = userEvent.setup();
+      render(<RunReview runId="run-1" />);
+
+      await screen.findByText('Protect Tuesday mornings');
+      const list = screen.getByRole('navigation', { name: 'The phases of this audit' });
+      await user.click(within(list).getByRole('button', { name: /Current reality/ }));
+
+      expect(
+        await screen.findByText(/no conversation recorded for this part/i)
+      ).toBeInTheDocument();
+    });
+
+    it('threads the operator’s own signpost wording through once the config call succeeds', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue({
+          ok: true,
+          json: async () => ({
+            data: {
+              strategyMirror: false,
+              phaseSignposts: [
+                {
+                  phaseKey: 'phase-1-current',
+                  involves: 'a custom, operator-authored orientation',
+                  duration: 'about ten minutes',
+                  opening: [],
+                },
+              ],
+            },
+          }),
+        })
+      );
+      const user = userEvent.setup();
+      render(<RunReview runId="run-1" />);
+
+      await screen.findByText('Protect Tuesday mornings');
+      const [phaseButton] = screen.getAllByRole('button', { name: /Current reality/ });
+      await user.click(phaseButton);
+
+      expect(
+        await screen.findByText('a custom, operator-authored orientation')
+      ).toBeInTheDocument();
+    });
   });
 });

@@ -48,7 +48,7 @@ export function AuditHistory() {
 
   return (
     <>
-      <ProgrammeChrome here="Your audits" leaveHref="/dashboard" leaveLabel="Leave" />
+      <ProgrammeChrome here="Your audits" />
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl space-y-10 px-4 py-10 sm:px-6 sm:py-14">

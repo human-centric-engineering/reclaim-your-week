@@ -148,9 +148,8 @@ export function RunReview({ runId }: { runId: string }) {
   return (
     <>
       <ProgrammeChrome
-        here={viewing === null ? period : `Phase ${viewIndex} · ${viewing.label}`}
-        leaveHref="/programme/history"
-        leaveLabel="Back to your audits"
+        back={{ href: '/programme/history', label: 'Your audits' }}
+        here={viewing === null ? period : `${period} · phase ${viewIndex}`}
       />
 
       <div className="flex min-h-0 flex-1">
@@ -248,7 +247,7 @@ export function RunReview({ runId }: { runId: string }) {
 function Frame({ children }: { children: React.ReactNode }) {
   return (
     <>
-      <ProgrammeChrome leaveHref="/programme/history" leaveLabel="Back to your audits" />
+      <ProgrammeChrome back={{ href: '/programme/history', label: 'Your audits' }} />
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl px-4 py-20 sm:px-6">{children}</div>
       </div>
