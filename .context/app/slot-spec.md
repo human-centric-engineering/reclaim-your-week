@@ -177,11 +177,11 @@ correction creates a version too, and the perception-vs-reality chart needs both
 
 ## Group: `reclaim_energy` — Phase 2, per run
 
-| Slug                              | dataType | Sensitivity | Meaning                                               |
-| --------------------------------- | -------- | ----------- | ----------------------------------------------------- |
-| `reclaim_energy_peak_windows`     | `json`   | `standard`  | Selected peak windows from the week grid              |
-| `reclaim_energy_peak_description` | `text`   | `standard`  | When they are at their best, in their words           |
-| `reclaim_energy_protected`        | `text`   | `sensitive` | Whether the schedule protects or consumes that window |
+| Slug                              | dataType | Sensitivity | Meaning                                                                                                                                                                                                                                             |
+| --------------------------------- | -------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `reclaim_energy_peak_windows`     | `json`   | `standard`  | Selected peak windows from the week grid. **Declared, never captured** — the grid was never built, so no surface writes it and it is excluded from `phaseCaptureSlots` (`NO_SURFACE_CAPTURES_THESE`). Build the grid and it comes back on the list. |
+| `reclaim_energy_peak_description` | `text`   | `standard`  | When they are at their best, in their words                                                                                                                                                                                                         |
+| `reclaim_energy_protected`        | `text`   | `sensitive` | Whether the schedule protects or consumes that window                                                                                                                                                                                               |
 
 ---
 
