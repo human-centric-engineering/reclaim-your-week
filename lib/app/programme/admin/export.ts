@@ -89,7 +89,35 @@ export async function buildClientExport(userId: string): Promise<ClientExport | 
     inviteLinks,
     heads,
   ] = await Promise.all([
-    prisma.reclaimAuditRun.findMany({ where: { userId }, orderBy: { startedAt: 'asc' } }),
+    // Every field of the run **except `conversationId`** (F17).
+    //
+    // This used to be a bare `findMany` with no `select`, which handed over the id of the leader's
+    // conversation — and core ships `/admin/orchestration/conversations/[id]`, which renders any
+    // conversation to an ADMIN. So the transcript was reachable to anyone who read an export, while
+    // the product offered no way for a leader to say whether it should be. This app is no longer
+    // the thing that supplies the key; where a leader has consented, `admin/transcript.ts` is the
+    // way in, and where they have not there is none.
+    //
+    // Listed explicitly rather than by omission, so a column added later is absent from the export
+    // until somebody decides it belongs there. That is the right default for a file that leaves the
+    // system: `export.test.ts` asserts the source list matches the schema, and this is the one place
+    // a field can be withheld on purpose.
+    prisma.reclaimAuditRun.findMany({
+      where: { userId },
+      orderBy: { startedAt: 'asc' },
+      select: {
+        id: true,
+        status: true,
+        quarter: true,
+        coachOpenings: true,
+        phaseMarks: true,
+        analystReading: true,
+        startedAt: true,
+        completedAt: true,
+        abandonedAt: true,
+        updatedAt: true,
+      },
+    }),
     prisma.reclaimGrant.findMany({ where: { userId } }),
     prisma.reclaimInvite.findMany({ where: { redeemedByUserId: userId } }),
     prisma.reclaimInvite.findMany({ where: { invitedByUserId: userId } }),

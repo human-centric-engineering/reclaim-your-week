@@ -75,6 +75,24 @@ export function SharedResults() {
                     {formatDate(entry.sharedAt)}
                   </span>
                 </div>
+                {/*
+                  F17. Which of the two things they shared, said on the row rather than discovered
+                  by opening it. A leader who sent their results and kept the conversation has made
+                  a choice, and a surface that only shows the consenting ones would read as broken
+                  for everyone else.
+                */}
+                {entry.transcriptConsent ? (
+                  <Link
+                    href={`/admin/programme/shared/${entry.userId}/${entry.auditRunId}`}
+                    className="text-primary mt-2 inline-block text-sm underline underline-offset-2"
+                  >
+                    Read the conversation
+                  </Link>
+                ) : (
+                  <p className="text-muted-foreground mt-2 text-xs">
+                    Results only. They did not share the conversation.
+                  </p>
+                )}
                 {entry.feedback !== null && (
                   <blockquote className="mt-2 border-l-2 pl-3 text-sm italic">
                     {entry.feedback.text}

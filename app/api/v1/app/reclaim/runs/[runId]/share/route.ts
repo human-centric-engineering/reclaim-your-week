@@ -24,6 +24,8 @@ const prose = z.string().trim().max(2000);
 const shareSchema = z.object({
   publicLink: z.boolean().optional(),
   withCoach: z.boolean().optional(),
+  /** F17. Its own question, and only meaningful alongside `withCoach`. */
+  shareTranscript: z.boolean().optional(),
   ageBand: prose.optional(),
   takeaway: prose.optional(),
   quotable: z.boolean().optional(),
@@ -58,6 +60,7 @@ export const POST = withAuth<{ runId: string }>(async (request, session, { param
   const result = await createShare(userId, runId, {
     publicLink: body.publicLink,
     withCoach: body.withCoach,
+    shareTranscript: body.shareTranscript,
     takeaway: body.takeaway,
     quotable: body.quotable,
   });
@@ -66,6 +69,9 @@ export const POST = withAuth<{ runId: string }>(async (request, session, { param
     runId,
     publicLink: !!result.token,
     withCoach: !!body.withCoach,
+    // Whether a leader let their conversation be read is worth being able to answer later, and the
+    // flag is the fact — never any of its contents.
+    transcript: body.withCoach === true && body.shareTranscript === true,
   });
   return successResponse(result);
 });

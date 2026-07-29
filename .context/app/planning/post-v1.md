@@ -753,7 +753,7 @@ report link, no new bearer token · `transcriptConsent` as a **column** on the e
 | F14 | `ryw-analyst`            | John  | **shipped** | F13 t-1    | 3     | §10's two missing bullets, as options and never as verdicts                 |
 | F15 | `ryw-report`             | John  | **shipped** | F14 t-3    | 3     | The PDF, and the one email a finished audit should send                     |
 | F16 | `ryw-audit-lifecycle`    | John  | **shipped** | F12        | 3     | The abandon dead end, an unrecoverable failed turn, phase 6's last textarea |
-| F17 | `ryw-transcript-consent` | John  | ready ▲     | F12        | 2     | Consent before Rashmir reads a conversation, and the export's back door     |
+| F17 | `ryw-transcript-consent` | John  | **shipped** | F12        | 2     | Consent before Rashmir reads a conversation, and the export's back door     |
 | F18 | `ryw-admin-care`         | John  | ready ▲     | F16 t-1    | 2     | Rashmir can preview her own words, and act on a leader who stopped          |
 
 **Two hard orderings, both of which cost a rewrite if ignored.** F13 t-1 before F14 t-2, or the

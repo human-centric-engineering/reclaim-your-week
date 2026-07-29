@@ -91,6 +91,8 @@ const sharedResultSchema = z.object({
   sharedAt: z.string(),
   quarter: z.string().nullable(),
   feedback: z.object({ text: z.string(), quoteConsent: z.boolean() }).nullable(),
+  // F17. Defaulted so a response cached from a build predating the column still parses.
+  transcriptConsent: z.boolean().default(false),
 });
 
 const aggregateSchema = z.object({

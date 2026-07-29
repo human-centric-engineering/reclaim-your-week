@@ -126,6 +126,8 @@ export async function fetchSummary(runId: string): Promise<AuditSummary> {
 export interface ShareInput {
   publicLink?: boolean;
   withCoach?: boolean;
+  /** F17. Whether the coach may also read the conversation, not only the result. */
+  shareTranscript?: boolean;
   ageBand?: string;
   takeaway?: string;
   quotable?: boolean;

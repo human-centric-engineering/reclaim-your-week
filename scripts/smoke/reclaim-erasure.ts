@@ -44,7 +44,9 @@ async function main(): Promise<void> {
   await prisma.reclaimShare.create({
     data: { userId: uid, auditRunId: run.id, token: `${PREFIX}-share-${process.pid}` },
   });
-  await prisma.reclaimReportShare.create({ data: { userId: uid, auditRunId: run.id } });
+  await prisma.reclaimReportShare.create({
+    data: { userId: uid, auditRunId: run.id, transcriptConsent: true },
+  });
   await prisma.reclaimFeedback.create({
     data: { userId: uid, text: 'Useful.', quoteConsent: true },
   });

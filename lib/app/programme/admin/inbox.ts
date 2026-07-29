@@ -25,6 +25,14 @@ export interface SharedResult {
    * having shared (Brief §3) — sharing a result with your coach is not permission to quote you.
    */
   feedback: { text: string; quoteConsent: boolean } | null;
+  /**
+   * Whether this leader also let the conversation be read, not only the result (F17).
+   *
+   * Carried on the row so the inbox can say which is which. Without it an operator would have to
+   * open each one to find out, and the ones that refuse would read as broken rather than as a
+   * choice somebody made.
+   */
+  transcriptConsent: boolean;
 }
 
 /** Everything shared with the coach, newest first. Four batched queries; nothing per-row. */
@@ -70,6 +78,7 @@ export async function listSharedResults(): Promise<SharedResult[]> {
         sharedAt: share.createdAt.toISOString(),
         quarter: quarterByRun.get(share.auditRunId) ?? null,
         feedback: fb === undefined ? null : { text: fb.text, quoteConsent: fb.quoteConsent },
+        transcriptConsent: share.transcriptConsent,
       } satisfies SharedResult,
     ];
   });

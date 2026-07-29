@@ -344,6 +344,19 @@ model ReclaimReportShare {
   userId     String // ON DELETE CASCADE
   auditRunId String
 
+  /// Whether the leader also let Rashmir read the conversation, not only the results (F17).
+  ///
+  /// **Its own fact, like `quoteConsent` next door.** Sharing a summary is not sharing the exchange
+  /// that produced it: a transcript carries what someone said while working something out, in the
+  /// order they worked it out, including the parts they went back on. A leader can want the first
+  /// and not the second, and until this column there was no way to say so — while the conversation
+  /// was reachable anyway, through a `conversationId` the admin export handed over.
+  ///
+  /// `NOT NULL DEFAULT false` rather than nullable, so absent consent reads as "not given" and no
+  /// reader can reach for a `?? true`. Withdrawable: unticking this, or the share itself, sets it
+  /// back to false, because consent that cannot be taken back is not consent.
+  transcriptConsent Boolean @default(false)
+
   createdAt DateTime @default(now())
 
   /// One coach-share per run (F10 t-1, plan D8) — see `ReclaimShare`. The inbox counts these.

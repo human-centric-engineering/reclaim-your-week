@@ -65,6 +65,8 @@ export function Phase6Panel({
   const [failed, setFailed] = useState(false);
   const [wantShare, setWantShare] = useState(false);
   const [withCoach, setWithCoach] = useState(false);
+  /** F17: its own question, asked only once sharing with the coach is on. */
+  const [shareTranscript, setShareTranscript] = useState(false);
   const [publicLink, setPublicLink] = useState(false);
   const [ageBand, setAgeBand] = useState('');
   const [quotable, setQuotable] = useState(false);
@@ -117,6 +119,9 @@ export function Phase6Panel({
       const input: ShareInput = {
         publicLink,
         withCoach,
+        // Withdrawn with its parent: sharing the exchange but not the summary it produced is a
+        // state nobody asked for, and the server enforces the same rule.
+        shareTranscript: withCoach && shareTranscript,
         ageBand: ageBand && ageBand !== 'Prefer not to say' ? ageBand : undefined,
         // Reuses what they already wrote rather than asking a near-identical question twice. The
         // source asks the takeaway of everyone before the summary; Brief §3 asks sharers for "in a
@@ -335,6 +340,36 @@ export function Phase6Panel({
             />
             Share my results with Rashmir
           </label>
+
+          {/*
+            F17. Its own question, and only asked once the first one is answered.
+
+            Sharing a summary is not sharing the exchange that produced it. A transcript holds what
+            someone said while working something out, in the order they worked it out, including the
+            parts they went back on. Brief §3 already draws this line for quoting; the conversation
+            deserves it at least as much, and until now there was no way for a leader to say yes to
+            one and no to the other.
+
+            Indented under its parent because that is what it is: unticking the box above withdraws
+            this one, on the server as well as here.
+          */}
+          {withCoach && (
+            <label className="text-foreground ml-6 flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={shareTranscript}
+                onChange={(e) => setShareTranscript(e.target.checked)}
+                className="mt-1"
+              />
+              <span>
+                She may also read our conversation, not only the results.
+                <span className="text-muted-foreground block text-xs leading-relaxed">
+                  Everything you typed, in the order you typed it. Leave this unticked and she sees
+                  the summary only. You can change your mind here at any time.
+                </span>
+              </span>
+            </label>
+          )}
           <SelectField
             id="age-band"
             label="Age range (optional)"
