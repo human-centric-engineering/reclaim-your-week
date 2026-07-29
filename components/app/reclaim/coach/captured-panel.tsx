@@ -24,10 +24,15 @@
  *
  * **The reflection has its own section, and it is the reason this panel now matters more.** The coach
  * records the reflection that closes a phase, which is a real transfer of authorship: a sentence that
- * gates the phase is being typed by something that is not the leader. What makes that honest is not
- * the model's restraint — it is that the leader can see the sentence, in their own words, and change
- * it in one place. So it sits apart from the readings, always shown, always editable, whether or not
- * the coach was confident.
+ * gates the phase is being typed by something that is not the leader. What makes that honest is that
+ * the leader can see the sentence, in their own words, at all times. So it sits apart from the
+ * readings, always shown, whether or not the coach was confident.
+ *
+ * **It is shown, not edited.** This panel offers no box to type in — one route asks the question and
+ * one route types it, and the leader chooses which. In the conversation the coach asks and the leader
+ * answers; a leader who would rather write it themselves takes "I would rather fill this in myself"
+ * and gets the phase panel's own reflection field. Putting a second textarea here would be the form
+ * creeping back in beside the conversation the leader chose instead.
  */
 
 import { useState } from 'react';
@@ -54,6 +59,14 @@ export interface CapturedPanelProps {
   bucketLabels?: Record<string, string>;
   /** Re-read the run after a confirmation or correction lands. */
   onSaved: () => void;
+  /**
+   * A finished audit, read back rather than worked on.
+   *
+   * The confirm and correct affordances come off, because the server refuses a write to a run that is
+   * not in progress (`assertActiveOwnedRun`) and an offer that can only fail is worse than no offer.
+   * What stays is every reading, exactly as it was left.
+   */
+  readOnly?: boolean;
 }
 
 export function CapturedPanel({
@@ -62,6 +75,7 @@ export function CapturedPanel({
   answers,
   bucketLabels = {},
   onSaved,
+  readOnly = false,
 }: CapturedPanelProps) {
   const slots = phaseCaptureSlots(phaseKey, {
     fundraisingRelevant: truthy(answers['reclaim_setup_fundraising_relevant']),
@@ -82,9 +96,11 @@ export function CapturedPanel({
         <h2 className="text-foreground text-sm font-medium">What the coach has noted</h2>
         <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
           {captured.length} of {slots.length} in this phase.{' '}
-          {toCheck.length > 0
-            ? 'A couple are worth a second look before we rely on them.'
-            : 'You can change any of these by saying so.'}
+          {readOnly
+            ? 'This audit is finished, so these are as you left them.'
+            : toCheck.length > 0
+              ? 'A couple are worth a second look before we rely on them.'
+              : 'You can change any of these by saying so.'}
         </p>
       </div>
 
@@ -101,7 +117,7 @@ export function CapturedPanel({
           return (
             <li key={slot.slug} className="space-y-1.5">
               <p className="text-muted-foreground text-xs">{slot.label}</p>
-              {worthChecking(answer) ? (
+              {worthChecking(answer) && !readOnly ? (
                 <UncertainReading
                   runId={runId}
                   slug={slot.slug}
@@ -118,123 +134,41 @@ export function CapturedPanel({
       </ul>
 
       {reflectionSlug !== null && (
-        <ReflectionCard
-          runId={runId}
-          slug={reflectionSlug}
-          value={answers[reflectionSlug]?.value ?? null}
-          onSaved={onSaved}
-        />
+        <ReflectionCard value={answers[reflectionSlug]?.value ?? null} readOnly={readOnly} />
       )}
     </aside>
   );
 }
 
 /**
- * The leader's own noticing, as the coach recorded it.
+ * The leader's own noticing, as the coach recorded it — shown, never typed here.
  *
  * Not an `UncertainReading`: a reflection is never offered back with "have we got it right?", because
  * the leader has just said it out loud and being asked to verify their own sentence is the form
- * creeping back in. It is simply shown, in their words, with the edit always available — and when it
- * is not there yet, the panel says what is coming rather than leaving a blank the leader has to
- * interpret.
+ * creeping back in. It is simply shown, in their words. Changing it belongs to the route that took it
+ * — the coach, by being told, or the phase panel's reflection field for a leader who switched — so
+ * this panel carries no box and no button. Before it exists, the panel says what is coming rather
+ * than leaving a blank the leader has to interpret.
  */
 function ReflectionCard({
-  runId,
-  slug,
   value,
-  onSaved,
+  readOnly,
 }: {
-  runId: string;
-  slug: string;
   value: string | null;
-  onSaved: () => void;
+  /** A finished audit, so the empty case is a fact about the past rather than a question still coming. */
+  readOnly: boolean;
 }) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(value ?? '');
-  const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState(false);
-
-  const commit = async () => {
-    setBusy(true);
-    setFailed(false);
-    try {
-      await saveAnswer(runId, { slotSlug: slug, value: draft.trim() });
-      setEditing(false);
-      onSaved();
-    } catch {
-      setFailed(true);
-    } finally {
-      setBusy(false);
-    }
-  };
-
   return (
     <div className="border-border/60 space-y-2 border-t pt-5">
       <p className="text-foreground text-sm font-medium">In your words</p>
-      {value === null && !editing ? (
-        <>
-          <p className="text-muted-foreground/70 text-xs leading-relaxed">
-            What stands out to you here. The coach will ask before this phase closes, and what you
-            say is kept here.
-          </p>
-          <button
-            type="button"
-            onClick={() => setEditing(true)}
-            className="text-muted-foreground hover:text-foreground text-xs underline underline-offset-4"
-          >
-            Write it myself
-          </button>
-        </>
-      ) : editing ? (
-        <div className="space-y-2">
-          <textarea
-            rows={4}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            aria-label="Your reflection"
-            placeholder="Take a moment…"
-            className={`${inputClass} resize-none leading-relaxed`}
-          />
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              disabled={busy || draft.trim().length === 0}
-              onClick={() => void commit()}
-              className="text-primary text-xs underline underline-offset-4 disabled:opacity-40"
-            >
-              Save this
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setDraft(value ?? '');
-                setEditing(false);
-              }}
-              className="text-muted-foreground text-xs"
-            >
-              Leave it
-            </button>
-          </div>
-        </div>
-      ) : (
-        <>
-          <p className="text-foreground text-sm leading-relaxed">{value}</p>
-          <button
-            type="button"
-            onClick={() => {
-              setDraft(value ?? '');
-              setEditing(true);
-            }}
-            className="text-muted-foreground hover:text-foreground text-xs underline underline-offset-4"
-          >
-            Change this
-          </button>
-        </>
-      )}
-      {failed && (
-        <p className="text-muted-foreground text-xs" role="status">
-          That did not save. You can try again.
+      {value === null ? (
+        <p className="text-muted-foreground/70 text-xs leading-relaxed">
+          {readOnly
+            ? 'Nothing was written here.'
+            : 'What stands out to you here. The coach will ask before this phase closes, and what you say is kept here.'}
         </p>
+      ) : (
+        <p className="text-foreground text-sm leading-relaxed">{value}</p>
       )}
     </div>
   );

@@ -43,9 +43,18 @@ const LINK_ROOTS = [
 
 /**
  * Routes that are correctly reachable without an in-app link, each with the reason.
- * Empty today, and that is the point: the calendar was in here by accident, not by decision.
+ *
+ * The bar for an entry here is that the link genuinely cannot be written as a literal, not that
+ * writing one was inconvenient: the calendar was in here by accident, which is what this guard exists
+ * to stop happening again.
  */
-const REACHED_ANOTHER_WAY: Record<string, string> = {};
+const REACHED_ANOTHER_WAY: Record<string, string> = {
+  // A dynamic segment cannot be matched by a literal sweep. The list at `/programme/history` builds
+  // this href from each run's id, and *that* page is checked by this guard in the ordinary way, so
+  // the path in is covered one hop up.
+  '/programme/history/[runId]':
+    'built from a run id by the history list, which is itself linked and checked',
+};
 
 function walk(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {

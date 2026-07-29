@@ -20,13 +20,18 @@
  *
  * `onSelect` is optional. Without it the spine is exactly what it was, which is what the compact strip
  * in the summary chrome and any read-only rendering want.
+ *
+ * **`currentPhaseKey` may be `null`, and that is a finished audit.** A leader reading back an audit
+ * they completed has no "here": every phase is behind them, so the beacon marks nothing and every row
+ * opens. Passing the last phase instead would put a pulsing "here" on phase 6 of an audit that ended
+ * weeks ago, which says the opposite of what it means.
  */
 
 import { useEffect, useState } from 'react';
 import type { PhaseView } from '@/components/app/reclaim/types';
 
 /** Whether this phase can be opened: one already finished, or the one the leader is on. */
-function isReachable(phase: PhaseView, currentPhaseKey: string): boolean {
+function isReachable(phase: PhaseView, currentPhaseKey: string | null): boolean {
   return phase.status === 'completed' || phase.key === currentPhaseKey;
 }
 
@@ -38,7 +43,8 @@ export function PhaseRail({
   variant = 'vertical',
 }: {
   phases: PhaseView[];
-  currentPhaseKey: string;
+  /** Where the audit has got to, or `null` when it is finished and there is no "here" left. */
+  currentPhaseKey: string | null;
   /**
    * The phase actually on screen, when the leader has gone back to look at an earlier one.
    *

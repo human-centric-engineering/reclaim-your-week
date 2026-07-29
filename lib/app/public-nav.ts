@@ -15,6 +15,14 @@
  * `public-footer.tsx` reads `footerNavItems` and `footerLegalItems`. The
  * `next/link` / active-state glue stays in those platform components.
  *
+ * **This app renders its own public chrome, and reads these same lists.** Since
+ * 2026-07-28 `app/(public)/layout.tsx` uses `components/app/public/site-header.tsx`
+ * and `site-footer.tsx` instead of the platform header/footer, because the public
+ * pages wear the same frame as the audit (see that header for why). Rendering
+ * moved; the data did not. The seam stays the single place the public links are
+ * decided, so the leaf chrome and the platform components cannot disagree — and
+ * `icon` is now ignored on both surfaces, which only confirms the note below.
+ *
  * Not overridable: the footer's **Cookie Preferences** control is always
  * rendered by the platform regardless of `footerLegalItems` — this seam governs
  * *links*, not the consent control (a legal requirement in many jurisdictions).

@@ -64,10 +64,24 @@ export interface PhaseReviewProps {
   conversationId: string | null;
   /** Where each phase's part of that conversation begins. */
   phaseMarks: PhaseMarks;
-  /** Where the leader was before they came back here, for the way out. */
+  /**
+   * Where the way out goes, named rather than "back", so the button says where it lands.
+   *
+   * The **whole phrase**, because the two surfaces that use this screen return to different places:
+   * a live audit goes back to the phase the leader was on ("phase 3, Ideal week"), a finished one
+   * goes back to its summary. Building the phrase here from an index and a label meant only the
+   * first of those could ever be expressed.
+   */
   returnLabel: string;
-  returnIndex: number;
   onReturn: () => void;
+  /**
+   * A finished audit, read back from the history rather than an earlier phase of a live one.
+   *
+   * The screen is already read-only in the sense that matters (no composer, no transition). What this
+   * changes is the captured panel, which offers corrections a completed run's server would refuse,
+   * and the line that tells the leader what they are looking at.
+   */
+  readOnly?: boolean;
 }
 
 export function PhaseReview({
@@ -79,8 +93,8 @@ export function PhaseReview({
   conversationId,
   phaseMarks,
   returnLabel,
-  returnIndex,
   onReturn,
+  readOnly = false,
 }: PhaseReviewProps) {
   const [answers, setAnswers] = useState<RunAnswers>({});
   const [labels, setLabels] = useState<Record<string, string>>({});
@@ -141,6 +155,7 @@ export function PhaseReview({
       answers={answers}
       bucketLabels={labels}
       onSaved={() => void refresh()}
+      readOnly={readOnly}
     />
   );
 
@@ -156,7 +171,7 @@ export function PhaseReview({
               onClick={onReturn}
               className="text-muted-foreground hover:text-foreground text-xs underline underline-offset-4"
             >
-              Back to phase {returnIndex}, {returnLabel}
+              Back to {returnLabel}
             </button>
             {/* The panel has no column of its own below `xl`, so it is one tap away instead. */}
             <button
@@ -176,7 +191,9 @@ export function PhaseReview({
           />
 
           <p className="text-muted-foreground text-sm leading-relaxed">
-            This part is behind you, and nothing here moves your audit.
+            {readOnly
+              ? 'This audit is finished. What you said is here to read, and nothing here changes it.'
+              : 'This part is behind you, and nothing here moves your audit.'}
           </p>
 
           <div className="space-y-6">
@@ -215,7 +232,7 @@ export function PhaseReview({
             onClick={onReturn}
             className="bg-primary text-primary-foreground rounded-full px-8 py-3 text-[0.95rem] font-medium"
           >
-            Back to phase {returnIndex}, {returnLabel}
+            Back to {returnLabel}
           </button>
         </div>
       </div>

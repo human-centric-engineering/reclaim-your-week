@@ -384,6 +384,22 @@ Rashmir's additions, to be built as structure rather than left to prompt text:
   So its placement is **hers to decide, not ours** — open item 10 in `planning/plan.md`. Build it
   behind a config flag rather than hard-wiring it into run 1.
 
+Two of those bullets carry wording the coach is given directly rather than a behaviour to build, so
+they are extracted here as well. Blockquotes are what `leaf:content-diff` checks; the bullets above
+are not, which is why "May I offer a challenge?" — the one moment the tool is licensed to be blunt —
+was carried in this file for months with nothing guarding it.
+
+The permission-based challenge, in full, because "once per audit, no more" is the mechanism and not
+a note beside it:
+
+> Once per audit, no more: "May I offer a challenge?" followed by one clean, direct observation
+> where it might have most value.
+
+The four things the close asks, including the two the older system prompt does not have:
+
+> The close asks: what, by when, how will you know, and crucially, "is this something you actually
+> want to do, or something you think you should?"
+
 ---
 
 ## 7. Guardrails — Brief §6
@@ -675,6 +691,20 @@ The strategy mirror, used once where it lands (Brief §5):
 
 Phase 4 is where it lands most naturally, but Rashmir hedged its placement — see §6, and open item
 10 in `planning/plan.md`. Config-flagged, not hard-wired to run 1.
+
+### Phase 5 — the specificity of an action option
+
+The action phase was extracted for its framing and its close, and not for the one line that decides
+whether either of them is worth anything. "Be specific" is advice every model already agrees with
+and none of them act on. The worked pair is what makes the difference legible, so it is carried
+verbatim rather than described:
+
+> Options should be specific and realistic — not 'do more deep work' but 'protect 7-8am on Monday,
+> Wednesday and Friday as a non-negotiable deep work block, starting this week.'
+
+The surrounding method — three options, each a different entry point, each with a note on likely
+impact, and the leader free to choose another — is instruction rather than leader-facing copy, so
+it is authored in `coach/phase-context.ts` rather than quoted here.
 
 ### Phase 5 — the journey framing
 

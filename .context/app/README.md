@@ -41,17 +41,18 @@ Editing a bridge conflicts on every Daybreak upgrade. Always edit the `leaf-*` f
 
 ## What is in this folder
 
-| Doc                                        | Is                                                                                                                                                  |
-| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`sources/`](./sources/README.md)          | **The authority.** Rashmir's five originals, byte-identical and **read-only**                                                                       |
-| [`invariants.md`](./invariants.md)         | **Read before writing any code.** I1–I18 + I-frame + I-composite                                                                                    |
-| [`content-source.md`](./content-source.md) | Working extract of `sources/`, verbatim. Loads into `Module.config` (I11)                                                                           |
-| [`slot-spec.md`](./slot-spec.md)           | The 105 slot definitions — exact slugs, dataType, sensitivity                                                                                       |
-| [`coverage-audit.md`](./coverage-audit.md) | The source-instruction audit: carries / becomes UI / retired / gap                                                                                  |
-| [`daybreak-asks.md`](./daybreak-asks.md)   | Framework changes we carry + defects we find, so a sync knows what to delegate                                                                      |
-| [`upstream-sync.md`](./upstream-sync.md)   | **The ordered procedure for a sync** — the four files we have modified inside upstream's tree, and what fails quietly if you resolve them by reflex |
-| [`operations.md`](./operations.md)         | What has to be **running**: the nudge schedule, the two smokes CI cannot run, the before-launch list                                                |
-| [`planning/`](./planning/README.md)        | The feature board, the execution rhythm, the retro — and **[`post-v1.md`](./planning/post-v1.md), the board of what is left now v1 has shipped**    |
+| Doc                                                              | Is                                                                                                                                                  |
+| ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`sources/`](./sources/README.md)                                | **The authority.** Rashmir's five originals, byte-identical and **read-only**                                                                       |
+| [`invariants.md`](./invariants.md)                               | **Read before writing any code.** I1–I18 + I-frame + I-composite                                                                                    |
+| [`content-source.md`](./content-source.md)                       | Working extract of `sources/`, verbatim. Loads into `Module.config` (I11)                                                                           |
+| [`slot-spec.md`](./slot-spec.md)                                 | The 105 slot definitions — exact slugs, dataType, sensitivity                                                                                       |
+| [`coverage-audit.md`](./coverage-audit.md)                       | The source-instruction audit: carries / becomes UI / retired / gap                                                                                  |
+| [`daybreak-asks.md`](./daybreak-asks.md)                         | Framework changes we carry + defects we find, so a sync knows what to delegate                                                                      |
+| [`upstream-sync.md`](./upstream-sync.md)                         | **The ordered procedure for a sync** — the four files we have modified inside upstream's tree, and what fails quietly if you resolve them by reflex |
+| [`operations.md`](./operations.md)                               | What has to be **running**: the nudge schedule, the two smokes CI cannot run, the before-launch list                                                |
+| [`prisma-migration-recovery.md`](./prisma-migration-recovery.md) | The way back once `prisma migrate dev` has already dropped the unmodelled FKs and indexes. Prevention stays upstream                                |
+| [`planning/`](./planning/README.md)                              | The feature board, the execution rhythm, the retro — and **[`post-v1.md`](./planning/post-v1.md), the board of what is left now v1 has shipped**    |
 
 The first four are the **system of record** for content, data shape, and rules. `planning/plan.md` is
 the build breakdown that consumes them. Start a feature at
@@ -59,16 +60,43 @@ the build breakdown that consumes them. Start a feature at
 
 ## Where the app code lives
 
-| Concern      | Location                           |
-| ------------ | ---------------------------------- |
-| Domain logic | `lib/app/programme/**`             |
-| Boot wiring  | `lib/app/leaf-bootstrap.ts`        |
-| Admin nav    | `lib/app/leaf-admin-nav.ts`        |
-| HTTP API     | `app/api/v1/app/**`                |
-| Admin UI     | `app/admin/programme/**`           |
-| End-user UI  | `app/(programme)/programme/**`     |
-| Models       | `prisma/schema/app-reclaim.prisma` |
-| Migrations   | `<timestamp>_app_<feature>`        |
+| Concern       | Location                           |
+| ------------- | ---------------------------------- |
+| Domain logic  | `lib/app/programme/**`             |
+| Boot wiring   | `lib/app/leaf-bootstrap.ts`        |
+| Admin nav     | `lib/app/leaf-admin-nav.ts`        |
+| HTTP API      | `app/api/v1/app/**`                |
+| Admin UI      | `app/admin/programme/**`           |
+| End-user UI   | `app/(programme)/**`               |
+| Public UI     | `app/(public)/**`                  |
+| Public chrome | `components/app/public/**`         |
+| Models        | `prisma/schema/app-reclaim.prisma` |
+| Migrations    | `<timestamp>_app_<feature>`        |
+
+### One frame, four groups
+
+Since 2026-07-28 the public pages wear this app's own chrome rather than the starter template's:
+`app/(public)/layout.tsx` renders `components/app/public/site-header.tsx` and `site-footer.tsx` in
+Raleway (`app/fonts.ts`), the same type as the audit. The fault that forced it was not cosmetic —
+the platform header carries `UserButton`, which cannot hold `/programme/history`, so a leader who
+followed "Privacy" or "Help and support" out of the audit's own footer landed on a page with no way
+back to the run they were in the middle of. The public bar carries `AccountMenu` instead, which is
+also why that component gained a `signedOut` slot: the programme is gated and needs none, the public
+pages are not and need "Sign in".
+
+Which chrome each group wears:
+
+| Group                   | Chrome                                                | Type          |
+| ----------------------- | ----------------------------------------------------- | ------------- |
+| `(programme)`           | `ProgrammeChrome` + `ProgrammeFooter`, fixed viewport | Raleway       |
+| `(public)`              | `SiteHeader` + `SiteFooter`, scrolling document       | Raleway       |
+| `(auth)`                | the platform's centred card                           | Raleway       |
+| `(protected)`, `admin/` | the platform's header and footer                      | platform font |
+
+`/dashboard` and `/admin` are deliberately left in the platform's frame — the first is Sunrise's to
+keep improving and nothing in the programme's navigation points at it, the second is Rashmir's back
+office rather than the product. The public link lists still come from the `lib/app/public-nav.ts`
+seam; only the rendering is ours.
 
 ### The working title is baked into the identifiers, deliberately
 

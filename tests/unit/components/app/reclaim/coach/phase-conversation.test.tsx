@@ -36,16 +36,21 @@ vi.mock('@/components/app/reclaim/phase/actions', () => ({
 vi.mock('@/components/app/reclaim/coach-chat', () => ({
   CoachChat: ({
     onTurnComplete,
+    openMoment,
     intro,
     beats,
     footer,
   }: {
     onTurnComplete?: () => void;
+    openMoment?: string | null;
     intro?: React.ReactNode;
     beats?: { key: string; node: React.ReactNode }[];
     footer?: React.ReactNode;
   }) => (
     <div>
+      {/* The moment the phase hands the chat, surfaced so the tests below can read which one it is.
+          The real chat posts it; a stub cannot, and what matters here is the choice, not the post. */}
+      <span data-testid="open-moment">{openMoment ?? 'none'}</span>
       {intro}
       {/* Keyed beats, as the real chat takes them: it anchors each one to the turn it appeared
           under, which a stub has no turns to do. Rendering the nodes in order is the part that
@@ -63,14 +68,64 @@ vi.mock('@/components/app/reclaim/coach-chat', () => ({
 
 import { PhaseConversation } from '@/components/app/reclaim/coach/phase-conversation';
 
-const captured = {
-  reclaim_energy_peak_description: {
-    value: 'Early mornings',
-    valueJson: null,
-    sourceType: 'direct',
-    confidence: 10,
-  },
-};
+/** One reading, stated plainly. The shape the gate counts as settled. */
+const stated = (value: string) => ({
+  value,
+  valueJson: null,
+  sourceType: 'direct',
+  confidence: 10,
+});
+
+/**
+ * Every reading in a phase, so a test about a *gate* is not accidentally a test about coverage.
+ *
+ * The yes-or-no readings carry a real typed value rather than prose, because three of Phase 0's
+ * readings only apply when their boolean came back true — a fixture that left them untyped would
+ * quietly shrink the phase and move the threshold underneath the test.
+ */
+const BOOLEAN_SLOTS = new Set([
+  'reclaim_setup_in_transition',
+  'reclaim_setup_fundraising_relevant',
+  'reclaim_profile_distributed_team',
+  'reclaim_energy_protected',
+]);
+
+const allOf = (slugs: readonly string[]): Record<string, unknown> =>
+  Object.fromEntries(
+    slugs.map((slug) => [
+      slug,
+      BOOLEAN_SLOTS.has(slug)
+        ? { ...stated('Yes'), valueJson: true }
+        : stated('Something they said'),
+    ])
+  );
+
+/** Phase 2 in full: two readings, asked as one question. */
+const ENERGY = ['reclaim_energy_peak_description', 'reclaim_energy_protected'] as const;
+
+/**
+ * Phase 0 in full. Written out rather than derived from `phaseCaptureSlots`, so a slot added to the
+ * phase fails this loudly instead of quietly changing what "covered" means underneath the gate.
+ */
+const SETUP = [
+  'reclaim_profile_first_name',
+  'reclaim_profile_role',
+  'reclaim_profile_org_type',
+  'reclaim_profile_direct_reports',
+  'reclaim_profile_distributed_team',
+  'reclaim_profile_distributed_impact',
+  'reclaim_setup_in_transition',
+  'reclaim_setup_transition_detail',
+  'reclaim_setup_fundraising_relevant',
+  'reclaim_setup_fundraising_support',
+  'reclaim_setup_weekly_hours',
+  'reclaim_setup_priorities',
+  'reclaim_setup_keeping_me_up',
+  'reclaim_setup_why_now',
+  'reclaim_setup_audit_period',
+] as const;
+
+const captured = allOf(ENERGY);
 
 const reflected = {
   ...captured,
@@ -175,14 +230,7 @@ describe('PhaseConversation', () => {
   });
 
   it('needs no reflection in the setup phase, which has no pause to enforce', async () => {
-    readAnswers.mockResolvedValue({
-      reclaim_setup_weekly_hours: {
-        value: '55',
-        valueJson: 55,
-        sourceType: 'direct',
-        confidence: 10,
-      },
-    });
+    readAnswers.mockResolvedValue(allOf(SETUP));
     render(
       <PhaseConversation {...props} phaseKey="phase-0-setup" phaseIndex={0} phaseLabel="Setup" />
     );
@@ -190,6 +238,182 @@ describe('PhaseConversation', () => {
     expect(
       await screen.findByRole('button', { name: /Continue to the next phase/ })
     ).toBeInTheDocument();
+  });
+});
+
+/**
+ * The move onward waits for the phase to have happened, not for the first thing said in it.
+ *
+ * This gate used to be `capturedCount > 0`, so Phase 0 offered its way out the moment a leader's
+ * first name landed: a "continue" button beside a panel reading five of fifteen, with the coach still
+ * on its third question. Anyone who took it lost the thirteen readings the rest of the audit is built
+ * on, and nothing anywhere said so.
+ */
+describe('PhaseConversation — when the way onward is offered', () => {
+  const setup = { ...props, phaseKey: 'phase-0-setup', phaseIndex: 0, phaseLabel: 'Setup' };
+
+  it('offers no way onward from a phase that has barely started, and says how much is left', async () => {
+    // Five of fifteen — the exact state that used to show a continue button.
+    readAnswers.mockResolvedValue(allOf(SETUP.slice(0, 5)));
+    render(<PhaseConversation {...setup} />);
+    await waitFor(() => expect(readAnswers).toHaveBeenCalled());
+
+    expect(
+      screen.queryByRole('button', { name: /Continue to the next phase/ })
+    ).not.toBeInTheDocument();
+    expect(await screen.findByText(/are 10 things still to cover/i)).toBeInTheDocument();
+  });
+
+  it('counts the last one down in the singular, because "1 things" is the product not reading it', async () => {
+    // Phase 2, where two readings are asked as one question, so one of them outstanding is a real
+    // state. On a fifteen-reading phase it is not: the threshold leaves room for exactly one, so the
+    // last one outstanding is already the phase being covered.
+    readAnswers.mockResolvedValue(allOf(['reclaim_energy_peak_description']));
+    render(<PhaseConversation {...props} />);
+
+    expect(await screen.findByText(/is one thing still to cover/i)).toBeInTheDocument();
+  });
+
+  it('offers it with one still outstanding, so a leader is not held behind a single question', async () => {
+    // The shortfall is deliberate: the coach cannot record a decline, so a phase that demanded every
+    // reading would be held open forever by one a leader would rather not answer.
+    readAnswers.mockResolvedValue(allOf(SETUP.slice(0, 14)));
+    render(<PhaseConversation {...setup} />);
+
+    expect(
+      await screen.findByRole('button', { name: /Continue to the next phase/ })
+    ).toBeInTheDocument();
+  });
+
+  it('does not wait for a reading that does not apply to this leader', async () => {
+    // No fundraising in the role and no distributed team, so the two follow-ons are finished rather
+    // than missing. Eleven of the twelve that apply is covered; eleven of fifteen would not be.
+    readAnswers.mockResolvedValue({
+      ...allOf(
+        SETUP.filter(
+          (s) =>
+            s !== 'reclaim_setup_fundraising_support' &&
+            s !== 'reclaim_profile_distributed_impact' &&
+            s !== 'reclaim_setup_transition_detail' &&
+            s !== 'reclaim_setup_audit_period'
+        )
+      ),
+      reclaim_setup_fundraising_relevant: { ...stated('No'), valueJson: false },
+      reclaim_profile_distributed_team: { ...stated('No'), valueJson: false },
+      reclaim_setup_in_transition: { ...stated('No'), valueJson: false },
+    });
+    render(<PhaseConversation {...setup} />);
+
+    expect(
+      await screen.findByRole('button', { name: /Continue to the next phase/ })
+    ).toBeInTheDocument();
+  });
+
+  it('does not count the coach’s own guesses towards a phase being covered', async () => {
+    // A phase whose coverage is made of low-confidence inferences is a phase where the coach filled
+    // the audit in on the leader's behalf, which is the one thing the panel exists to prevent.
+    readAnswers.mockResolvedValue({
+      ...allOf(SETUP.slice(0, 8)),
+      ...Object.fromEntries(
+        SETUP.slice(8).map((slug) => [
+          slug,
+          {
+            value: 'Read between the lines',
+            valueJson: null,
+            sourceType: 'inferred',
+            confidence: 4,
+          },
+        ])
+      ),
+    });
+    render(<PhaseConversation {...setup} />);
+    await waitFor(() => expect(readAnswers).toHaveBeenCalled());
+
+    expect(
+      screen.queryByRole('button', { name: /Continue to the next phase/ })
+    ).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * The coach opens every phase, rather than the screen asking the leader to say hello into a silence.
+ *
+ * These pin the choice of moment, which is where the two kinds differ. An arrival fires because the
+ * leader got here; the reveal fires because they pressed a button (I12). Phase 1 has both, and their
+ * order is the thing worth holding: the arrival first, the reveal when it is asked for.
+ */
+describe('PhaseConversation — the coach opens the phase', () => {
+  const moment = () => screen.getByTestId('open-moment').textContent;
+
+  it('opens on arrival, without waiting to be spoken to', async () => {
+    render(<PhaseConversation {...props} />);
+    await waitFor(() => expect(readAnswers).toHaveBeenCalled());
+
+    expect(moment()).toBe('phase-2-open');
+  });
+
+  it('opens the setup phase too, which is the leader’s first minute in the product', async () => {
+    render(
+      <PhaseConversation {...props} phaseKey="phase-0-setup" phaseIndex={0} phaseLabel="Setup" />
+    );
+    await waitFor(() => expect(readAnswers).toHaveBeenCalled());
+
+    expect(moment()).toBe('phase-0-open');
+  });
+
+  it('does not open again once this run has had the arrival', async () => {
+    // The ledger is what makes a reload cost nothing: the moment is claimed server-side, and the
+    // client stops offering it as soon as the run says it has happened.
+    render(<PhaseConversation {...props} coachOpenings={['phase-2-open']} />);
+    await waitFor(() => expect(readAnswers).toHaveBeenCalled());
+
+    expect(moment()).toBe('none');
+  });
+
+  it('gives phase 1 its arrival first, and the reveal only when the leader asks (I12)', async () => {
+    readAnswers.mockResolvedValue(
+      Object.fromEntries(
+        [
+          'deep_work',
+          'learning_development',
+          'strategic_planning',
+          'team_development',
+          'organisational_oversight',
+          'relationship_building',
+          'delivery_operations',
+          'recovery_white_space',
+        ].map((a) => [
+          `reclaim_current_hours__${a}`,
+          { value: '5', valueJson: 5, sourceType: 'direct', confidence: 10 },
+        ])
+      )
+    );
+    const { rerender } = render(
+      <PhaseConversation
+        {...props}
+        phaseKey="phase-1-current"
+        phaseIndex={1}
+        phaseLabel="Current reality"
+      />
+    );
+
+    // Ready to reveal, and still the arrival: pressing the button is what moves it on.
+    expect(await screen.findByRole('button', { name: /Show me where the week is going/ }));
+    expect(moment()).toBe('phase-1-open');
+
+    // Once the arrival is behind them, the button hands the reveal over.
+    rerender(
+      <PhaseConversation
+        {...props}
+        phaseKey="phase-1-current"
+        phaseIndex={1}
+        phaseLabel="Current reality"
+        coachOpenings={['phase-1-open']}
+      />
+    );
+    await userEvent.click(screen.getByRole('button', { name: /Show me where the week is going/ }));
+
+    expect(moment()).toBe('phase-1-chart-reveal');
   });
 });
 
@@ -220,6 +444,23 @@ describe('PhaseConversation — the beats of phase 1', () => {
         { value: '5', valueJson: 5, sourceType: 'direct', confidence: 10 },
       ])
     );
+
+  /**
+   * The phase actually worked through, not only its eight figures.
+   *
+   * The beats below fire on the figures alone (the calendar branch and the reveal are gated on
+   * `everyVisibleAreaHasHours`), but the move onward is gated on the phase having happened — and this
+   * phase is nineteen readings, of which the figures are eight. A leader with eight numbers and no
+   * account of what any of that time looks like has had half the conversation this phase exists for.
+   */
+  const wholePhase1 = (): Record<string, unknown> => ({
+    ...everyArea(),
+    ...Object.fromEntries(
+      AREAS.map((a) => [`reclaim_current_detail__${a}`, stated('What that time looks like')])
+    ),
+    reclaim_current_deep_block_exists: { ...stated('Yes'), valueJson: true },
+    reclaim_current_deep_block_when: stated('Tuesday mornings'),
+  });
 
   const phase1 = {
     ...props,
@@ -273,7 +514,7 @@ describe('PhaseConversation — the beats of phase 1', () => {
 
   it('will not move on from phase 1 until the picture has been looked at', async () => {
     readAnswers.mockResolvedValue({
-      ...everyArea(),
+      ...wholePhase1(),
       reclaim_reflection_p1: {
         value: 'Too much delivery',
         valueJson: null,
@@ -291,7 +532,7 @@ describe('PhaseConversation — the beats of phase 1', () => {
 
   it('draws the picture once they ask, and then offers the move', async () => {
     readAnswers.mockResolvedValue({
-      ...everyArea(),
+      ...wholePhase1(),
       reclaim_reflection_p1: {
         value: 'Too much delivery',
         valueJson: null,

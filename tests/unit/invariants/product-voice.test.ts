@@ -63,6 +63,14 @@ const COACH_VOICED = [
   // product — before an account, before consent, standing in a room with a phone. If any screen is
   // coach voice, it is this one.
   'components/app/reclaim/access/join-form.tsx',
+  // The leader's own menu in the programme bar. Short strings, and one of them is how the product
+  // refers to the audits somebody has made of their working life, so it is the product speaking.
+  'components/app/reclaim/account-menu.tsx',
+  // The two account screens, once they joined the audit's frame and stopped being Sunrise's. They are
+  // the product talking about somebody's own record of themselves, and one of them has to say what
+  // closing an account does to their audits, which is the most consequential sentence on either.
+  'components/app/reclaim/account/account-settings.tsx',
+  'components/app/reclaim/account/profile-view.tsx',
   'components/app/reclaim/begin-audit.tsx',
   'components/app/reclaim/calendar/calendar-branch.tsx',
   'components/app/reclaim/calendar/calendar-entry.tsx',
@@ -82,6 +90,12 @@ const COACH_VOICED = [
   // the leader's — but it is the coach speaking on screen, and a stray label added here would be too.
   'components/app/reclaim/coach/transcript.tsx',
   'components/app/reclaim/consent-gate.tsx',
+  // The audit history. Everything a leader reads about their own past audits: the list, the link into
+  // it from the entry screen, and a finished audit opened again. Prose about their working life, at a
+  // moment they are deciding whether to do this a second time, so it is coach voice throughout.
+  'components/app/reclaim/history/audit-history.tsx',
+  'components/app/reclaim/history/history-link.tsx',
+  'components/app/reclaim/history/run-review.tsx',
   'components/app/reclaim/phase-rail.tsx',
   // A completed phase, opened again from the spine. It tells the leader what this screen is and what
   // it will not do to their audit, in prose, so it is coach voice by the same reading as the panels.
@@ -96,10 +110,14 @@ const COACH_VOICED = [
   'components/app/reclaim/phase/phase6-panel.tsx',
   'components/app/reclaim/phase/reflection.tsx',
   'components/app/reclaim/phase/setup-panel.tsx',
-  // The bar the full-screen frame carries. Three words of prose, one of which is the way out of the
-  // audit, so a leader reads it at the moment they are most likely to be looking for a door.
+  // The bar the full-screen frame carries, and the rail along the bottom. Between them they hold
+  // every word that is on screen no matter which part of the audit is open, which is the strongest
+  // reason to guard them: nothing else is read as often.
   'components/app/reclaim/programme-chrome.tsx',
+  'components/app/reclaim/programme-footer.tsx',
   'components/app/reclaim/programme-shell.tsx',
+  // Two words and an icon, both of which the leader reads as the product describing a choice.
+  'components/app/reclaim/theme-switch.tsx',
   'components/app/reclaim/referral-invite.tsx',
   'components/app/reclaim/repeat/comparison.tsx',
   'components/app/reclaim/repeat/trend-lines.tsx',
@@ -133,6 +151,7 @@ const NOT_COACH_VOICED = [
   'components/app/reclaim/calendar/types.ts',
   'components/app/reclaim/chart/palette.ts',
   'components/app/reclaim/format.ts',
+  'components/app/reclaim/history/actions.ts',
   'components/app/reclaim/phase/actions.ts',
   'components/app/reclaim/phase/config.ts',
   'components/app/reclaim/phase/hours.ts',
@@ -206,8 +225,14 @@ describe('I1 — the tool is not Rashmir, and is never the model', () => {
  * assertion a future session hits when it tries to helpfully wire the unused constant back up.
  */
 describe('open item 11 — the Phase 2 coaching signal reaches no leader', () => {
-  it('is rendered by no component', () => {
-    const users = walk('components')
+  it('is rendered by no component, and injected by no prompt', () => {
+    // **The coach half of this guard was missing.** It searched `components/` only, on the reading
+    // that "reaches a leader" means "appears on a screen". Since the audit became a conversation
+    // there is a second way to a leader's eyes: the phase context, whose strings the model speaks
+    // aloud. A session wiring the unused constant into `phase-context.ts` — an obvious thing to try
+    // while giving phase 2 a method — would have passed every check in this file. Found while
+    // writing that method.
+    const users = [...walk('components'), ...walk('lib/app/programme/coach')]
       .filter((p) => /\.tsx?$/.test(p))
       // Comments stripped: `phase2-panel.tsx` names the constant in its docblock to explain why it
       // is not rendered, and that explanation is the opposite of the problem.

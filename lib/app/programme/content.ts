@@ -65,6 +65,66 @@ export const RECLAIM_PHASE2_COACHING_SIGNAL =
   'Note: this is a rich topic worth exploring more deeply. Where useful, signal that a dedicated coaching conversation with Rashmir can go much further here.';
 
 /**
+ * The Phase 3 framing (§8) — a realistic target, not a fantasy. Verbatim (I11, hop-2 guarded).
+ *
+ * Instruction to the coach rather than copy for the leader, and a constant anyway. Paraphrased into
+ * `phase-context.ts` it would be Rashmir's wording reproduced outside the guarded set, which is the
+ * exact drift I11 exists to stop; and "a realistic target, not a fantasy" is good enough copy that
+ * somebody would have reached for it.
+ */
+export const RECLAIM_IDEAL_WEEK_FRAMING =
+  'Frame this as a realistic target, not a fantasy — grounded in what they now know about their energy, their priorities, and where the gaps are.';
+
+/**
+ * The Phase 3 challenge (§8) — the ideal week that has not moved. Verbatim (I11, hop-2 guarded).
+ *
+ * Names its own two cases: delivery and operations staying high, recovery staying near zero. The
+ * arithmetic that decides when it fires reads those two by name (`coach/ideal-week.ts`).
+ */
+export const RECLAIM_IDEAL_WEEK_CHALLENGE =
+  'Gently challenge any ideal week that looks suspiciously similar to their current reality — especially if delivery and operations remains high, or recovery remains near zero.';
+
+/**
+ * The Phase 4 hours question at a high weekly total (§8). Verbatim (I11, hop-2 guarded).
+ *
+ * The threshold is **not** in this string: it comes from `hourBands`, which is already config, so
+ * moving the line at which a total counts as unsustainable does not mean editing code.
+ */
+export const RECLAIM_HOURS_55_NOTE =
+  'For leaders running at 55+ hours, name the hours question clearly: the goal is not just to reallocate time but to reclaim a sustainable way of working. Sometimes the most strategic thing a leader can do is stop.';
+
+/**
+ * The permission-based challenge (Brief §5). Verbatim (I11, hop-2 guarded).
+ *
+ * **Once per audit, and that phrase is part of the quote rather than a note beside it**, because the
+ * scarcity is the mechanism: a coach with one challenge to spend has to spend it on the observation
+ * that is worth it. The permission is the other half — the tool asks, and waits, and only then says
+ * the direct thing. That gate is what buys it the licence to be blunt at all.
+ */
+export const RECLAIM_PERMISSION_CHALLENGE =
+  'Once per audit, no more: "May I offer a challenge?" followed by one clean, direct observation where it might have most value.';
+
+/**
+ * The wanted-not-dutiful question that closes the action plan (Brief §5). Verbatim (I11, hop-2 guarded).
+ *
+ * The second genuine challenge in the audit, and the one that decides whether the commitment survives
+ * contact with the leader's week. Also the source of Phase 5's fourth question, "how will you know",
+ * which the older system prompt does not have.
+ */
+export const RECLAIM_WANTED_NOT_DUTIFUL =
+  'The close asks: what, by when, how will you know, and crucially, "is this something you actually want to do, or something you think you should?"';
+
+/**
+ * The Phase 5 specificity calibration (§8). Verbatim (I11, hop-2 guarded).
+ *
+ * The one piece of the action phase that cannot be paraphrased without losing what it is for. "Be
+ * specific" is advice every model already agrees with and none of them act on; the worked pair is
+ * what makes the difference between the two legible.
+ */
+export const RECLAIM_ACTION_SPECIFICITY =
+  "Options should be specific and realistic — not 'do more deep work' but 'protect 7-8am on Monday, Wednesday and Friday as a non-negotiable deep work block, starting this week.'";
+
+/**
  * The recent-audit shortcut's confirm line (§4, F9 t-2). Verbatim, and **interpolated, not rewritten**:
  * the bracketed placeholders are filled from the leader's own previous answers.
  *

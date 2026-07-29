@@ -16,12 +16,16 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-const { registerMock, moduleContextMock, referBackMock, phaseMock } = vi.hoisted(() => ({
-  registerMock: vi.fn(),
-  moduleContextMock: vi.fn(),
-  referBackMock: vi.fn(),
-  phaseMock: vi.fn(),
-}));
+const { registerMock, moduleContextMock, referBackMock, phaseMock, presentationMock } = vi.hoisted(
+  () => ({
+    registerMock: vi.fn(),
+    moduleContextMock: vi.fn(),
+    referBackMock: vi.fn(),
+    phaseMock: vi.fn(),
+    presentationMock: vi.fn(),
+  })
+);
+vi.mock('@/lib/app/programme/config', () => ({ readReclaimPresentation: presentationMock }));
 vi.mock('@/lib/orchestration/chat/context-builder', () => ({
   registerContextContributor: registerMock,
 }));
@@ -46,9 +50,11 @@ beforeEach(() => {
   moduleContextMock.mockReset();
   referBackMock.mockReset();
   phaseMock.mockReset();
+  presentationMock.mockReset();
   moduleContextMock.mockResolvedValue('FRAMEWORK');
   referBackMock.mockResolvedValue({ keepingMeUp: null, whyNow: null, contextBlock: 'REFER BACK' });
   phaseMock.mockResolvedValue('PHASE');
+  presentationMock.mockResolvedValue({ lean: 'paraphrase', overrides: {} });
 });
 
 describe('initAppContextContributors', () => {
@@ -68,7 +74,27 @@ describe('initAppContextContributors', () => {
     expect(context).toBe('FRAMEWORK\n\nPHASE\n\nREFER BACK');
     expect(moduleContextMock).toHaveBeenCalledWith('reclaim-audit', { userId: 'u1' });
     expect(phaseMock).toHaveBeenCalledWith('u1');
-    expect(referBackMock).toHaveBeenCalledWith('u1');
+    // The refer-back is handed the presentation policy, which is what decides whether it may call
+    // itself a quote. Built beside the phase block rather than inside it, so it cannot borrow the
+    // config that block already read.
+    expect(referBackMock).toHaveBeenCalledWith('u1', { lean: 'paraphrase', overrides: {} });
+  });
+
+  it('still builds the refer-back when the presentation policy cannot be read', async () => {
+    // A config row that will not load is not a reason to lose the leader's own words at the gap.
+    presentationMock.mockRejectedValue(new Error('no config'));
+    initAppContextContributors();
+
+    const context = await loader()('reclaim-audit', { userId: 'u1' });
+
+    expect(context).toBe('FRAMEWORK\n\nPHASE\n\nREFER BACK');
+    // Falls back to the shipped default, which leans verbatim for the two refer-back slugs.
+    expect(referBackMock).toHaveBeenCalledWith(
+      'u1',
+      expect.objectContaining({
+        overrides: expect.objectContaining({ reclaim_setup_keeping_me_up: 'verbatim' }),
+      })
+    );
   });
 
   it('omits a leaf block that has nothing to say, without leaving a gap', async () => {

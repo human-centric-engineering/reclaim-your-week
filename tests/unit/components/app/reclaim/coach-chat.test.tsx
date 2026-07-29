@@ -126,10 +126,14 @@ describe('CoachChat', () => {
     expect(reflection).not.toBe(question);
   });
 
-  it('invites the leader to begin when there is no transcript yet', () => {
+  it('never asks the leader to open the conversation itself', () => {
+    // This used to read "when you are ready, say hello and we will begin", which asked someone who
+    // came to be guided to do the guiding. Every phase opens with a coach turn now, so the empty
+    // state is the gap before that turn arrives rather than an invitation to fill it.
     render(<CoachChat runId="run-1" conversationId={null} />);
 
-    expect(screen.getByText(/say hello and we will begin/)).toBeInTheDocument();
+    expect(screen.queryByText(/say hello/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/coach is opening this part/i)).toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -427,7 +431,7 @@ describe('CoachChat — the frame it is given', () => {
     render(<CoachChat runId="run-1" conversationId={null} opener="Tell me about your energy." />);
 
     expect(screen.getByText('Tell me about your energy.')).toBeInTheDocument();
-    expect(screen.queryByText(/say hello and we will begin/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/coach is opening this part/i)).not.toBeInTheDocument();
   });
 
   it('renders the phase’s intro, beats and footer around the transcript', () => {
@@ -522,5 +526,120 @@ describe('CoachChat — the frame it is given', () => {
     const section = screen.getByRole('region', { name: 'Conversation with the coach' });
     expect(section.className).toContain('h-[26rem]');
     expect(section.className).not.toContain('flex-1');
+  });
+});
+
+/**
+ * A run holds **one** conversation across all seven phases (I15), so the transcript rehydrates whole
+ * and every phase used to open on the entire audit so far — a leader on phase 2 met the phase 2
+ * signpost sitting on top of the whole of phase 0 and 1.
+ *
+ * `phaseMarks` is what cuts it, and the cut has to fall the right way twice: what belongs to this
+ * phase is drawn, and what came before is **kept** rather than dropped. It is the leader's own
+ * conversation, and a phase that hid it for good would be a worse answer than the endless scroll.
+ */
+describe('CoachChat — this phase’s part of one long conversation', () => {
+  /** A transcript with ids, as the messages endpoint returns it. */
+  const priorTranscript = () =>
+    json({
+      messages: [
+        { id: 'm1', role: 'user', content: 'I am John and I run delivery.' },
+        { id: 'm2', role: 'assistant', content: 'Good to meet you.' },
+        { id: 'm3', role: 'user', content: 'Roughly twenty hours in meetings.' },
+        { id: 'm4', role: 'assistant', content: 'That is half the week.' },
+      ],
+    });
+
+  it('draws only the turns after this phase’s mark', async () => {
+    fetchMock.mockResolvedValueOnce(priorTranscript());
+
+    render(
+      <CoachChat
+        runId="run-1"
+        conversationId="conv-1"
+        phaseKey="phase-2-energy"
+        phaseMarks={{ 'phase-2-energy': 'm2' }}
+      />
+    );
+
+    // The mark is the last message that already existed when the phase was entered, so the phase's
+    // own turns are everything after it.
+    expect(await screen.findByText('Roughly twenty hours in meetings.')).toBeInTheDocument();
+    expect(screen.getByText('That is half the week.')).toBeInTheDocument();
+    expect(screen.queryByText('I am John and I run delivery.')).not.toBeInTheDocument();
+  });
+
+  it('keeps what came before one press away rather than throwing it out', async () => {
+    fetchMock.mockResolvedValueOnce(priorTranscript());
+
+    render(
+      <CoachChat
+        runId="run-1"
+        conversationId="conv-1"
+        phaseKey="phase-2-energy"
+        phaseMarks={{ 'phase-2-energy': 'm2' }}
+      />
+    );
+
+    const open = await screen.findByRole('button', { name: /read what came earlier/i });
+    await userEvent.click(open);
+
+    expect(screen.getByText('I am John and I run delivery.')).toBeInTheDocument();
+    expect(screen.getByText('Good to meet you.')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /hide what came before/i }));
+
+    expect(screen.queryByText('I am John and I run delivery.')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /read what came earlier/i })).toBeInTheDocument();
+  });
+
+  it('offers nothing to expand on the first phase, which has nothing behind it', async () => {
+    fetchMock.mockResolvedValueOnce(priorTranscript());
+
+    render(
+      <CoachChat runId="run-1" conversationId="conv-1" phaseKey="phase-0-setup" phaseMarks={{}} />
+    );
+
+    expect(await screen.findByText('I am John and I run delivery.')).toBeInTheDocument();
+    // Phase 0 has no mark of its own — nothing was entered to reach it — so it opens at the start of
+    // the conversation and the disclosure would be a control that reveals an empty box.
+    expect(
+      screen.queryByRole('button', { name: /read what came earlier/i })
+    ).not.toBeInTheDocument();
+  });
+
+  it('draws the whole conversation when the caller has no marks to cut with', async () => {
+    fetchMock.mockResolvedValueOnce(priorTranscript());
+
+    // The review surfaces and the form path both mount this without a phase. Losing the cut must
+    // mean showing everything, never showing nothing.
+    render(<CoachChat runId="run-1" conversationId="conv-1" />);
+
+    expect(await screen.findByText('I am John and I run delivery.')).toBeInTheDocument();
+    expect(screen.getByText('That is half the week.')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /read what came earlier/i })
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows the phase as empty rather than showing it somebody else’s turns', async () => {
+    fetchMock.mockResolvedValueOnce(priorTranscript());
+
+    render(
+      <CoachChat
+        runId="run-1"
+        conversationId="conv-1"
+        phaseKey="phase-3-ideal"
+        phaseMarks={{ 'phase-3-ideal': 'm4' }}
+      />
+    );
+
+    // A phase entered but not yet spoken in. All four turns belong behind it, and none of them may
+    // be drawn as though the leader had said them in this phase.
+    const open = await screen.findByRole('button', { name: /read what came earlier/i });
+    expect(screen.queryByText('That is half the week.')).not.toBeInTheDocument();
+
+    await userEvent.click(open);
+    expect(screen.getByText('That is half the week.')).toBeInTheDocument();
   });
 });

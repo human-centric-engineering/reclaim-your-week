@@ -63,6 +63,11 @@ const content = {
   ],
   deepWorkNote: 'THE DEEP WORK NOTE',
   hourBands: [{ slug: 'high', lowerHours: 55, upperHours: null, label: 'A high total' }],
+  // The shipped defaults, so every test below reads the behaviour a leader actually meets. The
+  // non-default modes are exercised in their own describe rather than by moving this fixture.
+  presentation: { lean: 'paraphrase' as const, overrides: {} },
+  questioning: { pairing: 'paired' as const, opportunistic: true },
+  strategyMirror: false,
 };
 
 import { buildCoachPhaseContext } from '@/lib/app/programme/coach/phase-context';
@@ -73,6 +78,33 @@ const direct = (value: string) => ({
   sourceType: 'direct',
   confidence: 10,
 });
+
+/**
+ * Every visible area given an hours figure, with the named ones overridden.
+ *
+ * The chart beats gate on `chartRevealReady`, which needs a figure for every area, so a test about
+ * one near-zero area still has to supply the other seven. Defaulting to 8 keeps those seven
+ * comfortably inside their benchmarks, so only the overrides say anything.
+ */
+const areaHours = (overrides: Record<string, number> = {}) =>
+  Object.fromEntries(
+    [
+      'deep_work',
+      'learning_development',
+      'strategic_planning',
+      'team_development',
+      'organisational_oversight',
+      'relationship_building',
+      'delivery_operations',
+      'recovery_white_space',
+    ].map((area) => {
+      const value = overrides[area] ?? 8;
+      return [
+        `reclaim_current_hours__${area}`,
+        { value: String(value), valueJson: value, sourceType: 'direct', confidence: 10 },
+      ];
+    })
+  );
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -109,6 +141,121 @@ describe("the content the phase needs — Rashmir's words, from the operator's c
   it('leaves the areas out of a phase that is not about them', async () => {
     // Phase 2 is energy. Sending nine area definitions there is tokens for nothing.
     expect(await buildCoachPhaseContext('u1')).not.toContain('DEEP WORK PROSE');
+  });
+
+  /**
+   * The three phases that had no method at all.
+   *
+   * `contentForPhase` branched on phase 1 and phase 4; `momentForPhase` branched on the same two. So
+   * for energy, the ideal week and the action plan the entire behavioural instruction was the
+   * worklist rule beneath the capture list — "ask about one or two of these at a time". A model given
+   * a list of slugs and one rule about traversing it traverses the list, which is exactly what a
+   * leader described as the questions getting boring.
+   *
+   * Phase 5 was the sharpest case: it is a `COACH_OPENING_PHASES` moment the client fires on arrival,
+   * sending "open it the way your context describes" to a context that described nothing.
+   */
+  describe('the phases that had no method', () => {
+    it('gives phase 2 its two questions and the opportunity it exists to name', async () => {
+      loadPhaseProgress.mockResolvedValue({ phases: [], currentPhaseKey: 'phase-2-energy' });
+
+      const block = await buildCoachPhaseContext('u1');
+
+      // The signpost card already introduced the science, and cardLinesFor forbids restating a card.
+      expect(block).toContain('do not explain it again');
+      expect(block).toContain('reclaim_energy_peak_description');
+      expect(block).toContain('reclaim_energy_protected');
+      // The whole reason the phase exists, and the part that was missing.
+      expect(block).toContain('one of the most');
+      expect(block).toContain('significant opportunities available to them');
+      expect(block).toContain('do not leave them to notice it themselves');
+      // The distributed-team beat, and the slug that carries it across audits.
+      expect(block).toContain('reclaim_profile_distributed_impact');
+    });
+
+    it('never wires the retired coaching signal into phase 2', async () => {
+      // Decided at content-source.md: the sentence is written to the facilitator, so a leader reading
+      // it reads a leaked prompt. Guarded in the source text by product-voice.test.ts; guarded here
+      // in the assembled output, which is the thing that actually reaches anyone.
+      loadPhaseProgress.mockResolvedValue({ phases: [], currentPhaseKey: 'phase-2-energy' });
+
+      expect(await buildCoachPhaseContext('u1')).not.toContain('can go much further here');
+    });
+
+    it('gives phase 3 the framing and the four questions, ending on the one that gets skipped', async () => {
+      loadPhaseProgress.mockResolvedValue({ phases: [], currentPhaseKey: 'phase-3-ideal' });
+
+      const block = await buildCoachPhaseContext('u1');
+
+      expect(block).toContain('a realistic target, not a fantasy');
+      expect(block).toContain('reclaim_ideal_total_hours');
+      expect(block).toContain('reclaim_ideal_hours__<area>');
+      expect(block).toContain('reclaim_ideal_deep_block_when');
+      expect(block).toContain('reclaim_ideal_protected_commitment');
+      // A redesigned week is a wish; one commitment is something they can start on Monday.
+      expect(block).toContain('the one that matters most and the one most easily skipped');
+    });
+
+    it('gives phase 5 three options, the specificity test, and the wanted-not-dutiful question', async () => {
+      loadPhaseProgress.mockResolvedValue({ phases: [], currentPhaseKey: 'phase-5-action' });
+
+      const block = await buildCoachPhaseContext('u1');
+
+      expect(block).toContain('three options');
+      expect(block).toContain('reclaim_action_options');
+      // The calibration, verbatim. "Be specific" is advice every model agrees with and none act on.
+      expect(block).toContain('non-negotiable deep work block, starting this week');
+      // The three-part commitment, stated by the leader rather than summarised for them.
+      expect(block).toContain('reclaim_action_chosen');
+      expect(block).toContain('reclaim_action_stopping');
+      // The second genuine challenge in the whole audit, which reached the model nowhere before.
+      expect(block).toContain('or something you think you should?');
+      expect(block).toContain('reclaim_action_wanted_not_dutiful');
+      expect(block).toContain('better found now than');
+      // And the close, from two constants that were authored and guarded and used by no prompt.
+      expect(block).toContain('compound into transformation');
+      expect(block).toContain('more true to what you are here to do');
+    });
+
+    it("builds phase 5's options from this leader's own figures, not from advice", async () => {
+      loadPhaseProgress.mockResolvedValue({ phases: [], currentPhaseKey: 'phase-5-action' });
+      readRunAnswers.mockResolvedValue({
+        reclaim_current_hours__deep_work: {
+          value: '4',
+          valueJson: 4,
+          sourceType: 'direct',
+          confidence: 10,
+        },
+        reclaim_ideal_hours__deep_work: {
+          value: '10',
+          valueJson: 10,
+          sourceType: 'direct',
+          confidence: 10,
+        },
+        reclaim_energy_peak_description: direct('First thing, before the house wakes up.'),
+        reclaim_ideal_protected_commitment: direct('One morning a week with nothing in it.'),
+      });
+
+      const block = await buildCoachPhaseContext('u1');
+
+      // The same gap arithmetic phase 4 uses, because the options answer the same gap.
+      expect(block).toContain('4h now, 10h wanted, 6h more');
+      expect(block).toContain('"First thing, before the house wakes up."');
+      // They have already said what would make the biggest difference.
+      expect(block).toContain('"One morning a week with nothing in it."');
+      expect(block).toContain('do not go looking for something cleverer');
+    });
+
+    it('says nothing about figures in phase 5 when the run holds none yet', async () => {
+      loadPhaseProgress.mockResolvedValue({ phases: [], currentPhaseKey: 'phase-5-action' });
+      readRunAnswers.mockResolvedValue({});
+
+      const block = await buildCoachPhaseContext('u1');
+
+      // The method still lands; only the data beat is absent, rather than an empty heading.
+      expect(block).toContain('three options');
+      expect(block).not.toContain('What the options have to be built from');
+    });
   });
 
   it('omits the fundraising area from the content unless it is relevant to this leader', async () => {
@@ -279,6 +426,52 @@ describe('buildCoachPhaseContext — the card the leader has already read', () =
     ]);
 
     expect(await buildCoachPhaseContext('u1')).not.toContain('Do not restate');
+  });
+});
+
+/**
+ * The coach opens the phase, and closes every turn on something to answer.
+ *
+ * Both halves of the same complaint: a phase that introduced itself and then waited, and turns that
+ * ended on an observation and left the leader working out what was wanted. The trigger carries the
+ * "now" (`coach/opening.ts`); this block carries what an opening is *for*, which the trigger has no
+ * room to say and the cache would not let it vary anyway.
+ */
+describe('buildCoachPhaseContext — who speaks first, and how a turn ends', () => {
+  it('tells the coach the phase begins with it, and what the opening turn owes the leader', async () => {
+    const block = await buildCoachPhaseContext('u1');
+
+    expect(block).toContain('This phase begins with you, not with the leader');
+    expect(block).toContain('why it is worth their time');
+    expect(block).toContain('Then ask your first question');
+    expect(block).toContain('waiting to be greeted');
+  });
+
+  it('asks for something to answer at the end of every turn, not only the first', async () => {
+    const block = await buildCoachPhaseContext('u1');
+
+    expect(block).toContain('End every turn with something for the leader to answer or to do');
+    expect(block).toContain('Never end on an');
+  });
+
+  it('says that a sentence about recording is not a recording', async () => {
+    // Observed on a live audit: the coach replied "I'll record that you're the Head of Engineering,
+    // overseeing 25 people across 5 teams" and made no call at all, so the panel beside the leader
+    // stayed at nought of fifteen while the transcript said the opposite. The system prompt told it
+    // to record silently; nothing told it that narrating is not recording.
+    const block = await buildCoachPhaseContext('u1');
+
+    expect(block).toContain('Recording is a tool call and it is never a sentence');
+    expect(block).toContain('make the call instead');
+  });
+
+  it('does not tell the summary phase to open itself, because nobody arrives into it talking', async () => {
+    // Phase 6's takeaway is asked on the screen (a reflection is the leader's to write, I6) and its
+    // close fires after the summary renders. An opening instruction there would produce a coach
+    // introducing a phase the leader is already halfway through.
+    loadPhaseProgress.mockResolvedValue({ phases: [], currentPhaseKey: 'phase-6-summary' });
+
+    expect(await buildCoachPhaseContext('u1')).not.toContain('This phase begins with you');
   });
 });
 
@@ -697,6 +890,619 @@ describe('buildCoachPhaseContext — the texture of an area, not only its hours'
     expect(await buildCoachPhaseContext('u1')).toContain('not a follow-up for later');
   });
 
+  /**
+   * The capture list stopped being a flat checklist of slugs.
+   *
+   * Two changes, and they answer the same complaint. Readings that are one question are grouped as
+   * one question, because asked separately the figure arrives and the texture quietly never does.
+   * And the list stops presenting itself as a running order, because a coach that finishes its
+   * current area no matter what the leader has just opened up is a form with a nicer voice.
+   */
+  describe('the list as a checklist of what is outstanding, not a script', () => {
+    it('groups an area with its texture reading as a single question, in order', async () => {
+      readRunAnswers.mockResolvedValue({});
+
+      const block = await buildCoachPhaseContext('u1');
+
+      expect(block).toContain('- Ask these as one question, in this order:');
+      expect(block).toContain(
+        '  - reclaim_current_hours__deep_work: not yet captured in this audit. Deep work, hours a week (needs a figure)'
+      );
+      expect(block).toContain('  - reclaim_current_detail__deep_work: not yet captured');
+      // And the follower is not also listed again at its own place in the list.
+      expect(block).not.toContain('\n- reclaim_current_detail__deep_work:');
+    });
+
+    it('tells the coach to ask a grouped pair in one breath, and why', async () => {
+      readRunAnswers.mockResolvedValue({});
+
+      const block = await buildCoachPhaseContext('u1');
+
+      expect(block).toContain('ask them as one question, in one breath');
+      expect(block).toContain('figure closes cleanly and a description always feels like it can');
+    });
+
+    it('lists the readings singly when the operator has turned pairing off', async () => {
+      readRunAnswers.mockResolvedValue({});
+      readCoachContent.mockResolvedValue({
+        ...content,
+        questioning: { pairing: 'one-at-a-time', opportunistic: true },
+      });
+
+      const block = await buildCoachPhaseContext('u1');
+
+      expect(block).not.toContain('Ask these as one question');
+      expect(block).toContain('- reclaim_current_hours__deep_work: not yet captured');
+      expect(block).toContain('- reclaim_current_detail__deep_work: not yet captured');
+    });
+
+    it('says the order is not a running order, and to follow the leader off it', async () => {
+      readRunAnswers.mockResolvedValue({});
+
+      const block = await buildCoachPhaseContext('u1');
+
+      expect(block).toContain('The order here is not a running order');
+      expect(block).toContain('go there while it is live and ask it then');
+      // The reason it is safe to leave the order: the list itself is what stops the coach losing
+      // its place, which is why this instruction lives beside the list and not in the persona.
+      expect(block).toContain('cannot lose your place');
+    });
+
+    it('keeps a fixed order when the operator has turned opportunism off', async () => {
+      readRunAnswers.mockResolvedValue({});
+      readCoachContent.mockResolvedValue({
+        ...content,
+        questioning: { pairing: 'paired', opportunistic: false },
+      });
+
+      expect(await buildCoachPhaseContext('u1')).not.toContain('not a running order');
+    });
+
+    it('marks a reading that does not apply as complete, rather than leaving it outstanding', async () => {
+      // A leader who HAS a protected block is never asked what gets in its way. That slug used to sit
+      // on the list as "not yet captured" forever, which is what made the list unfinishable.
+      readRunAnswers.mockResolvedValue({
+        reclaim_current_deep_block_exists: {
+          value: 'Yes',
+          valueJson: true,
+          sourceType: 'direct',
+          confidence: 10,
+        },
+      });
+
+      const block = await buildCoachPhaseContext('u1');
+
+      expect(block).toContain(
+        '- reclaim_current_deep_block_blocker: does not apply to this leader, so it is complete as it stands. Do not ask it.'
+      );
+      // Its sibling, which applies to exactly the other leader, is still outstanding and still paired.
+      expect(block).toContain('  - reclaim_current_deep_block_when: not yet captured');
+    });
+
+    it('leaves a conditional reading outstanding while its condition is unanswered', async () => {
+      readRunAnswers.mockResolvedValue({});
+
+      const block = await buildCoachPhaseContext('u1');
+
+      // Not "does not apply": nobody has asked whether they have a block, so nothing is known yet.
+      expect(block).toContain('- reclaim_current_deep_block_blocker: not yet captured');
+      expect(block).not.toContain('reclaim_current_deep_block_blocker: does not apply');
+    });
+  });
+
+  /**
+   * Three fixes that share one root: prior answers were reaching the coach, but not always *this*
+   * run's, and not always in a form it could act on.
+   */
+  describe('what this audit already holds, and what it is missing', () => {
+    it('carries the earlier phases forward, from this run rather than from undated heads', async () => {
+      loadPhaseProgress.mockResolvedValue({ phases: [], currentPhaseKey: 'phase-3-ideal' });
+      readRunAnswers.mockResolvedValue({
+        reclaim_setup_weekly_hours: {
+          value: '58',
+          valueJson: 58,
+          sourceType: 'direct',
+          confidence: 10,
+        },
+        reclaim_energy_peak_description: direct('Early, before the inbox opens.'),
+      });
+
+      const block = await buildCoachPhaseContext('u1');
+
+      expect(block).toContain('What this audit has already established');
+      expect(block).toContain('- Your weekly hours: 58');
+      expect(block).toContain('- When you are at your best: Early, before the inbox opens.');
+      // The whole point: the framework's module context injects cross-run heads, so the coach has to
+      // be told which of the two it is reading.
+      expect(block).toContain('none of it from any earlier one');
+    });
+
+    it('says nothing about earlier phases on the first phase, or when they captured nothing', async () => {
+      loadPhaseProgress.mockResolvedValue({ phases: [], currentPhaseKey: 'phase-3-ideal' });
+      readRunAnswers.mockResolvedValue({});
+
+      expect(await buildCoachPhaseContext('u1')).not.toContain(
+        'What this audit has already established'
+      );
+    });
+
+    it('names an area that is near zero, not only one that is exactly zero', async () => {
+      // The Brief says "if a category is NEAR zero". `ChartData.unallocated` is `hours === 0`, so an
+      // hour of recovery in a full week was invisible to the beat written for exactly that leader.
+      loadPhaseProgress.mockResolvedValue({ phases: [], currentPhaseKey: 'phase-1-current' });
+      findFirst.mockResolvedValue({ id: 'run-1', coachOpenings: ['phase-1-chart-reveal'] });
+      readRunAnswers.mockResolvedValue({
+        ...areaHours({ deep_work: 1, recovery_white_space: 1 }),
+        // Deep work is the one area the content gives no percentage range to ("measured by presence
+        // of protected blocks"), so the percentage rule can never reach it. The signal the content
+        // itself nominates is this one.
+        reclaim_current_deep_block_exists: {
+          value: 'No',
+          valueJson: false,
+          sourceType: 'direct',
+          confidence: 10,
+        },
+      });
+
+      const block = await buildCoachPhaseContext('u1');
+
+      expect(block).toContain('At or near nothing this period');
+      // The Brief singles these two out, and names recovery first.
+      expect(block).toMatch(/At or near nothing this period: Recovery & white space, Deep work/);
+      // Named as something the week took, never as a discipline problem (I17).
+      expect(block).toContain('not somewhere they chose');
+    });
+
+    it('leaves deep work out of the absence list when the leader does have a protected block', async () => {
+      // The other half of the deep-work rule. Its hours can be low without its absence being the
+      // thing to wonder about, because the content measures it by protected blocks and not by share
+      // of the week — so a leader with a block and few hours is not the leader this beat is for.
+      loadPhaseProgress.mockResolvedValue({ phases: [], currentPhaseKey: 'phase-1-current' });
+      findFirst.mockResolvedValue({ id: 'run-1', coachOpenings: ['phase-1-chart-reveal'] });
+      readRunAnswers.mockResolvedValue({
+        ...areaHours({ deep_work: 1, recovery_white_space: 1 }),
+        reclaim_current_deep_block_exists: {
+          value: 'Yes',
+          valueJson: true,
+          sourceType: 'direct',
+          confidence: 10,
+        },
+      });
+
+      const block = await buildCoachPhaseContext('u1');
+
+      expect(block).toMatch(/At or near nothing this period: Recovery & white space\./);
+    });
+
+    it('quotes the gap refer-back from this run, rather than deferring to context', async () => {
+      loadPhaseProgress.mockResolvedValue({ phases: [], currentPhaseKey: 'phase-4-gap' });
+      readRunAnswers.mockResolvedValue({
+        reclaim_current_hours__deep_work: {
+          value: '4',
+          valueJson: 4,
+          sourceType: 'direct',
+          confidence: 10,
+        },
+        reclaim_ideal_hours__deep_work: {
+          value: '10',
+          valueJson: 10,
+          sourceType: 'direct',
+          confidence: 10,
+        },
+        reclaim_setup_keeping_me_up: direct('That none of it holds without me.'),
+      });
+
+      const block = await buildCoachPhaseContext('u1');
+
+      expect(block).toContain('from this audit and not an earlier one');
+      expect(block).toContain('"That none of it holds without me."');
+      // The instruction that used to point at the framework's cross-run heads is gone.
+      expect(block).not.toContain('are elsewhere in your context');
+    });
+
+    it('puts their priorities next to the areas with no time, and leaves the join to the coach', async () => {
+      loadPhaseProgress.mockResolvedValue({ phases: [], currentPhaseKey: 'phase-4-gap' });
+      readRunAnswers.mockResolvedValue({
+        ...areaHours({ deep_work: 4, recovery_white_space: 0 }),
+        reclaim_ideal_hours__deep_work: {
+          value: '10',
+          valueJson: 10,
+          sourceType: 'direct',
+          confidence: 10,
+        },
+        reclaim_setup_priorities: direct('Grow the fellowship, and hand over delivery.'),
+      });
+
+      const block = await buildCoachPhaseContext('u1');
+
+      expect(block).toContain('"Grow the fellowship, and hand over delivery."');
+      expect(block).toContain('reclaim_gap_unfunded_priorities');
+      expect(block).toContain('name it as theirs');
+      // No attempt to compute the join: free-text priorities have no bucket mapping.
+      expect(block).toContain('Say which of their own priorities');
+    });
+  });
+
+  /**
+   * The phase-3 challenge. Specified in the source, slotted, and until now wired to nothing.
+   */
+  describe('the ideal week that has not moved', () => {
+    /** Both weeks, with the named areas overridden on each side. */
+    const bothWeeks = (current: Record<string, number>, ideal: Record<string, number>) => {
+      const out: Record<string, unknown> = {};
+      for (const area of [
+        'deep_work',
+        'learning_development',
+        'strategic_planning',
+        'team_development',
+        'organisational_oversight',
+        'relationship_building',
+        'delivery_operations',
+        'recovery_white_space',
+      ]) {
+        const now = current[area] ?? 5;
+        const want = ideal[area] ?? 5;
+        out[`reclaim_current_hours__${area}`] = {
+          value: String(now),
+          valueJson: now,
+          sourceType: 'direct',
+          confidence: 10,
+        };
+        out[`reclaim_ideal_hours__${area}`] = {
+          value: String(want),
+          valueJson: want,
+          sourceType: 'direct',
+          confidence: 10,
+        };
+      }
+      return out;
+    };
+
+    it('puts the two weeks side by side once the ideal week is complete', async () => {
+      loadPhaseProgress.mockResolvedValue({ phases: [], currentPhaseKey: 'phase-3-ideal' });
+      readRunAnswers.mockResolvedValue(bothWeeks({ deep_work: 4 }, { deep_work: 12 }));
+
+      const block = await buildCoachPhaseContext('u1');
+
+      expect(block).toContain('The week they have just designed, next to the one they described');
+      expect(block).toContain('4h now, 12h wanted, 8h more');
+    });
+
+    it('challenges a week that came back looking like the current one, with the figures', async () => {
+      loadPhaseProgress.mockResolvedValue({ phases: [], currentPhaseKey: 'phase-3-ideal' });
+      readRunAnswers.mockResolvedValue(
+        bothWeeks(
+          { delivery_operations: 30, recovery_white_space: 1 },
+          { delivery_operations: 29, recovery_white_space: 1 }
+        )
+      );
+
+      const block = await buildCoachPhaseContext('u1');
+
+      // The source's own sentence, verbatim from the constant.
+      expect(block).toContain('suspiciously similar to their current reality');
+      // And the specific evidence, because a vague challenge can be put down and a numbered one cannot.
+      expect(block).toContain('above its guide in both weeks');
+      expect(block).toContain('near nothing in both weeks');
+      // Curiosity, not verdict (I16/I17).
+      expect(block).toContain('what would have to be true');
+      expect(block).toContain('that is a');
+      expect(block).toContain('real answer');
+    });
+
+    it('says nothing while the ideal week is still half built', async () => {
+      loadPhaseProgress.mockResolvedValue({ phases: [], currentPhaseKey: 'phase-3-ideal' });
+      const answers = bothWeeks({}, {});
+      delete answers['reclaim_ideal_hours__team_development'];
+      readRunAnswers.mockResolvedValue(answers);
+
+      const block = await buildCoachPhaseContext('u1');
+
+      // Would otherwise fire on the first turn of every phase 3, because an unbuilt week is all zeroes.
+      expect(block).not.toContain('The week they have just designed');
+      expect(block).not.toContain('suspiciously similar');
+      // The method is still there; only the data beat is absent.
+      expect(block).toContain('a realistic target, not a fantasy');
+    });
+
+    it('does not challenge a week that genuinely changed', async () => {
+      loadPhaseProgress.mockResolvedValue({ phases: [], currentPhaseKey: 'phase-3-ideal' });
+      readRunAnswers.mockResolvedValue(
+        bothWeeks(
+          { delivery_operations: 30, deep_work: 2, recovery_white_space: 1 },
+          { delivery_operations: 8, deep_work: 14, recovery_white_space: 9 }
+        )
+      );
+
+      const block = await buildCoachPhaseContext('u1');
+
+      expect(block).toContain('The week they have just designed');
+      expect(block).not.toContain('suspiciously similar');
+    });
+
+    it('stops challenging once the phase reflection is recorded', async () => {
+      // The challenge belongs before the pause, not after it. Re-offering it once the leader has said
+      // what they notice is arguing with them.
+      loadPhaseProgress.mockResolvedValue({ phases: [], currentPhaseKey: 'phase-3-ideal' });
+      readRunAnswers.mockResolvedValue({
+        ...bothWeeks({ delivery_operations: 30 }, { delivery_operations: 29 }),
+        reclaim_reflection_p3: direct('It looks like I did not really let myself imagine it.'),
+      });
+
+      const block = await buildCoachPhaseContext('u1');
+
+      expect(block).not.toContain('suspiciously similar');
+      // The comparison itself stays: it is information, not a challenge.
+      expect(block).toContain('The week they have just designed');
+    });
+  });
+
+  /**
+   * The gap phase's three beats that were specified, slotted, and wired to nothing.
+   */
+  describe('the one challenge, the mirror, and the hours question', () => {
+    const gapAnswers = (extra: Record<string, unknown> = {}) => ({
+      reclaim_current_hours__deep_work: {
+        value: '4',
+        valueJson: 4,
+        sourceType: 'direct',
+        confidence: 10,
+      },
+      reclaim_ideal_hours__deep_work: {
+        value: '10',
+        valueJson: 10,
+        sourceType: 'direct',
+        confidence: 10,
+      },
+      ...extra,
+    });
+
+    it('offers the permission challenge, and makes it wait for an answer', async () => {
+      loadPhaseProgress.mockResolvedValue({ phases: [], currentPhaseKey: 'phase-4-gap' });
+      readRunAnswers.mockResolvedValue(gapAnswers());
+
+      const block = await buildCoachPhaseContext('u1');
+
+      // The Brief's sentence, verbatim, scarcity included — the "once per audit" is the mechanism.
+      expect(block).toContain('May I offer a challenge?');
+      expect(block).toContain('Once per audit, no more');
+      // Asking and answering yourself is not permission.
+      expect(block).toContain('stop and wait for their');
+      expect(block).toContain('Asking and answering yourself is not permission');
+      // A decline is an answer, and is still recorded as offered.
+      expect(block).toContain('A decline is recorded as offered');
+      expect(block).toContain('reclaim_gap_challenge_offered');
+    });
+
+    it('does not offer a second challenge once one has been spent', async () => {
+      loadPhaseProgress.mockResolvedValue({ phases: [], currentPhaseKey: 'phase-4-gap' });
+      readRunAnswers.mockResolvedValue(
+        gapAnswers({
+          reclaim_gap_challenge_offered: {
+            value: 'Yes',
+            valueJson: true,
+            sourceType: 'direct',
+            confidence: 10,
+          },
+          reclaim_gap_challenge_response: direct('That landed. I have been avoiding it.'),
+        })
+      );
+
+      const block = await buildCoachPhaseContext('u1');
+
+      expect(block).toContain('has already been offered, so do not offer another');
+      expect(block).toContain('"That landed. I have been avoiding it."');
+      expect(block).not.toContain('May I offer a challenge?');
+    });
+
+    it('suppresses the conversational challenge for a leader who met it on the form', async () => {
+      // The guard lives in the slot rather than in either surface's bookkeeping, which is the whole
+      // reason it is a slot: `phase4-panel.tsx` writes it on save, so one challenge per audit holds
+      // across both paths. A run-ledger moment could not have done this.
+      loadPhaseProgress.mockResolvedValue({ phases: [], currentPhaseKey: 'phase-4-gap' });
+      readRunAnswers.mockResolvedValue(
+        gapAnswers({
+          reclaim_gap_challenge_offered: {
+            value: 'Yes',
+            valueJson: true,
+            sourceType: 'direct',
+            confidence: 10,
+          },
+        })
+      );
+
+      expect(await buildCoachPhaseContext('u1')).not.toContain('May I offer a challenge?');
+    });
+
+    it('warns the coach off repeating the challenge phase 3 already made', async () => {
+      loadPhaseProgress.mockResolvedValue({ phases: [], currentPhaseKey: 'phase-4-gap' });
+      readRunAnswers.mockResolvedValue({
+        // An ideal week identical to the current one, complete across every visible area, plus a
+        // phase-3 reflection — so that challenge is known to have fired.
+        ...Object.fromEntries(
+          [
+            'deep_work',
+            'learning_development',
+            'strategic_planning',
+            'team_development',
+            'organisational_oversight',
+            'relationship_building',
+            'delivery_operations',
+            'recovery_white_space',
+          ].flatMap((area) => [
+            [
+              `reclaim_current_hours__${area}`,
+              { value: '6', valueJson: 6, sourceType: 'direct', confidence: 10 },
+            ],
+            [
+              `reclaim_ideal_hours__${area}`,
+              { value: '6', valueJson: 6, sourceType: 'direct', confidence: 10 },
+            ],
+          ])
+        ),
+        reclaim_reflection_p3: direct('Not much moved, did it.'),
+      });
+
+      const block = await buildCoachPhaseContext('u1');
+
+      expect(block).toContain('Do not make the same observation twice');
+    });
+
+    it('names the hours themselves when the total is in the unsustainable band', async () => {
+      loadPhaseProgress.mockResolvedValue({ phases: [], currentPhaseKey: 'phase-4-gap' });
+      readRunAnswers.mockResolvedValue(
+        gapAnswers({
+          reclaim_setup_weekly_hours: {
+            value: '60',
+            valueJson: 60,
+            sourceType: 'direct',
+            confidence: 10,
+          },
+        })
+      );
+
+      const block = await buildCoachPhaseContext('u1');
+
+      // Derived from `hourBands`, which is already operator-editable, rather than a hardcoded 55.
+      expect(block).toContain('the most strategic thing a leader can do is stop');
+    });
+
+    it('leaves the hours question alone below the band', async () => {
+      loadPhaseProgress.mockResolvedValue({ phases: [], currentPhaseKey: 'phase-4-gap' });
+      readRunAnswers.mockResolvedValue(
+        gapAnswers({
+          reclaim_setup_weekly_hours: {
+            value: '42',
+            valueJson: 42,
+            sourceType: 'direct',
+            confidence: 10,
+          },
+        })
+      );
+
+      expect(await buildCoachPhaseContext('u1')).not.toContain(
+        'the most strategic thing a leader can do is stop'
+      );
+    });
+
+    it('offers the strategy mirror only when the operator has it on', async () => {
+      loadPhaseProgress.mockResolvedValue({ phases: [], currentPhaseKey: 'phase-4-gap' });
+      readRunAnswers.mockResolvedValue(gapAnswers());
+
+      // Off by config: the source hedges its placement as Rashmir's call, so the seam is hers.
+      expect(await buildCoachPhaseContext('u1')).not.toContain('If a stranger read your calendar');
+
+      readCoachContent.mockResolvedValue({ ...content, strategyMirror: true });
+      const block = await buildCoachPhaseContext('u1');
+
+      expect(block).toContain('If a stranger read your calendar');
+      expect(block).toContain('reclaim_gap_strategy_mirror');
+      // An offer, so it keeps the offer tier's rule.
+      expect(block).toContain('do not return to it');
+    });
+  });
+
+  /**
+   * The last thing the list could not say: which captured readings are actually finished.
+   *
+   * Everything the audit knows came back as `captured as "…"`, so a four-line account and the word
+   * "meetings" looked identical, and `confidence 4, inferred` was rendered and then acted on by
+   * nothing. Landing last is deliberate: once phases 2, 3 and 5 have a method, "short" reads as *go
+   * deeper here*; before that it read as *fill this in better*, which is optimising the checklist
+   * rather than replacing it.
+   */
+  describe('readings that are captured and still owed a turn', () => {
+    it('marks a texture reading that came back as a note', async () => {
+      loadPhaseProgress.mockResolvedValue({ phases: [], currentPhaseKey: 'phase-1-current' });
+      readRunAnswers.mockResolvedValue({
+        reclaim_current_detail__deep_work: direct('Meetings mostly.'),
+      });
+
+      const block = await buildCoachPhaseContext('u1');
+
+      expect(block).toContain(
+        'captured as "Meetings mostly." (direct, confidence 10), and short. Deep work, in practice'
+      );
+      expect(block).toContain('A short answer is not a bad answer');
+      expect(block).toContain('go back once to one or two of the short ones');
+    });
+
+    it('marks an inference the leader has not seen, and says what to do with it', async () => {
+      loadPhaseProgress.mockResolvedValue({ phases: [], currentPhaseKey: 'phase-2-energy' });
+      readRunAnswers.mockResolvedValue({
+        reclaim_energy_protected: {
+          value: 'Their peak hours go on standups.',
+          valueJson: null,
+          sourceType: 'inferred',
+          confidence: 5,
+        },
+      });
+
+      const block = await buildCoachPhaseContext('u1');
+
+      expect(block).toContain('(inferred, confidence 5), not yet confirmed.');
+      // The honesty obligation: the audit currently claims something nobody said.
+      expect(block).toContain('the audit currently claims something they have not said');
+      expect(block).toContain('offer the unconfirmed ones back');
+    });
+
+    it('caps the short flags, so a phase never becomes an interview', async () => {
+      // This cap is what actually holds the restraint rule up. A coach shown eleven short readings
+      // and told to go back for them is conducting an interview, whatever the wording says.
+      loadPhaseProgress.mockResolvedValue({ phases: [], currentPhaseKey: 'phase-1-current' });
+      readRunAnswers.mockResolvedValue(
+        Object.fromEntries(
+          [
+            'deep_work',
+            'learning_development',
+            'strategic_planning',
+            'team_development',
+            'organisational_oversight',
+            'relationship_building',
+          ].map((area) => [`reclaim_current_detail__${area}`, direct('Meetings.')])
+        )
+      );
+
+      const block = await buildCoachPhaseContext('u1');
+
+      expect(block.match(/, and short\./g) ?? []).toHaveLength(3);
+    });
+
+    it('says nothing about short or unconfirmed readings when there are none', async () => {
+      // A paragraph about what to do with short readings, printed for a phase that has none, is an
+      // invitation to go looking for one.
+      loadPhaseProgress.mockResolvedValue({ phases: [], currentPhaseKey: 'phase-1-current' });
+      readRunAnswers.mockResolvedValue({
+        reclaim_current_detail__deep_work: direct(
+          'Board papers, mostly, and it always slides to the evening because the day fills up.'
+        ),
+      });
+
+      const block = await buildCoachPhaseContext('u1');
+
+      expect(block).not.toContain('A short answer is not a bad answer');
+      expect(block).not.toContain(', and short.');
+    });
+
+    it('never flags a typed reading, or one a short answer completes', async () => {
+      loadPhaseProgress.mockResolvedValue({ phases: [], currentPhaseKey: 'phase-0-setup' });
+      readRunAnswers.mockResolvedValue({
+        reclaim_setup_weekly_hours: {
+          value: '58',
+          valueJson: 58,
+          sourceType: 'direct',
+          confidence: 10,
+        },
+        reclaim_profile_first_name: direct('Rashmir'),
+      });
+
+      const block = await buildCoachPhaseContext('u1');
+
+      expect(block).toContain('captured as "58" (direct, confidence 10). Your weekly hours');
+      expect(block).toContain('captured as "Rashmir" (direct, confidence 10). Your first name');
+    });
+  });
+
   it('separates a reading that does not apply from one that was never asked', async () => {
     readRunAnswers.mockResolvedValue({});
 
@@ -714,8 +1520,52 @@ describe('buildCoachPhaseContext — the texture of an area, not only its hours'
     const block = await buildCoachPhaseContext('u1');
 
     expect(block).toContain('Before you say this phase is done');
-    // One offer, not a grind: the leader keeps the right to decline.
-    expect(block).toContain('take a no');
+  });
+
+  /**
+   * The restraint rule and the capture rule are two different rules about two different beats, and
+   * the product had been applying the first to the second. `Time_Audit_Tool_Prompt_Text.md:35` opens
+   * by naming its own scope ("at key moments, particularly after presenting the Phase 1 visual and
+   * after the gap analysis, ask the client what they are noticing") before it says not to probe
+   * repeatedly, so it governs the reflection pause. `:119-122` governs capture and gives no opt-out.
+   *
+   * These four assertions are the guard on that distinction, because it is the one a future edit is
+   * most likely to flatten back into a single rule — in either direction.
+   */
+  it('presses on the phase readings while still taking a no on anything merely offered', async () => {
+    // Every area answered, so the calendar branch renders and both tiers are in one block — which is
+    // the state that matters: the two rules have to read as different rules side by side.
+    readRunAnswers.mockResolvedValue(
+      Object.fromEntries(
+        [
+          'deep_work',
+          'learning_development',
+          'strategic_planning',
+          'team_development',
+          'organisational_oversight',
+          'relationship_building',
+          'delivery_operations',
+          'recovery_white_space',
+        ].map((area) => [
+          `reclaim_current_hours__${area}`,
+          { value: '5', valueJson: 5, sourceType: 'direct', confidence: 10 },
+        ])
+      )
+    );
+
+    const block = await buildCoachPhaseContext('u1');
+
+    // An offer stays an offer, and gains an explicit "do not circle back".
+    expect(block).toContain('take no for an answer without persuading');
+    expect(block).toContain('do not return to it');
+    // A central reading gets one genuine second pass.
+    expect(block).toContain('ask again in different words');
+    // Bounded, in the same paragraph rather than left to the system prompt: I18's rule that a leader
+    // sitting with something is not someone to press, and a hard cap of one.
+    expect(block).toContain('still sitting with');
+    expect(block).toContain('Once each');
+    // And the older, flatter instruction must not come back alongside it.
+    expect(block).not.toContain('One offer, in their own language, take a no');
   });
 
   /**

@@ -10,6 +10,8 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import type { ReactElement } from 'react';
 
 const { readAnswers, readLabels, saveAnswer } = vi.hoisted(() => ({
   readAnswers: vi.fn(),
@@ -62,6 +64,11 @@ const conversation = [
   },
 ];
 
+/** Renders with a ready `userEvent` instance, for the tests below that click through the drawer. */
+function renderWithUser(ui: ReactElement) {
+  return { user: userEvent.setup(), ...render(ui) };
+}
+
 const props = {
   runId: 'run-1',
   phaseKey: 'phase-1-current',
@@ -69,8 +76,9 @@ const props = {
   phaseLabel: 'Current reality',
   conversationId: 'conv-1',
   phaseMarks: { 'phase-1-current': 'm2' },
-  returnIndex: 2,
-  returnLabel: 'Energy',
+  // The whole destination phrase, not an index and a label: a finished audit read from the history
+  // returns to its summary rather than to a phase, and only one of those can be built from a number.
+  returnLabel: 'phase 2, Energy',
   onReturn: vi.fn(),
 };
 
@@ -160,5 +168,163 @@ describe('PhaseReview', () => {
 
     const back = await screen.findAllByRole('button', { name: /Back to phase 2, Energy/ });
     expect(back.length).toBeGreaterThan(0);
+  });
+
+  it('names the destination it was given, so a finished audit can return to its summary', async () => {
+    render(<PhaseReview {...props} returnLabel="the summary" />);
+
+    const back = await screen.findAllByRole('button', { name: /Back to the summary/ });
+    expect(back.length).toBeGreaterThan(0);
+  });
+
+  /**
+   * Read-only is the mode a finished audit is read in. The server already refuses the write
+   * (`assertActiveOwnedRun`), so what this pins is that the screen stops *offering* it: a correction
+   * button that can only fail is worse than no button, and it would tell a leader their finished
+   * figures are still in play.
+   */
+  describe('a finished audit, read back', () => {
+    /** One reading the coach inferred, which is what earns the confirm and correct offer. */
+    function anInferredReading() {
+      return {
+        ...everyAreaAnswered(),
+        reclaim_current_hours__deep_work: {
+          value: '5',
+          valueJson: 5,
+          sourceType: 'inferred',
+          confidence: 3,
+        },
+      };
+    }
+
+    it('offers no correction, because the server would refuse the write', async () => {
+      readAnswers.mockResolvedValue(anInferredReading());
+      render(<PhaseReview {...props} readOnly />);
+
+      await screen.findByText('About five.');
+      expect(screen.queryByRole('button', { name: /Yes, that is right/ })).toBeNull();
+      expect(screen.queryByRole('button', { name: /Not quite/ })).toBeNull();
+    });
+
+    it('still offers the correction while the audit is live', async () => {
+      readAnswers.mockResolvedValue(anInferredReading());
+      render(<PhaseReview {...props} />);
+
+      await waitFor(() =>
+        expect(
+          screen.getAllByRole('button', { name: /Yes, that is right/ }).length
+        ).toBeGreaterThan(0)
+      );
+    });
+
+    it('says the audit is finished rather than that the phase is behind them', async () => {
+      render(<PhaseReview {...props} readOnly />);
+
+      // Specific enough to tell this line from the captured panel's own finished-audit note, which
+      // opens with the same words.
+      expect(await screen.findByText(/nothing here changes it/)).toBeInTheDocument();
+      expect(screen.queryByText(/nothing here moves your audit/)).toBeNull();
+    });
+
+    /**
+     * `readOnly` reaches `CapturedPanel`, which is where the correction buttons actually live and
+     * where the server-refusal risk actually sits — the assertions above already cover that they
+     * never render. This confirms the prop is threaded through rather than merely accepted and
+     * dropped, by checking the line the panel itself only shows in the finished-audit case.
+     */
+    it('tells CapturedPanel the audit is finished, not just the transcript banner', async () => {
+      render(<PhaseReview {...props} readOnly />);
+
+      await screen.findByText('About five.');
+      expect(
+        await screen.findByText(/This audit is finished, so these are as you left them/)
+      ).toBeInTheDocument();
+    });
+  });
+
+  /**
+   * The panel has no column of its own below `xl`, so it is one tap away instead (the "What the
+   * coach noted" link). Below pins that it actually opens, and that either of its two ways to close
+   * it — the backdrop and the "Close" link — actually close it, rather than the drawer being stuck
+   * open or the buttons being decorative.
+   */
+  describe('the panel drawer below `xl`', () => {
+    it('opens a second copy of what the coach noted when tapped', async () => {
+      const { user } = renderWithUser(<PhaseReview {...props} />);
+      await screen.findByText('About five.');
+
+      // Closed: only the always-present sidebar copy exists.
+      expect(
+        screen.getAllByRole('complementary', { name: 'What the coach has recorded' })
+      ).toHaveLength(1);
+
+      await user.click(screen.getByRole('button', { name: 'What the coach noted' }));
+
+      expect(
+        screen.getAllByRole('complementary', { name: 'What the coach has recorded' })
+      ).toHaveLength(2);
+    });
+
+    it('closes again from the backdrop, back down to the one sidebar copy', async () => {
+      const { user } = renderWithUser(<PhaseReview {...props} />);
+      await screen.findByText('About five.');
+      await user.click(screen.getByRole('button', { name: 'What the coach noted' }));
+      expect(
+        screen.getAllByRole('complementary', { name: 'What the coach has recorded' })
+      ).toHaveLength(2);
+
+      await user.click(screen.getByRole('button', { name: 'Close what the coach has noted' }));
+
+      expect(
+        screen.getAllByRole('complementary', { name: 'What the coach has recorded' })
+      ).toHaveLength(1);
+    });
+
+    it('closes again from the drawer’s own "Close" link', async () => {
+      const { user } = renderWithUser(<PhaseReview {...props} />);
+      await screen.findByText('About five.');
+      await user.click(screen.getByRole('button', { name: 'What the coach noted' }));
+
+      // Two "Close…" affordances exist once open (backdrop + link); the link is named exactly "Close".
+      await user.click(screen.getByRole('button', { name: 'Close' }));
+
+      expect(
+        screen.getAllByRole('complementary', { name: 'What the coach has recorded' })
+      ).toHaveLength(1);
+    });
+  });
+
+  it('re-reads the run after a correction is saved, so the figure it shows is the one just confirmed', async () => {
+    readAnswers.mockResolvedValueOnce({
+      ...everyAreaAnswered(),
+      reclaim_current_hours__deep_work: {
+        value: '5',
+        valueJson: 5,
+        sourceType: 'inferred',
+        confidence: 3,
+      },
+    });
+    readAnswers.mockResolvedValue(everyAreaAnswered());
+    saveAnswer.mockResolvedValue(undefined);
+
+    const { user } = renderWithUser(<PhaseReview {...props} />);
+
+    const confirm = await screen.findByRole('button', { name: /Yes, that is right/ });
+    await user.click(confirm);
+
+    // The save landed, and the panel re-read the run rather than only trusting local state.
+    await waitFor(() => expect(saveAnswer).toHaveBeenCalled()); // test-review:accept no_arg_called — callback-fired guard;
+    await waitFor(() => expect(readAnswers).toHaveBeenCalledTimes(2));
+  });
+
+  it('still shows the transcript and picture when the answers for this phase fail to load', async () => {
+    readAnswers.mockRejectedValue(new Error('network down'));
+
+    render(<PhaseReview {...props} />);
+
+    // The conversation does not depend on the answers call, so it still reads.
+    expect(await screen.findByText('About five.')).toBeInTheDocument();
+    // No figures came back, so there is nothing to check and no crash from the rejection.
+    expect(screen.queryByRole('button', { name: /Yes, that is right/ })).toBeNull();
   });
 });

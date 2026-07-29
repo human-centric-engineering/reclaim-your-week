@@ -121,7 +121,7 @@ export default function LandingPage() {
       </section>
 
       {/* ── The frame. The one thing that must not be misread. ───────────────────────────────── */}
-      <Movement label="The point of it">
+      <Movement label="Not a productivity tool">
         <div className="max-w-2xl space-y-5">
           <p className="text-foreground text-xl leading-relaxed font-light text-balance">
             This is not a productivity exercise.

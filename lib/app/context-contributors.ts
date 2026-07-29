@@ -34,6 +34,8 @@ import { loadModuleContext, MODULE_CONTEXT_TYPE } from '@/lib/framework/modules/
 import { RECLAIM_MODULE_SLUG } from '@/lib/app/programme/identity';
 import { buildReferBackForActiveRun } from '@/lib/app/programme/refer-back';
 import { buildCoachPhaseContext } from '@/lib/app/programme/coach/phase-context';
+import { readReclaimPresentation } from '@/lib/app/programme/config';
+import { DEFAULT_PRESENTATION } from '@/lib/app/programme/slots/present';
 
 export function initAppContextContributors(): void {
   registerContextContributor(MODULE_CONTEXT_TYPE, async (id, request) => {
@@ -49,9 +51,15 @@ export function initAppContextContributors(): void {
     //    second audit from a first (the framework's fresh slots are cross-run heads).
     //  - The refer-back (F7 t-2, I13): the leader's own Phase 0 words, so the coach hands the insight
     //    back at the gap rather than inventing it.
+    // The presentation policy decides whether the refer-back is serving the leader's own sentence or
+    // the coach's reading of it, which decides whether the block may call itself a quote. Read here
+    // and defaulted on failure, because a config row that cannot be read is not a reason to lose the
+    // refer-back: the default leans verbatim for exactly these two slugs.
     const [phase, referBack] = await Promise.all([
       buildCoachPhaseContext(userId),
-      buildReferBackForActiveRun(userId),
+      readReclaimPresentation()
+        .catch(() => DEFAULT_PRESENTATION)
+        .then((policy) => buildReferBackForActiveRun(userId, policy)),
     ]);
 
     return [frameworkContext, phase, referBack.contextBlock]

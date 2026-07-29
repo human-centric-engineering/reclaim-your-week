@@ -22,7 +22,7 @@
  * for the spine, and one bounded region for the phase — and **only the phase scrolls**. Everything a
  * leader acts with stays where they left it, which is how every chat surface they already use behaves.
  *
- * The height comes from the route group's layout (`app/(programme)/programme/layout.tsx`), which is
+ * The height comes from the route group's layout (`app/(programme)/layout.tsx`), which is
  * where the reasoning for leaving `(protected)` is written down.
  */
 
@@ -42,6 +42,7 @@ import { Signpost } from '@/components/app/reclaim/signpost';
 import { FINAL_PHASE_KEY } from '@/lib/app/programme/runs/phases';
 import { PhaseConversation } from '@/components/app/reclaim/coach/phase-conversation';
 import { BeginAudit } from '@/components/app/reclaim/begin-audit';
+import { HistoryLink } from '@/components/app/reclaim/history/history-link';
 import { ConsentGate } from '@/components/app/reclaim/consent-gate';
 import { SetupPanel } from '@/components/app/reclaim/phase/setup-panel';
 import { Phase1Panel } from '@/components/app/reclaim/phase/phase1-panel';
@@ -184,10 +185,14 @@ export function ProgrammeShell() {
     // leader's page is unchanged.
     // `TrendLines` returns null until there are two audits with something to plot, and it carries its
     // own wrapper so a first-time leader's page has no empty container in it either.
+    // The history sits under the invitation rather than over it: a returning leader should meet the
+    // door forward first. `HistoryLink` renders nothing until there is an audit behind them, so a
+    // first-time leader's entry screen is unchanged.
     return (
       <Frame>
         <TrendLines />
         <BeginAudit onStarted={() => void load()} />
+        <HistoryLink />
       </Frame>
     );
   }
@@ -247,12 +252,18 @@ export function ProgrammeShell() {
               signposts={signposts ?? undefined}
               conversationId={state.run.conversationId}
               phaseMarks={state.run.phaseMarks}
-              returnIndex={currentIndex}
-              returnLabel={currentPhase.label}
+              returnLabel={`phase ${currentIndex}, ${currentPhase.label}`}
               onReturn={() => setReviewingKey(null)}
             />
           ) : talking ? (
+            /* Keyed on the phase, which is what makes the phase window real. `CoachChat` hydrates
+               the transcript once per conversation and holds this phase's slice in state, and a run
+               keeps ONE conversation across all seven phases — so without a key React reconciles the
+               same instance across a transition, the hydration guard short-circuits, and phase 2
+               opens on phase 1's turns. The key changes only when the phase does, so the quiet
+               reload after every coach turn still leaves the transcript alone. */
             <PhaseConversation
+              key={currentPhase.key}
               runId={state.run.id}
               phaseKey={currentPhase.key}
               phaseIndex={currentIndex}

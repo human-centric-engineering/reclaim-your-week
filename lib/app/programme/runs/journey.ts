@@ -87,6 +87,16 @@ export interface PhaseView {
 export interface PhaseProgress {
   phases: PhaseView[];
   currentPhaseKey: string;
+  /**
+   * When the leader first entered the phase they are on, or `null` if the journey has no record of it.
+   *
+   * **Not part of any response**, and the two callers that spread this object into one destructure it
+   * away for that reason. It is here because it is free — `loadPhaseProgress` already holds the node
+   * states — and because one thing needs it: recovering a phase mark that was never written
+   * (`backfillPhaseMark` in `app/api/v1/app/reclaim/runs/service.ts`). The boundary between one phase's
+   * conversation and the next is a moment in time, and this is the only record of that moment.
+   */
+  currentPhaseEnteredAt: Date | null;
 }
 
 /** All seven phases, not yet started — the shape shown before a run exists. */
@@ -94,6 +104,7 @@ export function emptyPhaseProgress(): PhaseProgress {
   return {
     phases: RECLAIM_PHASES.map((p) => ({ key: p.key, label: p.label, status: 'upcoming' })),
     currentPhaseKey: FIRST_PHASE_KEY,
+    currentPhaseEnteredAt: null,
   };
 }
 
@@ -109,6 +120,7 @@ export async function loadPhaseProgress(userId: string, runId: string): Promise<
     ? await getNodeStates(viewer, { journeyId: journey.id, subject: userId })
     : [];
   const statusByKey = new Map(states.map((s) => [s.nodeKey, s.status]));
+  const enteredByKey = new Map(states.map((s) => [s.nodeKey, s.firstEnteredAt]));
 
   const phases: PhaseView[] = RECLAIM_PHASES.map((p) => {
     const s = statusByKey.get(p.key);
@@ -121,5 +133,9 @@ export async function loadPhaseProgress(userId: string, runId: string): Promise<
     phases.find((p) => p.status !== 'completed')?.key ??
     FINAL_PHASE_KEY;
 
-  return { phases, currentPhaseKey };
+  return {
+    phases,
+    currentPhaseKey,
+    currentPhaseEnteredAt: enteredByKey.get(currentPhaseKey) ?? null,
+  };
 }

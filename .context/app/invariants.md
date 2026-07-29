@@ -286,10 +286,12 @@ replace the blanket refusal, and the first two are what stop the coach walking t
    evidence.) What it leaves is bounded by guard 1 and visible through guard 3 — the worst case is
    the current phase's reflection recorded unprompted, in the leader's own run, on a screen that
    shows it to them.
-3. **Visible and editable.** The recorded reflection is shown in the captured panel under "In your
-   words", where a change writes over the top through the ordinary leader path. This is the one that
-   makes "the leader owns their reflection" still true of a reflection the coach typed, and it is why
-   the panel is now load-bearing rather than reassuring.
+3. **Visible and correctable.** The recorded reflection is shown in the captured panel under "In your
+   words". The panel itself carries no box — a leader changes it by saying so, or by taking "I would
+   rather fill this in myself" and using the phase panel's reflection field, which writes over the top
+   through the leader's own path. This is the one that makes "the leader owns their reflection" still
+   true of a reflection the coach typed, and it is why the panel is now load-bearing rather than
+   reassuring.
 
 `reclaim_reflection_p6` (the takeaway) is permitted on the same terms — it is the question the close
 asks, and the coach that asks it is the one that records the answer.
@@ -318,6 +320,44 @@ slot that arrives with prose alone. Nine bucket hour slots feed the charts, the 
 arithmetic and the cross-audit trends; "about eight" satisfies none of them and fails silently
 because the chart still renders. The coach's way through the refusal is to offer a figure and let
 the leader confirm it, which also satisfies I17.
+
+**What the rule was never about: a figure in the wrong field.** Where the typed form is absent and
+the prose _is_ the value with nothing to interpret — `"25"`, `"Yes"` — it is read out rather than
+refused (`deriveTypedValue`). Only an exact match counts: `"25 hours"`, `"about 25"`, `"twenty
+  five"` and any sentence about a yes-or-no slot are all still refused, because each needs a reading
+rather than a parse. Refusing `"25"` cost a real audit its whole first phase — the coach answered
+the next question instead of moving the value between two keys, and the reading was lost.
+
+**A model-argument slip is a refusal, never a failed call.** The per-answer contract has to hold at
+the schema as well as in the loop, so `record_answers` validates only its envelope and parses each
+entry inside `execute`. Two reasons, and the second is not obvious: one bad entry must not fail its
+siblings, and a `success: false` result feeds the chat handler's tool circuit breaker, which takes
+the capability away after two consecutive failures — so a retryable argument error, retried, disables
+capture for the rest of the turn. This capability fails the call only for something no retry could
+fix: no leader, no run in scope, an unreadable grant.
+
+**Capture has two writers, and the coach is only one of them.** `record_answers` is what the coach
+calls when it notices something; **the capture sweep** (`coach/capture-sweep.ts`) is what runs
+afterwards, on every leader turn, over whatever is still outstanding. The second exists because the
+first is a side effect asked of a model whose actual job is the conversation, and three rounds of
+live testing showed it is a hit rate however the prompt is worded: it takes a paragraph of facts
+every time and drops the one-sentence answer to the question it just asked. An audit cannot be built
+on a hit rate.
+
+The sweep is a model call wrapped in code, and the code is the part that matters: it always runs, its
+worklist is computed from `phaseCaptureSlots` and the run's own answers, and every write goes through
+`checkSlotWrite` and `saveAnswer` exactly as the coach's do — so this invariant, I3 and I5 hold for
+it without a second implementation of any of them. It may **not** write a reflection (the leader's own
+noticing, excluded here as well as refused there), a `json` reading, or anything outside the phase in
+the server-issued scope. It may **supersede** a reading this run already holds when the exchange adds
+to it, recorded as `built_across_turns`, and never when the held reading is `user_confirmed` or the
+new one is a guess. Its failures are silent: an unswept turn is a turn where capture is what it was
+before the sweep existed.
+
+**Test:** `tests/unit/lib/app/programme/coach/capture-sweep.test.ts` (the guards, driven with the
+exchanges that were actually lost) and the sweep block in
+`tests/unit/app/api/v1/app/reclaim/coach-stream.route.test.ts` (that it runs, when, and that it
+cannot break a turn).
 
 **Test:** `tests/unit/invariants/agent-caps.test.ts` — the grant set, the absence of
 `request_transition`, both exposure allowlists, the refused groups checked against the real slot
@@ -384,8 +424,12 @@ Three tiers: **Sunrise → Daybreak → Reclaim Your Week (this app, the leaf)**
   `leaf-db-drift.ts`)
 - `lib/app/programme/**` — domain logic
 - `app/api/v1/app/**` — HTTP API
-- `app/(programme)/programme/**` — end-user UI (its own route group since 2026-07-27, so the audit
-  can own the viewport; the URLs are unchanged and the edge gate still keys on `/programme`)
+- `app/(programme)/**` — end-user UI (its own route group since 2026-07-27, so the audit can own the
+  viewport; the URLs are unchanged and the edge gate still keys on `/programme`). Since 2026-07-28
+  this includes `profile/` and `settings/`, whose Sunrise originals under `(protected)` were
+  **deleted**: the account menu in the audit's own bar linked to them, and reaching them meant leaving
+  the product's frame, typeface and register in one click. Two files cannot answer one path, so
+  keeping the URLs meant taking the pages. `/dashboard` deliberately stayed Sunrise's.
 - `app/admin/programme/**` — admin UI
 - `prisma/schema/app-*.prisma` — **new files**, and `<timestamp>_app_<feature>` migrations
 - `.context/app/**`

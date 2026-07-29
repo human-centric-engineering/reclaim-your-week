@@ -18,20 +18,30 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 /** In-memory stand-in for the slot store, keyed like the real unique index. */
-const store = new Map<string, { value: string; valueJson: unknown; version: number }>();
+const store = new Map<
+  string,
+  { value: string; valueJson: unknown; version: number; provenance: Record<string, unknown> }
+>();
 
 vi.mock('@/lib/framework/data-slots', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/framework/data-slots')>();
   return {
     ...actual,
     appendSlotValue: vi.fn(
-      async (input: { userId: string; slotSlug: string; value: string; valueJson?: unknown }) => {
+      async (input: {
+        userId: string;
+        slotSlug: string;
+        value: string;
+        valueJson?: unknown;
+        provenance: Record<string, unknown>;
+      }) => {
         const prior = store.get(input.slotSlug);
         const version = prior ? prior.version + 1 : 1;
         const row = {
           value: input.value,
           valueJson: input.valueJson ?? null,
           version,
+          provenance: input.provenance,
         };
         store.set(input.slotSlug, row);
         return { slotSlug: input.slotSlug, version } as never;
@@ -280,6 +290,277 @@ describe('the typed-value rule is what stops a chart being drawn from prose', ()
   });
 });
 
+/**
+ * The gap that let a whole phase go unrecorded, and why every test here goes through `validate`.
+ *
+ * Every test above calls `execute` directly with args already in the right shape, which is not how
+ * the dispatcher calls it: `BaseCapability.validate` parses the whole argument object first, and a
+ * schema strict enough to reject one entry rejected all of them. A leader answered six slots in one
+ * sentence, the coach sent the direct-reports count as the number 25, and the batch came back
+ * `invalid_args` with nothing recorded and no sentence saying what to fix. The model retried the same
+ * call, failed again, and the chat handler's circuit breaker took the tool away for the rest of the
+ * turn, so the third and corrected call never ran. Panel: nought of fifteen.
+ *
+ * So these drive the capability the way the dispatcher does, and the assertion that matters most is
+ * the least obvious one: `success` stays true. A model-argument slip must be reported as a refusal,
+ * because a failure is what feeds the breaker.
+ */
+describe('a batch survives one bad entry, because a failed call costs the coach its tool', () => {
+  /** `validate` then `execute`, which is what the dispatcher does and what the tests above skipped. */
+  async function dispatch(rawArgs: unknown, context = dispatchContext) {
+    return capability.execute(capability.validate(rawArgs), context);
+  }
+
+  it('records the whole answer a leader gave in one breath, count and all', async () => {
+    // The exact shape the coach emitted in the conversation that prompted this: six readings from
+    // one sentence, with the count sent as a number because that is what a count is.
+    const result = await dispatch({
+      answers: [
+        {
+          slotSlug: 'reclaim_profile_first_name',
+          value: 'John',
+          confidence: 10,
+          sourceType: 'direct',
+          reasoningNote: 'They gave their name.',
+        },
+        {
+          slotSlug: 'reclaim_profile_role',
+          value: 'Head of Engineering',
+          confidence: 10,
+          sourceType: 'direct',
+          reasoningNote: 'They stated their role.',
+        },
+        {
+          slotSlug: 'reclaim_profile_direct_reports',
+          value: 25,
+          confidence: 10,
+          sourceType: 'direct',
+          reasoningNote: 'They said twenty five direct reports.',
+        },
+        {
+          slotSlug: 'reclaim_profile_distributed_team',
+          value: 'Yes',
+          confidence: 10,
+          sourceType: 'direct',
+          reasoningNote: 'Two offices, Guildford and Manchester.',
+        },
+      ],
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data?.refused).toEqual([]);
+    expect(result.data?.recorded).toHaveLength(4);
+
+    // The prose is the prose, and the typed forms are real values rather than strings — which is
+    // what everything downstream of a number or a boolean slot depends on.
+    expect(store.get('reclaim_profile_direct_reports')).toMatchObject({
+      value: '25',
+      valueJson: 25,
+    });
+    expect(store.get('reclaim_profile_distributed_team')).toMatchObject({
+      value: 'Yes',
+      valueJson: true,
+    });
+  });
+
+  it('refuses only the entry it cannot read, and never fails the call', async () => {
+    const result = await dispatch({
+      answers: [
+        {
+          slotSlug: 'reclaim_current_hours__deep_work',
+          value: 'Six hours.',
+          valueJson: 6,
+          confidence: 9,
+          sourceType: 'direct',
+          reasoningNote: 'Stated.',
+        },
+        // No slug at all — there is nothing to write this against.
+        { value: 'Something they said.', confidence: 9, sourceType: 'direct', reasoningNote: 'x' },
+        {
+          slotSlug: 'reclaim_current_detail__deep_work',
+          value: 'Early mornings, before anyone is up.',
+          confidence: 9,
+          sourceType: 'direct',
+          reasoningNote: 'Said in the same breath.',
+        },
+      ],
+    });
+
+    // The load-bearing assertion: a bad argument is a refusal, not a failure. A failure here is what
+    // spends a life on the chat handler's tool circuit breaker and takes the tool away mid-phase.
+    expect(result.success).toBe(true);
+    expect(result.data?.recorded.map((r) => r.slotSlug)).toEqual([
+      'reclaim_current_hours__deep_work',
+      'reclaim_current_detail__deep_work',
+    ]);
+    expect(result.data?.refused).toHaveLength(1);
+    expect(result.data?.refused[0]?.code).toBe('invalid_answer');
+  });
+
+  it('keeps an unusable source type to itself rather than losing the batch for it', async () => {
+    const result = await dispatch({
+      answers: [
+        {
+          slotSlug: 'reclaim_setup_why_now',
+          value: 'A board review is coming.',
+          confidence: 8,
+          sourceType: 'made_it_up',
+          reasoningNote: 'Not one of the enumerated kinds.',
+        },
+        {
+          slotSlug: 'reclaim_setup_keeping_me_up',
+          value: 'Whether the restructure lands.',
+          confidence: 8,
+          sourceType: 'direct',
+          reasoningNote: 'Stated.',
+        },
+      ],
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data?.recorded.map((r) => r.slotSlug)).toEqual(['reclaim_setup_keeping_me_up']);
+    expect(result.data?.refused[0]?.code).toBe('invalid_answer');
+  });
+
+  it('takes a confidence it can work with instead of throwing the reading away', async () => {
+    const result = await dispatch({
+      answers: [
+        {
+          slotSlug: 'reclaim_setup_why_now',
+          value: 'A board review is coming.',
+          confidence: 12,
+          sourceType: 'direct',
+          reasoningNote: 'Stated.',
+        },
+      ],
+    });
+
+    expect(result.data?.recorded[0]?.confidence).toBe(10);
+  });
+
+  it('records the first twelve of an over-long batch and says so about the rest', async () => {
+    const tokens = [
+      'deep_work',
+      'learning_development',
+      'strategic_planning',
+      'team_development',
+      'organisational_oversight',
+      'relationship_building',
+      'delivery_operations',
+      'recovery_white_space',
+    ];
+    const answers = [
+      ...tokens.map((token, i) => ({
+        slotSlug: `reclaim_current_hours__${token}`,
+        value: String(i + 1),
+        valueJson: i + 1,
+        confidence: 9,
+        sourceType: 'direct',
+        reasoningNote: 'Stated.',
+      })),
+      ...tokens.map((token) => ({
+        slotSlug: `reclaim_current_detail__${token}`,
+        value: 'What that time looks like.',
+        confidence: 9,
+        sourceType: 'direct',
+        reasoningNote: 'Said alongside the figure.',
+      })),
+    ];
+
+    const result = await dispatch({ answers });
+
+    expect(result.success).toBe(true);
+    expect(result.data?.recorded).toHaveLength(12);
+    expect(result.data?.refused).toHaveLength(4);
+    expect(result.data?.refused.every((r) => r.code === 'batch_too_long')).toBe(true);
+    // Named, so the coach knows which four to send again rather than guessing.
+    expect(result.data?.refused[0]?.slotSlug).toBe(
+      'reclaim_current_detail__organisational_oversight'
+    );
+  });
+
+  it('redacts a malformed entry down to its type, so the trace is whole and still says nothing', () => {
+    const redacted = capability.redactProvenance(
+      { answers: ['a bare string the model sent by mistake'] },
+      { success: true, data: { recorded: [], refused: [] } }
+    );
+    const serialised = JSON.stringify(redacted);
+
+    expect(serialised).not.toContain('bare string');
+    expect(serialised).toContain('malformed');
+  });
+});
+
+/**
+ * The typed-value rule, and the case it was never about.
+ *
+ * "About eight, some weeks more" must not become a number, because a figure invented from a hedge
+ * fails silently — the chart still draws. "25" is not that. Refusing it spent a turn asking the coach
+ * to move a value between two keys, and what the coach actually did was move on to the next question
+ * with the reading lost.
+ */
+describe('an unambiguous figure is read out of the prose; an approximate one still is not', () => {
+  async function record(slotSlug: string, value: string) {
+    return capability.execute(
+      {
+        answers: [
+          { slotSlug, value, confidence: 9, sourceType: 'direct', reasoningNote: 'Stated.' },
+        ],
+      },
+      dispatchContext
+    );
+  }
+
+  it('reads a bare figure into the typed value', async () => {
+    const result = await record('reclaim_current_hours__deep_work', '6');
+    expect(result.data?.refused).toEqual([]);
+    expect(store.get('reclaim_current_hours__deep_work')?.valueJson).toBe(6);
+  });
+
+  it('reads a bare yes or no into the typed value', async () => {
+    await record('reclaim_setup_in_transition', 'No');
+    expect(store.get('reclaim_setup_in_transition')?.valueJson).toBe(false);
+  });
+
+  it.each(['About eight, some weeks more.', '8 hours', 'eight', 'somewhere between 6 and 10'])(
+    'still refuses %s, because that needs a reading rather than a parse',
+    async (prose) => {
+      const result = await record('reclaim_current_hours__deep_work', prose);
+      expect(result.data?.recorded).toEqual([]);
+      expect(result.data?.refused[0]?.code).toBe('typed_value_required');
+      expect(store.size).toBe(0);
+    }
+  );
+
+  it('still refuses a sentence about a yes-or-no slot, which is a summary and not an answer', async () => {
+    const result = await record(
+      'reclaim_setup_in_transition',
+      'They are in the middle of a restructure.'
+    );
+    expect(result.data?.refused[0]?.code).toBe('typed_value_required');
+  });
+
+  it('leaves an explicit typed value alone, so the fallback can never override the coach', async () => {
+    const result = await capability.execute(
+      {
+        answers: [
+          {
+            slotSlug: 'reclaim_current_hours__deep_work',
+            value: '6',
+            valueJson: 9,
+            confidence: 9,
+            sourceType: 'direct',
+            reasoningNote: 'They corrected themselves to nine.',
+          },
+        ],
+      },
+      dispatchContext
+    );
+    expect(result.data?.refused).toEqual([]);
+    expect(store.get('reclaim_current_hours__deep_work')?.valueJson).toBe(9);
+  });
+});
+
 describe('the run comes from the server, never from the model', () => {
   it('refuses to record anything when no run is in scope', async () => {
     const result = await capability.execute(
@@ -472,6 +753,78 @@ describe('what the coach may not record', () => {
   });
 });
 
+describe("the leader's own sentence, kept beside the coach's reading of it", () => {
+  it('stores the quote on provenance, where the refer-back can find it', async () => {
+    // `value` is the tidy reading and `verbatim` is what they actually said. Both are kept because
+    // the gap phase quotes these words back at the leader, and quoting a paraphrase is the tool
+    // putting words in their mouth.
+    await capability.execute(
+      {
+        answers: [
+          {
+            slotSlug: 'reclaim_setup_keeping_me_up',
+            value: 'Whether the organisation can function without them.',
+            verbatim: 'Honestly, whether the whole thing falls over if I take a week off.',
+            confidence: 9,
+            sourceType: 'direct',
+            reasoningNote: 'They said it plainly when asked.',
+          },
+        ],
+      },
+      dispatchContext
+    );
+
+    const row = store.get('reclaim_setup_keeping_me_up');
+    expect(row?.value).toBe('Whether the organisation can function without them.');
+    expect(row?.provenance.verbatim).toBe(
+      'Honestly, whether the whole thing falls over if I take a week off.'
+    );
+    // And the run stamp is untouched by the new field.
+    expect(row?.provenance.runId).toBe(RUN_ID);
+  });
+
+  it('stores nothing when the coach did not catch a quote, so the reader falls back cleanly', async () => {
+    await capability.execute(
+      {
+        answers: [
+          {
+            slotSlug: 'reclaim_setup_why_now',
+            value: 'A board review is coming up.',
+            confidence: 8,
+            sourceType: 'emerged_naturally',
+            reasoningNote: 'It came up while they were describing the quarter.',
+          },
+        ],
+      },
+      dispatchContext
+    );
+
+    expect(store.get('reclaim_setup_why_now')?.provenance.verbatim).toBeUndefined();
+  });
+
+  it('does not duplicate the reading when the quote and the reading are the same string', async () => {
+    // A coach that sends the same string twice should not double the row's storage for nothing.
+    // `presentAnswer` falls back to `value`, so the rendered result is identical either way.
+    await capability.execute(
+      {
+        answers: [
+          {
+            slotSlug: 'reclaim_setup_why_now',
+            value: 'A board review is coming up.',
+            verbatim: 'A board review is coming up.',
+            confidence: 8,
+            sourceType: 'direct',
+            reasoningNote: 'Their exact words were already the reading.',
+          },
+        ],
+      },
+      dispatchContext
+    );
+
+    expect(store.get('reclaim_setup_why_now')?.provenance.verbatim).toBeUndefined();
+  });
+});
+
 describe('provenance redaction', () => {
   it("keeps the shape of a write and none of the leader's words", () => {
     const args = {
@@ -497,6 +850,92 @@ describe('provenance redaction', () => {
     // it the audit trail cannot answer what the coach recorded here.
     expect(serialised).toContain('reclaim_setup_keeping_me_up');
     expect(serialised).toContain('direct');
+  });
+
+  it("masks the leader's verbatim as its own key, so the trace still shows a quote was taken", () => {
+    const redacted = capability.redactProvenance(
+      {
+        answers: [
+          {
+            slotSlug: 'reclaim_setup_why_now',
+            value: 'The board asked for a plan by September.',
+            verbatim: 'honestly the board has finally started asking me for a plan',
+            valueJson: { months: 2 },
+            confidence: 9,
+            sourceType: 'direct' as const,
+            reasoningNote: 'They said the board asked.',
+          },
+        ],
+      },
+      { success: true, data: { recorded: [], refused: [] } }
+    );
+    const serialised = JSON.stringify(redacted);
+
+    // The verbatim is the leader's sentence in the strictest sense and the last thing that belongs
+    // in a durable trace — but folding it into `value`'s marker would hide that one was captured.
+    expect(serialised).not.toContain('honestly the board');
+    expect(serialised).toContain('slot-verbatim');
+    expect(serialised).toContain('slot-value-json');
+  });
+
+  it('records the type alone of an entry that is not an answer at all', () => {
+    const redacted = capability.redactProvenance(
+      // The entries arrive unparsed, so this reads defensively rather than trusting a shape
+      // `validate` no longer guarantees.
+      { answers: ['reclaim_setup_why_now', null, 42] as never },
+      { success: false, error: { message: 'nope', code: 'bad' } }
+    );
+
+    // An operator should be able to see that something malformed arrived without seeing what was in
+    // it — so the type, and nothing else.
+    expect(redacted.args).toEqual({
+      answers: [{ malformed: 'string' }, { malformed: 'object' }, { malformed: 'number' }],
+    });
+  });
+
+  it('drops a confidence or source type that arrived as the wrong kind of thing', () => {
+    const redacted = capability.redactProvenance(
+      {
+        answers: [
+          {
+            slotSlug: 'reclaim_setup_why_now',
+            value: 'A plan by September.',
+            confidence: 'high',
+            sourceType: 7,
+            reasoningNote: 'They said so.',
+          },
+        ],
+      },
+      { success: true, data: { recorded: [], refused: [] } }
+    );
+
+    const [entry] = (redacted.args as { answers: Record<string, unknown>[] }).answers;
+    expect(entry).not.toHaveProperty('confidence');
+    expect(entry).not.toHaveProperty('sourceType');
+    // The slug is the one field carried through verbatim, and only when it is the vetted kind.
+    expect(entry.slotSlug).toBe('reclaim_setup_why_now');
+  });
+
+  it('omits the slug entirely when it is not a string', () => {
+    const redacted = capability.redactProvenance(
+      {
+        answers: [
+          {
+            slotSlug: { slug: 'reclaim_setup_why_now' } as unknown as string,
+            value: 'A plan by September.',
+            confidence: 9,
+            sourceType: 'direct' as const,
+            reasoningNote: 'They said so.',
+          },
+        ],
+      },
+      { success: true, data: { recorded: [], refused: [] } }
+    );
+
+    const [entry] = (redacted.args as { answers: Record<string, unknown>[] }).answers;
+    // Better an entry with no slug than a slug that is an object the trace reader will misread as
+    // one of this module's own identifiers.
+    expect(entry).not.toHaveProperty('slotSlug');
   });
 });
 

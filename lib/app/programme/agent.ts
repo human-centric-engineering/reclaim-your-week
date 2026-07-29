@@ -60,6 +60,34 @@ export interface ReclaimAgentCapabilityGrant {
   customConfig?: ExposureConfig;
 }
 
+/**
+ * The model this coach is pinned to, and why it is pinned at all.
+ *
+ * **An empty binding is dynamic resolution, and dynamic resolution is wrong for this agent.** The
+ * seed used to author `model: ''` / `provider: ''`, which `resolveAgentProviderAndModel` fills from
+ * the first active provider plus the system default-model map. On an OpenAI install that resolves to
+ * `gpt-4o-mini`, and the whole capture mechanism then rests on a model the platform's own registry
+ * rates below `strong` for tool use.
+ *
+ * That is not a theoretical mismatch. Observed on a live audit: the coach replied "I'll record that
+ * you're the Head of Engineering, overseeing 25 people across 5 teams" and made **no tool call at
+ * all**, so the panel beside the leader read nought of fifteen while the transcript said the
+ * opposite. Everything this app does with a conversation depends on unprompted, silent, multi-slot
+ * tool calls made in the middle of a warm exchange, in a context of several thousand tokens. That is
+ * the single hardest thing to ask of a small model and the first thing it drops.
+ *
+ * **The provider is pinned with the model, not left to resolution.** A named model with an empty
+ * provider takes the first active candidate, so an install whose first keyed provider is Anthropic
+ * would send `gpt-4o` to Claude and fail obscurely. Pinning both makes the binding explicit: an
+ * install without an OpenAI key fails at the provider, where the message is legible, and an operator
+ * repoints it in admin. The seed writes these on **create only**, so that edit survives a re-seed.
+ *
+ * Any replacement must be rated `strong` for tool use in the model registry. That is the property
+ * being bought here; the particular name matters less than the rating.
+ */
+export const RECLAIM_COACH_PROVIDER = 'openai';
+export const RECLAIM_COACH_MODEL = 'gpt-4o';
+
 /** The authored coach agent, consumed by F3 t-1's seed. */
 export interface ReclaimCoachAgentDefinition {
   slug: string;
@@ -69,6 +97,10 @@ export interface ReclaimCoachAgentDefinition {
   moduleSlug: string;
   /** The seat role on the `ModuleAgentBinding` — must be one of the module's `agentRoles`. */
   role: string;
+  /** The provider slug, pinned rather than resolved. See `RECLAIM_COACH_PROVIDER`. */
+  provider: string;
+  /** The model, pinned because this coach's capture needs strong tool use. See `RECLAIM_COACH_MODEL`. */
+  model: string;
   persona: string;
   systemInstructions: string;
   guardrails: string;
@@ -91,7 +123,9 @@ Hold one frame above everything else. This is not an efficiency review. The audi
 
 Method comes before content. Ask before you tell. Offer a mirror and some options, and leave every decision with the leader. Hand insight back to them rather than delivering verdicts. The tool reflects; it does not decide.
 
-Work phase by phase. At the start of each new phase, briefly orient the leader: name the phase, say what it involves, and give a rough sense of how long it will take, so the process never feels open-ended.
+Work phase by phase, and open each one yourself. The leader has been brought here to be taken through this, so a phase never begins by waiting for them to speak. Orient them briefly: say what this part is for and why it is worth their time, in terms of what they get from it, and give a rough sense of how long it will take, so the process never feels open-ended. Then ask your first question. Where the screen has already told them what the phase involves, do not say it again; begin from where it leaves off.
+
+Every turn ends with something for the leader to answer or to do. Put the question, the offer, or the suggestion of where to go next in the final paragraph, so it is the last thing they read. A turn that ends on an observation leaves them working out what is wanted of them, which is the one job this tool exists to take off them. Where they have just said something they are still sitting with, what you leave them with can be small: an invitation to stay there rather than another question. It is still yours to offer.
 
 At key moments, especially after the leader first sees the Phase 1 picture and after the gap analysis, ask what they notice before you offer anything. Keep it to one genuine question, such as "What stands out to you here?". Acknowledge their answer, then continue. Do not wait indefinitely or probe repeatedly; the aim is to surface their own insight first, not to run a full coaching session. Before the final summary in Phase 6, ask once more what they are taking away.
 
@@ -127,7 +161,7 @@ const BRAND_VOICE_INSTRUCTIONS = `Speak in plain, warm, direct, and conversation
 
 Never use this language, or any corporate-consultant framing: ${RECLAIM_BANNED_LEXICON.join(', ')}. Do not open with filler such as "Certainly", "Absolutely", "Great question", "Of course", or "I'd be happy to". Do not use em dashes; use a comma, a full stop, or a restructured sentence instead. Do not use bullet points in conversation; save any structured formatting for the visual artifacts and the summary document. The tone should feel like a thoughtful human coach, not an AI assistant.
 
-Give each turn room to breathe. Write in short paragraphs with a blank line between them, and never send a single block of prose. Reflect back what the leader just told you in its own paragraph, keep any observation of yours in another, and put the next question in a paragraph on its own so it is the last thing they read. Two or three short paragraphs is usually right, and one question per turn is the aim.`;
+Give each turn room to breathe. Write in short paragraphs with a blank line between them, and never send a single block of prose. Reflect back what the leader just told you in its own paragraph, keep any observation of yours in another, and put the next question in a paragraph on its own so it is the last thing they read. Two or three short paragraphs is usually right, one question per turn is the aim, and there is always one.`;
 
 /**
  * The module's own capture tool, under the namespaced identifier the framework gives it
@@ -168,6 +202,8 @@ export const reclaimCoachAgent: ReclaimCoachAgentDefinition = {
     'The coaching instrument for the reclaim-audit module. It guides a purpose-driven leader through the time audit as a conversation, records what it hears against the run in scope, and reflects the picture back. A reflection is recorded only for the phase the leader is on and only in words they have said; their sharing consent and every move between phases stay theirs alone, and the server owns the transitions.',
   moduleSlug: RECLAIM_MODULE_SLUG,
   role: RECLAIM_COACH_ROLE,
+  provider: RECLAIM_COACH_PROVIDER,
+  model: RECLAIM_COACH_MODEL,
   persona: PERSONA,
   systemInstructions: SYSTEM_INSTRUCTIONS,
   guardrails: GUARDRAILS,

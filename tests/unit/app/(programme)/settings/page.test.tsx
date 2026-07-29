@@ -1,7 +1,12 @@
 /**
  * Settings Page Tests
  *
- * Tests the protected settings page Server Component.
+ * Tests the settings page Server Component. Inherited from Sunrise with the page it covers: the
+ * route moved from `(protected)` into the programme's frame and became this app's, so the server
+ * half being asserted here is unchanged and the presentation around it is not. What changed below is
+ * the import path, the heading and lede the page now shows, and two mocks for the client leaves
+ * inside `ProgrammeChrome` (the same pair `run-review.test.tsx` stubs, and for the same reason: they
+ * reach for a session this test has no business providing).
  *
  * Test Coverage:
  * - Redirect to /login (via clearInvalidSession) when no session exists
@@ -14,11 +19,11 @@
  * - User initials computed from name
  * - Page metadata
  *
- * @see app/(protected)/settings/page.tsx
+ * @see app/(programme)/settings/page.tsx
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 /**
  * Mock next/navigation — redirect() is used by clearInvalidSession().
  * It throws so the page function stops executing (matches Next.js runtime behaviour).
@@ -93,7 +98,14 @@ vi.mock('@/components/settings/settings-tabs', () => ({
   ),
 }));
 
-import SettingsPage, { metadata } from '@/app/(protected)/settings/page';
+/**
+ * The two client leaves in the programme bar. Both read the session client, which is not what this
+ * suite is about; stubbing them lets the real `ProgrammeChrome` render around the page.
+ */
+vi.mock('@/components/app/reclaim/theme-switch', () => ({ ThemeSwitch: () => null }));
+vi.mock('@/components/app/reclaim/account-menu', () => ({ AccountMenu: () => null }));
+
+import SettingsPage, { metadata } from '@/app/(programme)/settings/page';
 import { getServerSession } from '@/lib/auth/utils';
 import { clearInvalidSession } from '@/lib/auth/clear-session';
 import { prisma } from '@/lib/db/client';
@@ -175,11 +187,13 @@ describe('SettingsPage', () => {
 
   describe('metadata', () => {
     it('has the correct title', () => {
-      expect(metadata.title).toBe('Settings');
+      expect(metadata.title).toBe('Account settings');
     });
 
     it('has the correct description', () => {
-      expect(metadata.description).toBe('Manage your account settings and preferences');
+      expect(metadata.description).toBe(
+        'Your details, how you sign in, and which emails reach you.'
+      );
     });
   });
 
@@ -224,7 +238,7 @@ describe('SettingsPage', () => {
 
       // Assert
       expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument();
-      expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Settings');
+      expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Account settings');
     });
 
     it('renders the page subtitle', async () => {
@@ -237,7 +251,27 @@ describe('SettingsPage', () => {
       render(Component);
 
       // Assert
-      expect(screen.getByText('Manage your account settings and preferences')).toBeInTheDocument();
+      expect(screen.getByText(/how to close the account altogether/)).toBeInTheDocument();
+    });
+
+    it('renders the programme bar rather than the platform header', async () => {
+      // Arrange
+      vi.mocked(getServerSession).mockResolvedValue(MOCK_SESSION);
+      vi.mocked(prisma.user.findUnique).mockResolvedValue(makeFullUser() as never);
+
+      // Act
+      const Component = await SettingsPage();
+      render(Component);
+
+      // Assert: this is the whole reason the route moved. The bar names where you are and links back
+      // to the audit; the platform header this page used to sit under did neither.
+      const bar = screen.getByRole('navigation', { name: 'Where you are' });
+      expect(bar).toBeInTheDocument();
+      expect(within(bar).getByRole('link', { name: 'Reclaim your week' })).toHaveAttribute(
+        'href',
+        '/programme'
+      );
+      expect(within(bar).getByText('Account settings')).toBeInTheDocument();
     });
 
     it('renders SettingsTabs with user name and email', async () => {
