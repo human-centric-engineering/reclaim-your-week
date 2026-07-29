@@ -66,9 +66,9 @@ describe('ProgrammeChrome', () => {
   });
 
   it('says where the leader is when there is a phase to name', () => {
-    renderChrome({ here: 'Phase 1 · Current reality' });
+    renderChrome({ here: 'Section 1 · Current reality' });
 
-    expect(screen.getByText('Phase 1 · Current reality')).toBeInTheDocument();
+    expect(screen.getByText('Section 1 · Current reality')).toBeInTheDocument();
   });
 
   it('says nothing about a phase before a run has been read', () => {

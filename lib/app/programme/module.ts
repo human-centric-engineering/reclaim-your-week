@@ -24,6 +24,7 @@ import type { ModuleDefinition } from '@/lib/framework/modules';
 import { reclaimSlotDefinitions } from '@/lib/app/programme/slots';
 import { RECLAIM_MODULE_SLUG, RECLAIM_COACH_ROLE } from '@/lib/app/programme/identity';
 import { ReclaimRecordAnswersCapability } from '@/lib/app/programme/coach/capabilities/record-answers';
+import { ReclaimOfferChoicesCapability } from '@/lib/app/programme/coach/capabilities/offer-choices';
 import { RECLAIM_PHASE_SIGNPOSTS } from '@/lib/app/programme/runs/signposts';
 import {
   RECLAIM_GOVERNING_FRAME,
@@ -352,5 +353,9 @@ export const reclaimAuditModule: ModuleDefinition = {
   // gets each one both halves at boot: the dispatcher handler and the `ai_capability` row an agent
   // must be granted against. The framework namespaces them (`reclaim_audit__record_answers`) and
   // refuses any dispatch whose scope pins a different module.
-  capabilities: [new ReclaimRecordAnswersCapability()],
+  // `offer_choices` writes nothing. It answers "which of the readings this section captures is the
+  // question you just asked, and does it have a fixed set of answers" so the screen can draw them
+  // instead of a blank box. See its own header for why the model names the reading and never the
+  // options.
+  capabilities: [new ReclaimRecordAnswersCapability(), new ReclaimOfferChoicesCapability()],
 };

@@ -54,7 +54,7 @@ import {
   agentChatLimiter,
   createRateLimitResponse,
 } from '@/lib/security/rate-limit';
-import { streamChat } from '@/lib/orchestration/chat';
+import { streamChat, invalidateContext } from '@/lib/orchestration/chat';
 import { getRequestId, getVisitorId } from '@/lib/logging/context';
 import {
   resolveModuleSurface,
@@ -63,6 +63,9 @@ import {
 import { RECLAIM_MODULE_SLUG } from '@/lib/app/programme/identity';
 import { buildCoachScope } from '@/lib/app/programme/coach/scope';
 import { runCaptureSweep } from '@/lib/app/programme/coach/capture-sweep';
+import { pendingChoiceOffer } from '@/lib/app/programme/coach/phase-context';
+import { ReclaimOfferChoicesCapability } from '@/lib/app/programme/coach/capabilities/offer-choices';
+import { RECLAIM_OFFER_CHOICES_SLUG } from '@/lib/app/programme/agent';
 import {
   COACH_OPENING_MOMENTS,
   openingBelongsToPhase,
@@ -176,6 +179,70 @@ async function* sweepingCapture(
   }
 }
 
+/**
+ * Make sure the turn ends with the answers on screen, whether or not the coach remembered to say so.
+ *
+ * **The failure this exists for, observed on a live audit.** The coach called `offer_choices` on the
+ * first turn, then asked the same question three more times with no tool call at all, each time
+ * telling the leader "you can choose from the options on your screen" while they looked at an empty
+ * text box. Having called it once, the model believes the answers are still up. No amount of prose
+ * fixes that, for the same reason `runCaptureSweep` exists: a side effect asked of a model is a hit
+ * rate, and this product does not build on hit rates.
+ *
+ * So the offer stops depending on the call. Which reading the turn's question is about was decided
+ * server-side before the turn ran (`nextQuestionFor`), and `pendingChoiceOffer` reads that decision
+ * back. The coach's own call still wins where it happens, because the model knows when it has
+ * followed the leader somewhere else and this does not; `seen` is what makes it a fallback rather
+ * than a duplicate.
+ *
+ * **The frame is genuine, not a forgery.** The payload comes from running the real capability, in the
+ * real dispatch scope, so what reaches the client is the same result the model's own call would have
+ * produced and every guard it applies has been applied. What differs is only who decided to ask.
+ *
+ * It rides in just before `done`, which is where the client is ready for it: the coach's words have
+ * already streamed, and the composer only draws an offer once the turn has stopped speaking. Its
+ * failures are its own, exactly as the sweep's are. A turn is the leader's conversation; an offer is
+ * a convenience over a composer that already works.
+ */
+/**
+ * Whether this result is an offer the leader will actually see.
+ *
+ * A refusal is not. The capability refuses four ways (`unknown_slot`, `no_phase_scope`,
+ * `wrong_phase`, `no_choices`) and the client drops every one of them to `null`
+ * (`components/app/reclaim/coach/choices.ts`), so a turn whose only call was refused draws no
+ * answers. Standing the fallback down on that call would leave the leader the empty box this whole
+ * mechanism exists to remove — and worse than before it existed, because the coach is now told not
+ * to list the options in its prose either. So the two readings are made to agree: only an offer that
+ * reached the screen counts as one already made.
+ */
+const isDrawnOffer = (capabilitySlug: string, result: unknown): boolean =>
+  capabilitySlug === RECLAIM_OFFER_CHOICES_SLUG &&
+  typeof result === 'object' &&
+  result !== null &&
+  (result as { success?: unknown }).success === true;
+
+async function* offeringChoices(
+  events: AsyncIterable<ChatEvent>,
+  offer: () => Promise<ChatEvent | null>
+): AsyncIterable<ChatEvent> {
+  let seen = false;
+  for await (const event of events) {
+    if (
+      (event.type === 'capability_result' && isDrawnOffer(event.capabilitySlug, event.result)) ||
+      (event.type === 'capability_results' &&
+        event.results.some((r) => isDrawnOffer(r.capabilitySlug, r.result)))
+    ) {
+      seen = true;
+    }
+    if (event.type === 'done' && !seen) {
+      seen = true;
+      const fallback = await offer();
+      if (fallback !== null) yield fallback;
+    }
+    yield event;
+  }
+}
+
 export const POST = withAuth<{ runId: string }>(async (request, session, { params }) => {
   const userLimit = consumerChatLimiter.check(session.user.id);
   if (!userLimit.success) return createRateLimitResponse(userLimit);
@@ -276,6 +343,60 @@ export const POST = withAuth<{ runId: string }>(async (request, session, { param
         refused: result.refused,
       });
     }
+    // The coach's briefing is built by a context contributor and cached for sixty seconds per
+    // `(type, id, userId)`. The model's own `record_answers` calls drop that entry as they land
+    // (`streaming-handler.ts`), so the list it reads is honest about what it recorded itself — but
+    // this sweep runs *after* the turn, writes through the same gate, and dropped nothing. A leader
+    // replying inside the minute therefore met a coach still holding the pre-sweep list: readings the
+    // sweep had just captured came back as "not yet captured in this audit", and the reading it was
+    // told to end the turn on could be one already filled. Asking again for what they have just said
+    // is the exact failure the run-scoped list exists to prevent.
+    if (result.recorded.length > 0) {
+      invalidateContext(MODULE_SURFACE_CONTEXT_TYPE, RECLAIM_MODULE_SLUG, {
+        userId: session.user.id,
+      });
+    }
+  };
+
+  /**
+   * The answers for this turn's question, when the coach did not put them up itself.
+   *
+   * Runs the real capability rather than assembling a result by hand, so the client cannot tell a
+   * fallback offer from one the model asked for, and neither can any guard: the scope it is given is
+   * the same server-built scope every dispatch on this turn received. Returns `null` for a question
+   * that has no set, which is most of them.
+   */
+  const offerChoices = async (): Promise<ChatEvent | null> => {
+    try {
+      const pending = await pendingChoiceOffer({
+        userId: session.user.id,
+        runId,
+        phaseKey: target.phaseKey,
+      });
+      if (pending === null) return null;
+      const result = await new ReclaimOfferChoicesCapability().execute(
+        { slotSlug: pending.slotSlug },
+        {
+          userId: session.user.id,
+          // The same agent the turn ran as, and the same server-built scope every dispatch on it
+          // received. Nothing here is a stand-in: this is the context the model's own call would
+          // have executed in.
+          agentId: surface.agentId,
+          scope: buildCoachScope({ runId, phaseKey: target.phaseKey }),
+          ...(conversationId !== undefined ? { conversationId } : {}),
+        }
+      );
+      if (!result.success) return null;
+      return { type: 'capability_result', capabilitySlug: RECLAIM_OFFER_CHOICES_SLUG, result };
+    } catch (error: unknown) {
+      // Bookkeeping must never cost a leader their turn. A turn with no offer is exactly the turn
+      // they would have had before any of this existed: a question and a box to answer it in.
+      log.warn('Reclaim choice offer failed; finishing the turn regardless', {
+        runId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
   };
 
   const linked = linkingConversation(events, runId, target.conversationId !== undefined);
@@ -286,5 +407,7 @@ export const POST = withAuth<{ runId: string }>(async (request, session, { param
     }
   })();
 
-  return sseResponse(sweepingCapture(observed, sweep, runId, log), { signal: request.signal });
+  return sseResponse(offeringChoices(sweepingCapture(observed, sweep, runId, log), offerChoices), {
+    signal: request.signal,
+  });
 });

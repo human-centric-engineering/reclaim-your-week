@@ -24,7 +24,11 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { reclaimCoachAgent, RECLAIM_RECORD_ANSWERS_SLUG } from '@/lib/app/programme/agent';
+import {
+  reclaimCoachAgent,
+  RECLAIM_RECORD_ANSWERS_SLUG,
+  RECLAIM_OFFER_CHOICES_SLUG,
+} from '@/lib/app/programme/agent';
 import { reclaimSlotDefinitions } from '@/lib/app/programme/slots';
 import { facetAllows } from '@/lib/framework/data-slots/capabilities/exposure';
 import {
@@ -56,9 +60,19 @@ function slugInGroup(group: string): string {
 }
 
 describe('I6 — granted capabilities', () => {
-  it('grants the three read tools plus the one write, and nothing else', () => {
+  it('grants the read tools plus the one write, and nothing else', () => {
     expect(new Set(slugs)).toEqual(
-      new Set(['get_journey_state', 'get_next_steps', 'get_state', RECLAIM_RECORD_ANSWERS_SLUG])
+      new Set([
+        'get_journey_state',
+        'get_next_steps',
+        'get_state',
+        RECLAIM_RECORD_ANSWERS_SLUG,
+        // A read in every sense that matters here: it returns static option text and touches neither
+        // the run nor a slot. It is on this list rather than exempt from it because I6 is a claim
+        // about the whole grant set, and a tool that quietly appeared without being named would be
+        // exactly the thing the assertion exists to catch.
+        RECLAIM_OFFER_CHOICES_SLUG,
+      ])
     );
   });
 
@@ -81,10 +95,20 @@ describe('I6 — granted capabilities', () => {
     }
   });
 
-  it('names the capture tool under its namespaced module slug', () => {
+  it('grants offer_choices no exposure config, because it has nothing to expose', () => {
+    // A write facet on a capability that cannot write would be a claim the runtime never checks,
+    // and the day somebody read this grant looking for what the coach may touch, it would answer
+    // the wrong question. Absence is the honest record: `record_answers` is the only write (I6).
+    const offer = grants.find((c) => c.slug === RECLAIM_OFFER_CHOICES_SLUG);
+    expect(offer).toBeDefined();
+    expect(offer?.customConfig).toBeUndefined();
+  });
+
+  it('names both module tools under their namespaced module slugs', () => {
     // The dispatcher key, the ai_capability row and the LLM tool name are all this one string; a
     // grant naming a bare slug would bind to nothing.
     expect(RECLAIM_RECORD_ANSWERS_SLUG).toBe('reclaim_audit__record_answers');
+    expect(RECLAIM_OFFER_CHOICES_SLUG).toBe('reclaim_audit__offer_choices');
   });
 });
 
@@ -250,4 +274,92 @@ describe('I6 — a typed slot cannot be filled with prose alone', () => {
     expect(check.ok).toBe(false);
     if (!check.ok) expect(check.refusal.code).toBe('unknown_slot');
   });
+});
+
+/**
+ * A yes-or-no cannot be stored as a sentence that says the other thing.
+ *
+ * Observed live. Asked whether they were in a period of change, a leader said "change is a constant".
+ * The coach recorded `reclaim_setup_in_transition` with that sentence as the prose and `false` as the
+ * typed value, and nothing compared the two — so three readers disagreed about one reading. The panel
+ * showed the sentence, which reads as a yes. `slotApplies` read the boolean, which is a no, and told
+ * the coach that "What the change is" did not apply to this leader and must not be asked. And the
+ * leader saw a row saying change is constant above a blank row, and read it as a skipped question.
+ *
+ * The typed value is what every reader downstream acts on, so the prose is made to say the same thing.
+ */
+describe('a boolean reading and its own prose cannot disagree', () => {
+  it('stores the word for the answer when the prose says something else', () => {
+    const check = checkSlotWrite('reclaim_setup_in_transition', false, {
+      value: 'Change is a constant',
+    });
+    expect(check.ok).toBe(true);
+    if (check.ok) {
+      expect(check.accepted.valueJson).toBe(false);
+      expect(check.accepted.value).toBe('No');
+    }
+  });
+
+  it('says Yes for a true reading whose prose is a sentence', () => {
+    const check = checkSlotWrite('reclaim_profile_distributed_team', true, {
+      value: 'The team is spread over three sites and two countries',
+    });
+    expect(check.ok).toBe(true);
+    if (check.ok) expect(check.accepted.value).toBe('Yes');
+  });
+
+  it('leaves prose that already is the answer alone, whatever its case or punctuation', () => {
+    for (const value of ['Yes', 'yes', 'no.', 'No']) {
+      const typed = value.toLowerCase().startsWith('y');
+      const check = checkSlotWrite('reclaim_setup_in_transition', typed, { value });
+      expect(check.ok).toBe(true);
+      // Untouched, so the ordinary path — the forms, the sweep — writes exactly what it sent.
+      if (check.ok) expect(check.accepted.value, `${value} should stand`).toBeUndefined();
+    }
+  });
+
+  it('says nothing about the prose of a slot that is not a yes-or-no', () => {
+    const check = checkSlotWrite('reclaim_setup_weekly_hours', 55, { value: 'About 55' });
+    expect(check.ok).toBe(true);
+    if (check.ok) expect(check.accepted.value).toBeUndefined();
+  });
+});
+
+/**
+ * A figure is stored as the reading it is, never as a naked number.
+ *
+ * Observed live: the captured panel beside the conversation read "Deep work, hours a week: 5". Both
+ * conversational writers had a reason to send it that way — the coach because a count arrives as a
+ * count, the sweep because its schema has no `valueJson` and the figure must travel in the prose —
+ * and the leader is asked to check, correct and later recognise these lines. So the gate dresses the
+ * one case with no phrasing to lose, and leaves every case that has some exactly as it arrived.
+ */
+describe('a number reading is stored as prose a leader can read', () => {
+  it.each([
+    ['reclaim_current_hours__deep_work', '5', '5 hours'],
+    ['reclaim_current_hours__deep_work', '1', '1 hour'],
+    ['reclaim_ideal_hours__deep_work', '7.5', '7.5 hours'],
+    ['reclaim_setup_weekly_hours', '55', '55 hours'],
+    ['reclaim_ideal_total_hours', '45', '45 hours'],
+    ['reclaim_gap_hours_to_remove', '12', '12 hours'],
+    ['reclaim_profile_direct_reports', '25', '25 direct reports'],
+    ['reclaim_profile_direct_reports', '1', '1 direct report'],
+  ])('dresses %s sent as "%s"', (slug, value, expected) => {
+    const check = checkSlotWrite(slug, undefined, { value });
+    expect(check.ok).toBe(true);
+    if (check.ok) expect(check.accepted.value).toBe(expected);
+  });
+
+  it.each(['roughly 5 hours', '5 hours a week', 'about 5', '5 hrs'])(
+    'leaves "%s" alone, because the phrasing is the leader\'s',
+    (value) => {
+      const check = checkSlotWrite('reclaim_current_hours__deep_work', undefined, { value });
+      expect(check.ok).toBe(true);
+      // Untouched, so the figure keeps the words the leader put around it.
+      if (check.ok) {
+        expect(check.accepted.value).toBeUndefined();
+        expect(check.accepted.valueJson).toBe(5);
+      }
+    }
+  );
 });

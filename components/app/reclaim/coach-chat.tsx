@@ -36,9 +36,16 @@
  * the answer is complete — but they are released at an even rate through `useTypingAnimation` instead
  * of landing in whatever burst sizes the provider chose. A coaching question that appears in one lump
  * reads like a form validating; the same question at a steady pace reads like someone speaking.
+ *
+ * **And a closed question is not asked as an open one.** Some of what the audit asks has a fixed set
+ * of answers, and the form panel has always shown them while the conversation put the same question
+ * above an empty box. The coach names the reading its question is about by calling `offer_choices`,
+ * that result arrives on the `capability_result` frame the platform already yields, and the composer
+ * gives way to the answers (`./coach/choices.ts`, `./coach/choice-composer.tsx`). A tapped answer is
+ * an ordinary leader turn, so nothing about how the audit records it changes.
  */
 
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { parseSseBlock } from '@/lib/api/sse-parser';
 import { parseChatStreamEvent } from '@/components/admin/orchestration/chat/chat-events';
 import { ThinkingIndicator } from '@/components/admin/orchestration/chat/thinking-indicator';
@@ -47,11 +54,14 @@ import { leaderFacingStatus } from '@/components/app/reclaim/coach/status';
 import type { CoachOpeningMoment } from '@/lib/app/programme/coach/opening';
 import {
   loadTranscript,
-  splitParagraphs,
+  coachParagraphs,
+  renderEmphasis,
   CoachLine,
   LeaderLine,
 } from '@/components/app/reclaim/coach/transcript';
 import { phaseWindow, sliceByWindow, type PhaseMarks } from '@/lib/app/programme/runs/phase-marks';
+import { offerFromEvent, type ChoiceOffer } from '@/components/app/reclaim/coach/choices';
+import { ChoiceComposer } from '@/components/app/reclaim/coach/choice-composer';
 
 /** A turn on screen. Ids come from the transcript; a turn still being spoken has none yet. */
 interface Turn {
@@ -94,8 +104,29 @@ function setCoachText(turns: Turn[], text: string): Turn[] {
   return next;
 }
 
+/**
+ * The one thing this conversation can be asked to do from outside it.
+ *
+ * The panel beside the transcript shows readings the coach *inferred*, and a leader who does not
+ * recognise one has three honest moves: confirm it, type the right figure over it, or say "come back
+ * to this" — which is a thing you say to a person, not a field you edit. The third move has to reach
+ * the conversation, and only the conversation can send a turn, so it is exposed here rather than
+ * lifted: the transcript, the stream and the in-flight guard all stay in one place.
+ *
+ * What arrives is an ordinary leader turn. It is written into the transcript in full, in the leader's
+ * column, exactly as though they had typed it — because a message sent on someone's behalf that they
+ * cannot see is the panel putting words in their mouth, which is the failure this whole surface
+ * exists to prevent.
+ */
+export interface CoachChatControls {
+  /** Send `message` as a leader turn. Ignored while a turn is already in flight. */
+  ask: (message: string) => void;
+}
+
 export interface CoachChatProps {
   runId: string;
+  /** Imperative handle for the one outside-in move — see `CoachChatControls`. */
+  controlsRef?: React.Ref<CoachChatControls>;
   /** The run's conversation, or `null` before the leader has said anything. */
   conversationId: string | null;
   /**
@@ -163,6 +194,7 @@ export interface CoachChatProps {
 
 export function CoachChat({
   runId,
+  controlsRef,
   conversationId,
   onTurnComplete,
   openMoment = null,
@@ -182,6 +214,26 @@ export function CoachChat({
   const [streaming, setStreaming] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * The answers on offer for the question this turn ended with, or `null` for an open question.
+   *
+   * Held only for the turn it arrived in. It is cleared at the top of every turn rather than when one
+   * is answered, which is what makes a stale offer impossible: whatever the leader does next — pick
+   * one, type over it, or send the panel's "come back to this" — the next turn starts with no offer
+   * and the coach's own call is the only thing that can put one back.
+   */
+  const [offer, setOffer] = useState<ChoiceOffer | null>(null);
+  /**
+   * Whether the leader has asked for the text box instead of the answers.
+   *
+   * Kept apart from `offer` rather than folded into it, because the two say different things and
+   * conflating them cost the leader the way back: discarding the offer on dismiss meant "say it in
+   * your own words" was a one-way door, and somebody who opened the box to reconsider, then decided
+   * the offered answer was right after all, had to ask the coach to offer them again. The offer is
+   * what the coach said is available; this is which of the two the leader is looking at, and it
+   * clears with the offer at the top of every turn.
+   */
+  const [choicesHidden, setChoicesHidden] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -297,6 +349,10 @@ export function CoachChat({
     async (body: Record<string, unknown>, leaderText: string | null) => {
       setError(null);
       setStatus(null);
+      // The previous turn's answers, cleared before this one can produce any, along with the
+      // leader's choice of which composer to look at. See `offer` and `choicesHidden`.
+      setOffer(null);
+      setChoicesHidden(false);
       fullRef.current = '';
       resetTyping();
       followingRef.current = true;
@@ -364,6 +420,12 @@ export function CoachChat({
               resetTyping();
             } else if (event.type === 'error') {
               throw new Error(event.message);
+            } else {
+              // The coach naming the reading its question is about, so the answers can be drawn
+              // instead of a blank box. Every other capability result on this stream is a silent
+              // `record_answers` call and returns `null` here. See `./coach/choices.ts`.
+              const offered = offerFromEvent(event);
+              if (offered !== null) setOffer(offered);
             }
           }
         }
@@ -397,6 +459,39 @@ export function CoachChat({
     setDraft('');
     await runTurn({ kind: 'leader', message }, message);
   }, [draft, streaming, runTurn]);
+
+  /**
+   * One of the offered answers, taken.
+   *
+   * The same path as the composer and as the panel's "talk this through": one turn, one stream, the
+   * same guard. A tapped answer is a leader turn and is indistinguishable from a typed one to the
+   * server, to the transcript and to capture, which is what keeps the audit honest about where its
+   * readings came from. The draft is left alone: a half-written sentence is theirs, and clearing it
+   * because they pressed a button beside it would throw away work they can still see.
+   */
+  const answer = useCallback(
+    (choice: string) => {
+      if (streaming) return;
+      void runTurn({ kind: 'leader', message: choice }, choice);
+    },
+    [streaming, runTurn]
+  );
+
+  // The panel's "talk this through". Deliberately the same path as the composer — one turn, one
+  // stream, the same guard — so a prompted message and a typed one are indistinguishable to the
+  // server and to the transcript. Silently ignored mid-turn rather than queued: a leader who presses
+  // it while the coach is speaking is asking about the answer they are watching arrive.
+  useImperativeHandle(
+    controlsRef ?? { current: null },
+    () => ({
+      ask: (message: string) => {
+        const text = message.trim();
+        if (text.length === 0 || streaming) return;
+        void runTurn({ kind: 'leader', message: text }, text);
+      },
+    }),
+    [streaming, runTurn]
+  );
 
   /**
    * The coach opens the moment, once.
@@ -490,7 +585,8 @@ export function CoachChat({
     if (live && text.length === 0) {
       return <ThinkingIndicator message={status} className="py-1" />;
     }
-    const paragraphs = splitParagraphs(text);
+    // `live` withholds the area mark until the turn settles — see `coachParagraphs`.
+    const paragraphs = coachParagraphs(text, live);
     return (
       <div className="space-y-1.5">
         {/* `space-y-4`, a little wider than the line spacing inside a paragraph: enough that the
@@ -502,7 +598,9 @@ export function CoachChat({
               key={p}
               className="text-foreground text-[1.02rem] leading-relaxed whitespace-pre-wrap"
             >
-              {paragraph}
+              {/* The same emphasis the finished turn gets, drawn while it is still being spoken —
+                  see `renderEmphasis`, which is what keeps a half-arrived `**` from showing. */}
+              {renderEmphasis(paragraph.text, paragraph.markArea)}
               {live && p === paragraphs.length - 1 && (
                 <span className="bg-primary ml-0.5 inline-block h-[1.1em] w-[2px] translate-y-[0.15em] animate-pulse" />
               )}
@@ -593,42 +691,75 @@ export function CoachChat({
       <div className="border-border/60 shrink-0 border-t px-4 py-4 sm:px-6">
         <div className="mx-auto max-w-3xl space-y-3">
           {footer}
-          <form
-            className="border-border bg-background focus-within:border-primary/50 flex items-end gap-3 rounded-2xl border px-4 py-2 transition-colors"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void send();
-            }}
-          >
-            <textarea
-              ref={composerRef}
-              value={draft}
-              onChange={(e) => {
-                setDraft(e.target.value);
-                // Grow with the answer, up to a point, then scroll inside itself. `rows={1}` alone
-                // left a long answer scrolling in a one-line window.
-                e.target.style.height = 'auto';
-                e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`;
+          {/* The answers, but only once the question has finished arriving. An offer lands on the
+              wire before the coach has said a word of the turn it belongs to, because a tool result
+              precedes the reply it informs, so drawing it on receipt would put four buttons under a
+              question the leader is still watching being written. */}
+          {offer !== null && !choicesHidden && !speaking ? (
+            <ChoiceComposer
+              offer={offer}
+              onPick={answer}
+              disabled={streaming}
+              onDismiss={() => {
+                setChoicesHidden(true);
+                composerRef.current?.focus();
               }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
+            />
+          ) : (
+            <>
+              {/* The way back, in the place the choice control keeps its own way out, so the two
+                  states are each other's mirror rather than one being a door that only opens once.
+                  Only while an offer is standing: every other turn, this row is not there at all and
+                  the text box sits where it always has. */}
+              {offer !== null && choicesHidden && !speaking && (
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setChoicesHidden(false)}
+                    className="text-muted-foreground hover:text-foreground text-xs underline underline-offset-4 transition-colors"
+                  >
+                    Choose from the answers instead
+                  </button>
+                </div>
+              )}
+              <form
+                className="border-border bg-background focus-within:border-primary/50 flex items-end gap-3 rounded-2xl border px-4 py-2 transition-colors"
+                onSubmit={(e) => {
                   e.preventDefault();
                   void send();
-                }
-              }}
-              rows={1}
-              placeholder="Write to the coach…"
-              aria-label="Your message"
-              className="text-foreground placeholder:text-muted-foreground max-h-40 min-h-[2.5rem] flex-1 resize-none bg-transparent py-2 text-[0.98rem] leading-relaxed focus:outline-none"
-            />
-            <button
-              type="submit"
-              disabled={streaming || draft.trim().length === 0}
-              className="bg-primary text-primary-foreground my-1 shrink-0 rounded-full px-6 py-2 text-sm font-medium tracking-wide transition-opacity disabled:opacity-40"
-            >
-              {streaming ? 'Listening' : 'Send'}
-            </button>
-          </form>
+                }}
+              >
+                <textarea
+                  ref={composerRef}
+                  value={draft}
+                  onChange={(e) => {
+                    setDraft(e.target.value);
+                    // Grow with the answer, up to a point, then scroll inside itself. `rows={1}` alone
+                    // left a long answer scrolling in a one-line window.
+                    e.target.style.height = 'auto';
+                    e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`;
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      void send();
+                    }
+                  }}
+                  rows={1}
+                  placeholder="Write to the coach…"
+                  aria-label="Your message"
+                  className="text-foreground placeholder:text-muted-foreground max-h-40 min-h-[2.5rem] flex-1 resize-none bg-transparent py-2 text-[0.98rem] leading-relaxed focus:outline-none"
+                />
+                <button
+                  type="submit"
+                  disabled={streaming || draft.trim().length === 0}
+                  className="bg-primary text-primary-foreground my-1 shrink-0 rounded-full px-6 py-2 text-sm font-medium tracking-wide transition-opacity disabled:opacity-40"
+                >
+                  {streaming ? 'Listening' : 'Send'}
+                </button>
+              </form>
+            </>
+          )}
         </div>
       </div>
     </section>

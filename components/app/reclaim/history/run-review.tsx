@@ -149,7 +149,7 @@ export function RunReview({ runId }: { runId: string }) {
     <>
       <ProgrammeChrome
         back={{ href: '/programme/history', label: 'Your audits' }}
-        here={viewing === null ? period : `${period} · phase ${viewIndex}`}
+        here={viewing === null ? period : `${period} · section ${viewIndex}`}
       />
 
       <div className="flex min-h-0 flex-1">
@@ -195,7 +195,7 @@ export function RunReview({ runId }: { runId: string }) {
                   {state.run.completedAt === null
                     ? `Begun ${auditDate(state.run.startedAt)}.`
                     : `Finished ${auditDate(state.run.completedAt)}.`}{' '}
-                  Any phase in the spine opens the part of the conversation it came from.
+                  Any section in the spine opens the part of the conversation it came from.
                 </p>
 
                 {summary !== null ? (
@@ -215,7 +215,7 @@ export function RunReview({ runId }: { runId: string }) {
                     than a way in. So the phases are also listed plainly, where the summary ends. */}
                 <nav aria-label="The phases of this audit" className="lg:hidden">
                   <h2 className="text-muted-foreground text-[0.7rem] font-medium tracking-[0.2em] uppercase">
-                    Look back at a phase
+                    Look back at a section
                   </h2>
                   <ul className="mt-3 space-y-1">
                     {state.phases.map((phase, i) => (

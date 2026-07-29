@@ -35,7 +35,7 @@
  * everything already captured.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { buildChartData, truthy } from '@/lib/app/programme/chart/series';
 import {
@@ -45,12 +45,20 @@ import {
   everyVisibleAreaHasHours,
 } from '@/lib/app/programme/chart/reveal';
 import { arrivalMomentFor, type CoachOpeningMoment } from '@/lib/app/programme/coach/opening';
-import { phaseCaptureSlots, slotApplies } from '@/lib/app/programme/coach/phase-slots';
+import {
+  phaseCaptureSlots,
+  slotApplies,
+  type PhaseSlot,
+} from '@/lib/app/programme/coach/phase-slots';
 import { reflectionSlugForLeaving } from '@/lib/app/programme/runs/phases';
 import type { PhaseSignpost } from '@/lib/app/programme/runs/signposts';
 import type { PhaseMarks } from '@/lib/app/programme/runs/phase-marks';
 import { ReclaimChart } from '@/components/app/reclaim/chart/reclaim-chart';
-import { CoachChat, type CoachBeat } from '@/components/app/reclaim/coach-chat';
+import {
+  CoachChat,
+  type CoachBeat,
+  type CoachChatControls,
+} from '@/components/app/reclaim/coach-chat';
 import { CapturedPanel } from '@/components/app/reclaim/coach/captured-panel';
 import { Signpost } from '@/components/app/reclaim/signpost';
 import {
@@ -118,6 +126,43 @@ const PHASE_COVERED = 0.9;
  */
 const GUESS_CONFIDENCE = 6;
 
+/**
+ * The drawer's closed width, its default open width, and how far a drag may take it.
+ *
+ * `NARROW` is a reading width and it is the **only** closed width: the list of readings, scanned,
+ * out of the conversation's way. `WIDE` is the default open width — one row has grown a text field
+ * and three choices, and at 20rem all of it wraps.
+ *
+ * A drag does not replace this pair; it replaces `WIDE`. Whatever width the leader pulls the edge to
+ * becomes what *open* means for them, and closed stays `NARROW` — so returning to the conversation
+ * always returns the conversation to full width, however far the panel was pulled out. See
+ * `dragWidth`.
+ *
+ * `NARROW` is also the floor on a drag, so the leader cannot end up with an "open" width narrower
+ * than the closed one, which would make opening the drawer shrink it.
+ *
+ * `MAX` is the ceiling, and `KEEP_FOR_TALK` is the real constraint behind it: the drawer slides
+ * *over* the conversation, so a drag with no floor could bury the transcript entirely and leave a
+ * leader looking at a panel with no way back to the thing it is a panel about. Whichever of the two
+ * bites first, wins.
+ */
+const DRAWER_NARROW = 320;
+const DRAWER_WIDE = 480;
+const DRAWER_MAX = 760;
+/** The conversation never gets narrower than this, however far the drawer is pulled out. */
+const KEEP_FOR_TALK = 420;
+
+/** How far a pointer must travel before a press on the grip is a drag rather than a click. */
+const DRAG_SLOP = 3;
+
+/** The widest the drawer may be drawn right now, given the room the conversation has to keep. */
+function widestDrawer(): number {
+  // `window` is absent on the server and in the first render of a test that never lays anything out;
+  // the constant is the honest answer there, and a real drag only ever happens in a real window.
+  const viewport = typeof window === 'undefined' ? Infinity : window.innerWidth;
+  return Math.max(DRAWER_NARROW, Math.min(DRAWER_MAX, viewport - KEEP_FOR_TALK));
+}
+
 function isAGuess(answer: RunAnswers[string]): boolean {
   return answer.sourceType === 'inferred' && answer.confidence <= GUESS_CONFIDENCE;
 }
@@ -170,6 +215,46 @@ export function PhaseConversation({
   /** The captured panel, on a screen too narrow to keep it beside the conversation. */
   const [panelOpen, setPanelOpen] = useState(false);
   /**
+   * The panel, pulled out over the conversation while the leader is working in it.
+   *
+   * A 20rem column is the right width for *reading* a list of readings and the wrong width for
+   * correcting one: the row grows a text field and three choices, and all of it wraps. So touching
+   * the panel widens it, and it slides back the moment attention returns to the conversation.
+   *
+   * **It slides over the conversation rather than squeezing it**, which is the whole constraint. The
+   * transcript is the thing the leader is in the middle of; re-flowing every line of it because they
+   * clicked a side panel would cost them their place mid-sentence. The column below reserves the
+   * space at rest and the drawer is positioned over it, so the conversation's width never changes.
+   *
+   * This is the *automatic* half of the width. The leader can also drag the edge, and once they have,
+   * `dragWidth` wins and this stops being visible — see the note there.
+   */
+  const [drawerWide, setDrawerWide] = useState(false);
+  const drawerRef = useRef<HTMLElement>(null);
+  /**
+   * The width the leader dragged the edge to, or `null` while the default open width still applies.
+   *
+   * **It replaces `DRAWER_WIDE`, not the closing.** A drag says how wide *open* should be; it does
+   * not say the panel should stop getting out of the way. So going back to the conversation still
+   * returns the drawer to `DRAWER_NARROW` — the leader gets their full transcript back at the click
+   * that returns them to it — and the next touch on the panel opens it at the width they chose
+   * rather than at ours. Double-clicking the grip forgets it.
+   *
+   * The alternative, which this deliberately is not: treating a drag as a pin that switches the
+   * automatic sizing off. That keeps a 40rem panel over the conversation until the leader thinks to
+   * put it back, which makes tidying up their own screen a chore they have to remember.
+   */
+  const [dragWidth, setDragWidth] = useState<number | null>(null);
+  const [dragging, setDragging] = useState(false);
+  /** Where the press started, and how wide the drawer was then. Absent when nothing is being dragged. */
+  const dragFrom = useRef<{ x: number; width: number } | null>(null);
+  /** Whether this press has travelled far enough to be a drag, so a click does not also toggle. */
+  const dragged = useRef(false);
+
+  const drawerWidth = drawerWide ? (dragWidth ?? DRAWER_WIDE) : DRAWER_NARROW;
+  /** The conversation's one outside-in move: hand a guessed reading back to the coach. */
+  const chatControls = useRef<CoachChatControls>(null);
+  /**
    * Set when the leader asks to see their week. Held here rather than derived, because the run's
    * ledger only catches up on the next `GET /runs/current` and the beat has to start the moment they
    * press the button.
@@ -189,6 +274,159 @@ export function PhaseConversation({
     void refresh();
   }, [refresh]);
 
+  // Slide the drawer back when the leader's attention leaves it. A pointer press anywhere else is
+  // the honest signal — they have gone back to the conversation — and Escape is the same intent from
+  // the keyboard. Nothing is discarded by narrowing: a half-typed correction is still there when they
+  // come back, because only the width changed.
+  //
+  // **This closes a hand-dragged drawer too**, all the way back to `DRAWER_NARROW`. A leader who has
+  // pulled the panel out to half the screen and then clicks into the conversation wants the
+  // conversation, and leaving a 40rem panel over it until they remember to put it back makes tidying
+  // their own screen a chore. What their drag bought is kept: it is the width the drawer opens to
+  // next time, not a width it is stuck at (see `dragWidth`).
+  useEffect(() => {
+    if (!drawerWide) return;
+    const away = (event: Event) => {
+      if (drawerRef.current?.contains(event.target as Node) !== true) setDrawerWide(false);
+    };
+    const key = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setDrawerWide(false);
+    };
+    document.addEventListener('pointerdown', away);
+    document.addEventListener('keydown', key);
+    return () => {
+      document.removeEventListener('pointerdown', away);
+      document.removeEventListener('keydown', key);
+    };
+  }, [drawerWide]);
+
+  /**
+   * The panel, touched — which widens the drawer, except on the one press that must not.
+   *
+   * **A press on a control has to leave the layout alone.** Widening on `pointerdown` reflows the
+   * panel between the press and the release: the button the leader aimed at moves out from under the
+   * cursor, `pointerup` lands somewhere else, and the browser fires `click` on the common ancestor of
+   * the two rather than on the button. So pressing "Not quite" opened the drawer and did nothing
+   * else, which is precisely how it was reported. Everywhere else in the panel a press means "I am
+   * working in here" and still widens it.
+   */
+  const openOnPress = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if ((event.target as Element | null)?.closest('button, a, [role="button"]') != null) return;
+    setDrawerWide(true);
+  }, []);
+
+  /**
+   * The same rule one step later, and the reason "Not quite" still gets its room.
+   *
+   * Only a field widens the drawer, because a button focused inside the panel was almost certainly
+   * focused *by* the click still in flight, and widening on that is the bug above wearing a hat. A
+   * text field is different: it is the moment the leader actually needs the width, and it arrives
+   * after the click has been dispatched — "Not quite" activates cleanly, the correction field mounts
+   * and takes focus, and the drawer opens around it.
+   */
+  const openOnFocus = useCallback((event: React.FocusEvent<HTMLDivElement>) => {
+    if ((event.target as Element).matches('input, textarea, select')) setDrawerWide(true);
+  }, []);
+
+  /**
+   * The grip, dragged.
+   *
+   * The drawer is anchored to the right edge, so pulling *left* makes it wider — which is why the
+   * delta is `start.x - clientX` rather than the other way round. Pointer capture is what keeps the
+   * drag alive once the cursor leaves the 12px handle, which it does immediately; without it a drag
+   * would die on its first frame.
+   *
+   * The width is clamped on every frame rather than at the end, so the edge stops where the leader
+   * can see it stop instead of springing back when they let go.
+   *
+   * **Nothing happens on the press itself, and that is the fix for a real bug.** The first cut opened
+   * the drawer on `pointerdown` — a drag on a closed edge being a request to open it — and recorded
+   * the width to drag from at the same moment, which was still the *closed* width because the state
+   * had not rendered yet. Every subsequent frame then resolved to `closed + travelled`. A press with
+   * a pixel or two of jitter, which is very nearly every real mouse click, therefore wrote 320 over
+   * whatever width the leader had previously dragged to: the panel flashed open at their old width
+   * and snapped shut again. So the press only remembers where it started, and the drag opens the
+   * drawer the moment it is a drag.
+   */
+  const startDrag = useCallback(
+    (event: React.PointerEvent<HTMLButtonElement>) => {
+      // Or the press selects the panel's text on the way past, which is what a drag over prose does.
+      // Preventing the default also costs the button its focus, so it is taken back by hand — the
+      // arrow keys below are useless on a handle a click will not focus.
+      event.preventDefault();
+      event.currentTarget.focus();
+      event.currentTarget.setPointerCapture(event.pointerId);
+      dragFrom.current = { x: event.clientX, width: drawerWidth };
+      dragged.current = false;
+      setDragging(true);
+    },
+    [drawerWidth]
+  );
+
+  const onDrag = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
+    const start = dragFrom.current;
+    if (start === null) return;
+    const travelled = start.x - event.clientX;
+    // A press that has not travelled is a click, and a click must not resize anything. Once it *has*
+    // travelled it stays a drag, even if the pointer wanders back through the threshold — otherwise
+    // the edge would freeze whenever it passed close to where it started.
+    if (!dragged.current && Math.abs(travelled) <= DRAG_SLOP) return;
+    dragged.current = true;
+    // The drag is what opens it, so the edge follows the cursor from exactly where it was pressed.
+    setDrawerWide(true);
+    setDragWidth(Math.max(DRAWER_NARROW, Math.min(widestDrawer(), start.width + travelled)));
+  }, []);
+
+  const endDrag = useCallback(() => {
+    dragFrom.current = null;
+    setDragging(false);
+  }, []);
+
+  /**
+   * The grip, pressed rather than dragged — the open/closed toggle.
+   *
+   * Skipped when the press turned into a drag, or letting go at the end of one would also flip the
+   * drawer shut and throw away what was just dragged.
+   */
+  const toggleDrawer = useCallback(() => {
+    if (dragged.current) {
+      dragged.current = false;
+      return;
+    }
+    // A plain flip, because the press no longer changes anything for it to read around. The leader's
+    // dragged width is what "open" means; closing does not consume it, so this never touches
+    // `dragWidth`.
+    setDrawerWide((wide) => !wide);
+  }, []);
+
+  /** Arrow keys resize it too, because a handle only a mouse can reach is a handle half the room has. */
+  const nudgeDrawer = useCallback(
+    (event: React.KeyboardEvent<HTMLButtonElement>) => {
+      const step = event.key === 'ArrowLeft' ? 32 : event.key === 'ArrowRight' ? -32 : 0;
+      if (step === 0) return;
+      event.preventDefault();
+      setDrawerWide(true);
+      setDragWidth(Math.max(DRAWER_NARROW, Math.min(widestDrawer(), drawerWidth + step)));
+    },
+    [drawerWidth]
+  );
+
+  /**
+   * Hand one reading back to the conversation, in the leader's own words.
+   *
+   * The panel's third move on a guessed reading. It says the thing a leader would say — come back to
+   * this, I am not sure — and lets the coach ask properly, which is what the surface is for. The
+   * message lands in the transcript as an ordinary leader turn, so nothing is said on their behalf
+   * that they cannot see, and the drawer closes on the way so the answer is not arriving behind it.
+   */
+  const discuss = useCallback((slot: PhaseSlot) => {
+    chatControls.current?.ask(
+      `Can we come back to ${slot.label.toLowerCase()}? I am not sure that is right. Could you ask me about it again?`
+    );
+    setDrawerWide(false);
+    setPanelOpen(false);
+  }, []);
+
   const reflectionSlug = reflectionSlugForLeaving(phaseKey);
   const captureSlots = phaseCaptureSlots(phaseKey, {
     fundraisingRelevant: truthy(answers['reclaim_setup_fundraising_relevant']),
@@ -202,6 +440,7 @@ export function PhaseConversation({
   // so a leader with no fundraising in their role is not held behind a question about their
   // development team.
   const applicable = captureSlots.filter((s) => slotApplies(s.askOnlyIf, answers) !== false);
+  const applicableCaptured = applicable.filter((s) => answers[s.slug] !== undefined).length;
   const settled = applicable.filter((s) => {
     const answer = answers[s.slug];
     return answer !== undefined && !isAGuess(answer);
@@ -248,7 +487,7 @@ export function PhaseConversation({
         : revealState !== null && !revealed
           ? 'Have a look at the shape of your week before moving on.'
           : !reflected
-            ? 'The coach will ask what stands out to you before this phase closes.'
+            ? 'The coach will ask what stands out to you before this section closes.'
             : null;
 
   /**
@@ -384,6 +623,7 @@ export function PhaseConversation({
         answers={answers}
         bucketLabels={labels}
         onSaved={() => void refresh()}
+        onDiscuss={discuss}
       />
       <button
         type="button"
@@ -396,9 +636,10 @@ export function PhaseConversation({
   );
 
   return (
-    <div className="flex min-h-0 flex-1">
+    <div className="relative flex min-h-0 flex-1">
       <CoachChat
         runId={runId}
+        controlsRef={chatControls}
         conversationId={conversationId}
         openMoment={openMoment}
         phaseKey={phaseKey}
@@ -428,7 +669,7 @@ export function PhaseConversation({
                   disabled={busy}
                   className="bg-primary text-primary-foreground rounded-full px-6 py-2 text-sm font-medium disabled:opacity-40"
                 >
-                  {busy ? 'Saving…' : 'Continue to the next phase'}
+                  {busy ? 'Saving…' : 'Continue to the next section'}
                 </button>
                 {/* Runs to the end of the row rather than to a fixed measure, so it takes the same
                     width as the composer below it and settles on two lines beside the button. The
@@ -456,36 +697,109 @@ export function PhaseConversation({
               onClick={() => setPanelOpen(true)}
               className="text-muted-foreground hover:text-foreground ml-auto text-xs underline underline-offset-4 xl:hidden"
             >
-              {capturedCount} of {captureSlots.length} noted
+              {/* Counted over what this leader will actually be asked, which is what the panel this
+                  button opens counts too. A denominator that included readings ruled out by an
+                  earlier answer would sit here saying "18 of 19" beside a panel saying "18 of 18",
+                  and the missing one would read as a question the coach had skipped. */}
+              {applicableCaptured} of {applicable.length} noted
             </button>
           </div>
         }
       />
 
-      <aside className="border-border/60 hidden w-80 shrink-0 overflow-y-auto border-l px-5 py-6 xl:block">
-        {panel}
+      {/* The column the drawer occupies at rest. It exists only to hold the space open, so the
+          drawer can be positioned over the conversation and widen without moving a word of it. */}
+      <div className="hidden w-80 shrink-0 xl:block" aria-hidden="true" />
+
+      <aside
+        ref={drawerRef}
+        style={{ width: drawerWidth }}
+        className={`border-border/60 bg-background absolute inset-y-0 right-0 hidden border-l ease-out motion-reduce:transition-none xl:flex ${
+          // No width transition mid-drag, or the edge lags a frame behind the cursor and the whole
+          // thing feels like it is being pulled through treacle.
+          dragging ? 'select-none' : 'transition-[width,box-shadow] duration-300'
+        } ${drawerWidth > DRAWER_NARROW ? 'shadow-[-1.5rem_0_3rem_-1.5rem_rgb(0_0_0/0.22)]' : ''}`}
+      >
+        {/* The pull. A hairline at rest that thickens and takes the brand teal under the cursor —
+            enough to say the edge is live, quiet enough that a leader who only ever reads the panel
+            never notices it. `cursor-col-resize` is the other half of that promise: the pointer says
+            "this moves sideways" before anything is pressed. */}
+        <button
+          type="button"
+          onPointerDown={startDrag}
+          onPointerMove={onDrag}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
+          onClick={toggleDrawer}
+          onDoubleClick={() => {
+            setDragWidth(null);
+            dragged.current = false;
+          }}
+          onKeyDown={nudgeDrawer}
+          aria-expanded={drawerWidth > DRAWER_NARROW}
+          aria-label="Resize what the coach has noted. Drag, or use the left and right arrow keys."
+          title="Drag to resize"
+          // The default focus ring has to go, and not because focus rings are ugly. This button is a
+          // 12px strip stretched the full height of the drawer, so the ring is not a ring — it is a
+          // hard blue rectangle down the whole edge of the panel, drawn on every mouse press because
+          // `startDrag` takes focus by hand. What replaces it is confined to the grip itself: the
+          // bar takes the brand teal and grows, exactly as it does under the cursor. A keyboard
+          // user sees the handle light up, which is the thing they are about to move.
+          className={`group hover:bg-accent/60 focus-visible:bg-accent/60 flex w-3 shrink-0 cursor-col-resize touch-none items-center justify-center transition-colors focus:outline-none ${
+            dragging ? 'bg-accent/60' : ''
+          }`}
+        >
+          <span
+            className={`rounded-full transition-all duration-150 motion-reduce:transition-none ${
+              dragging
+                ? 'bg-primary h-20 w-[4px]'
+                : 'bg-border group-hover:bg-primary group-focus-visible:bg-primary h-12 w-[3px] group-hover:h-20 group-hover:w-[4px] group-focus-visible:h-20 group-focus-visible:w-[4px]'
+            }`}
+          />
+        </button>
+        <div
+          onPointerDown={openOnPress}
+          onFocusCapture={openOnFocus}
+          className="min-h-0 flex-1 overflow-y-auto py-6 pr-5 pl-2"
+        >
+          {panel}
+        </div>
       </aside>
 
-      {panelOpen && (
-        <div className="fixed inset-0 z-50 flex justify-end xl:hidden">
+      {/* The same panel below `xl`, where there is no column to put it in. Kept mounted so it
+          slides rather than appears, and `inert` while closed so nothing inside it can be reached
+          by a tab or a screen reader that cannot see it. */}
+      <div
+        role="dialog"
+        aria-label="What the coach has noted"
+        // `overflow-hidden` because the panel is parked at `translate-x-full` while closed: without
+        // it, a drawer nobody has opened puts a horizontal scrollbar on the page.
+        className={`fixed inset-0 z-50 flex justify-end overflow-hidden xl:hidden ${panelOpen ? '' : 'pointer-events-none'}`}
+        inert={!panelOpen}
+      >
+        <button
+          type="button"
+          aria-label="Close what the coach has noted"
+          onClick={() => setPanelOpen(false)}
+          className={`bg-foreground/20 absolute inset-0 transition-opacity duration-300 motion-reduce:transition-none ${
+            panelOpen ? 'opacity-100' : 'opacity-0'
+          }`}
+        />
+        <div
+          className={`bg-background border-border/60 relative flex w-[min(24rem,92vw)] flex-col overflow-y-auto border-l px-5 py-6 transition-transform duration-300 ease-out motion-reduce:transition-none ${
+            panelOpen ? 'translate-x-0' : 'translate-x-full'
+          }`}
+        >
           <button
             type="button"
-            aria-label="Close what the coach has noted"
             onClick={() => setPanelOpen(false)}
-            className="bg-foreground/20 absolute inset-0"
-          />
-          <div className="bg-background border-border/60 relative flex w-[min(22rem,90vw)] flex-col overflow-y-auto border-l px-5 py-6">
-            <button
-              type="button"
-              onClick={() => setPanelOpen(false)}
-              className="text-muted-foreground hover:text-foreground mb-4 self-end text-xs underline underline-offset-4"
-            >
-              Close
-            </button>
-            {panel}
-          </div>
+            className="text-muted-foreground hover:text-foreground mb-4 self-end text-xs underline underline-offset-4"
+          >
+            Close
+          </button>
+          {panel}
         </div>
-      )}
+      </div>
     </div>
   );
 }

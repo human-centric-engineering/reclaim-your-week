@@ -154,6 +154,52 @@ describe('applyContentEdits', () => {
     );
   });
 
+  it('applies a signpost’s involves line, duration and an opening beat', () => {
+    const config = defaults();
+    const next = applyContentEdits(config, {
+      'phaseSignposts.0.involves': 'Naming the week you are auditing',
+      'phaseSignposts.0.duration': 'About ten minutes',
+      'phaseSignposts.0.opening.0': 'This is where we begin.',
+    });
+
+    expect(next.phaseSignposts[0]?.involves).toBe('Naming the week you are auditing');
+    expect(next.phaseSignposts[0]?.duration).toBe('About ten minutes');
+    expect(next.phaseSignposts[0]?.opening[0]).toBe('This is where we begin.');
+    // The copy the edit did not name is untouched, and the source config is not written through.
+    expect(config.phaseSignposts[0]?.involves).not.toBe('Naming the week you are auditing');
+  });
+
+  it('refuses to grow a signpost’s opening, because a new beat has no default behind it', () => {
+    // A beat past the end would render as permanently diverged copy with nothing to compare against,
+    // so an out-of-range index is dropped rather than appended.
+    const config = defaults();
+    const beats = config.phaseSignposts[0]?.opening.length ?? 0;
+    const next = applyContentEdits(config, {
+      [`phaseSignposts.0.opening.${String(beats)}`]: 'A beat nobody wrote',
+    });
+
+    expect(next.phaseSignposts[0]?.opening).toHaveLength(beats);
+    expect(next.phaseSignposts[0]?.opening).not.toContain('A beat nobody wrote');
+  });
+
+  it('ignores a signpost index that does not exist rather than throwing', () => {
+    const config = defaults();
+    const next = applyContentEdits(config, { 'phaseSignposts.99.involves': 'Nowhere' });
+
+    expect(next.phaseSignposts).toEqual(config.phaseSignposts);
+  });
+
+  it('applies an hour-band label, and ignores a band index that does not exist', () => {
+    const config = defaults();
+    const next = applyContentEdits(config, {
+      'hourBands.0.label': 'A long week',
+      'hourBands.99.label': 'Nowhere',
+    });
+
+    expect(next.hourBands[0]?.label).toBe('A long week');
+    expect(next.hourBands).toHaveLength(config.hourBands.length);
+  });
+
   it('ignores an out-of-range index rather than throwing', () => {
     const config = defaults();
     expect(() => applyContentEdits(config, { 'buckets.99.title': 'Nowhere' })).not.toThrow();

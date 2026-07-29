@@ -134,7 +134,7 @@ function OpenAudit({ run }: { run: RunListItem }) {
           Begun {auditDate(run.startedAt)}
           {run.progress !== null && (
             <>
-              . You stopped at phase {run.progress.phaseIndex}, {run.progress.phaseLabel}
+              . You stopped at section {run.progress.phaseIndex}, {run.progress.phaseLabel}
             </>
           )}
           .

@@ -23,11 +23,13 @@ const HOURS = 'reclaim_current_hours__deep_work';
 const answers = (overrides: RunAnswers = {}): RunAnswers => ({ ...overrides });
 
 const onSaved = vi.fn();
+const onDiscuss = vi.fn();
 
 beforeEach(() => {
   saveAnswer.mockReset();
   saveAnswer.mockResolvedValue(undefined);
   onSaved.mockReset();
+  onDiscuss.mockReset();
 });
 
 describe('CapturedPanel', () => {
@@ -50,7 +52,7 @@ describe('CapturedPanel', () => {
 
     // Two, not three: the week grid was never built, so `reclaim_energy_peak_windows` is not a
     // reading this phase can capture and does not sit here waiting to be filled.
-    expect(screen.getByText(/1 of 2 in this phase/)).toBeInTheDocument();
+    expect(screen.getByText(/1 of 2 in this section/)).toBeInTheDocument();
   });
 
   it('leaves a reading the leader stated plainly alone', () => {
@@ -82,7 +84,7 @@ describe('CapturedPanel', () => {
     );
 
     expect(screen.getByText(/Have we got it right/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Yes, that is right' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'That is right' })).toBeInTheDocument();
   });
 
   it('offers back a directly-heard reading the coach was unsure of', () => {
@@ -100,6 +102,185 @@ describe('CapturedPanel', () => {
     expect(screen.getByText(/Have we got it right/)).toBeInTheDocument();
   });
 
+  /**
+   * The word is the point of the whole panel.
+   *
+   * A leader looking at "20" has no way to tell whether they said it or the coach worked it out, and
+   * those call for different things from them. Inferred means it was never told this and read it
+   * between the lines — the case where a figure can end up in someone's audit that they never gave.
+   * Unsure means it *was* told and did not trust its own hearing, which is a milder admission.
+   */
+  it('says a reading was inferred, rather than only asking whether it is right', () => {
+    render(
+      <CapturedPanel
+        runId="run-1"
+        phaseKey="phase-1-current"
+        answers={answers({
+          [HOURS]: { value: '20', valueJson: 20, sourceType: 'inferred', confidence: 4 },
+        })}
+        onSaved={onSaved}
+      />
+    );
+
+    expect(screen.getByText('Inferred')).toBeInTheDocument();
+    expect(screen.getByText(/Taken from what you said around it/)).toBeInTheDocument();
+  });
+
+  it('distinguishes a reading it was told but doubted from one it never heard at all', () => {
+    render(
+      <CapturedPanel
+        runId="run-1"
+        phaseKey="phase-1-current"
+        answers={answers({
+          [HOURS]: { value: '20', valueJson: 20, sourceType: 'direct', confidence: 5 },
+        })}
+        onSaved={onSaved}
+      />
+    );
+
+    expect(screen.getByText('Unsure')).toBeInTheDocument();
+    expect(screen.queryByText('Inferred')).not.toBeInTheDocument();
+    expect(screen.getByText(/We heard this, but were not sure of it/)).toBeInTheDocument();
+  });
+
+  /**
+   * A reading that was never for this leader, told apart from one nobody has reached.
+   *
+   * Both were a dimmed label over a dash, and both counted towards the total — so a leader who said
+   * fundraising is not part of their role watched a count that could never reach its own denominator
+   * sit beside blank rows, and read it, correctly by everything on their screen, as questions the
+   * coach had skipped. The coach's own list and the move-onward button had always known better; this
+   * is the surface the leader actually looks at agreeing with them.
+   */
+  it('says a reading was never for this leader, rather than leaving it looking unasked', () => {
+    render(
+      <CapturedPanel
+        runId="run-1"
+        phaseKey="phase-0-setup"
+        answers={answers({
+          reclaim_setup_fundraising_relevant: {
+            value: 'No',
+            valueJson: false,
+            sourceType: 'direct',
+            confidence: 10,
+          },
+        })}
+        onSaved={onSaved}
+      />
+    );
+
+    // "Development team, or you" is asked only of a leader who fundraises. They do not.
+    expect(screen.getByText('Not needed, from what you have told us')).toBeInTheDocument();
+  });
+
+  it('counts only what this leader will actually be asked', () => {
+    const { rerender } = render(
+      <CapturedPanel
+        runId="run-1"
+        phaseKey="phase-0-setup"
+        answers={answers({
+          reclaim_setup_fundraising_relevant: {
+            value: 'No',
+            valueJson: false,
+            sourceType: 'direct',
+            confidence: 10,
+          },
+        })}
+        onSaved={onSaved}
+      />
+    );
+
+    const withoutFundraising = screen.getByText(/1 of \d+ in this section/).textContent ?? '';
+    const settled = Number(/1 of (\d+)/.exec(withoutFundraising)?.[1]);
+
+    // Answer it the other way and the reading comes back, so the total is a fact about this leader
+    // rather than a constant: nothing is being hidden, it is being decided.
+    rerender(
+      <CapturedPanel
+        runId="run-1"
+        phaseKey="phase-0-setup"
+        answers={answers({
+          reclaim_setup_fundraising_relevant: {
+            value: 'Yes',
+            valueJson: true,
+            sourceType: 'direct',
+            confidence: 10,
+          },
+        })}
+        onSaved={onSaved}
+      />
+    );
+
+    expect(screen.getByText(new RegExp(`1 of ${settled + 1} in this section`))).toBeInTheDocument();
+    expect(screen.queryByText('Not needed, from what you have told us')).not.toBeInTheDocument();
+  });
+
+  /**
+   * The third move, and the only one that is not a write.
+   *
+   * Confirming and correcting both end the question. A leader who cannot tell whether the coach's
+   * guess is right needs neither — they need to be asked about it properly, which is the one thing
+   * this surface can do that the form it replaced could not.
+   */
+  it('hands a guessed reading back to the conversation rather than only offering a text box', async () => {
+    render(
+      <CapturedPanel
+        runId="run-1"
+        phaseKey="phase-1-current"
+        answers={answers({
+          [HOURS]: { value: '20', valueJson: 20, sourceType: 'inferred', confidence: 4 },
+        })}
+        onSaved={onSaved}
+        onDiscuss={onDiscuss}
+      />
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /Talk through .* with the coach/ }));
+
+    expect(onDiscuss).toHaveBeenCalledWith(expect.objectContaining({ slug: HOURS }));
+    // Handing it back is not a write: nothing has been settled yet, and recording a confirmation
+    // here would settle it on the leader's behalf.
+    expect(saveAnswer).not.toHaveBeenCalled();
+  });
+
+  it('offers nothing to talk through where there is no conversation to talk in', () => {
+    render(
+      <CapturedPanel
+        runId="run-1"
+        phaseKey="phase-1-current"
+        answers={answers({
+          [HOURS]: { value: '20', valueJson: 20, sourceType: 'inferred', confidence: 4 },
+        })}
+        onSaved={onSaved}
+      />
+    );
+
+    expect(screen.queryByRole('button', { name: /Talk through/ })).not.toBeInTheDocument();
+  });
+
+  /**
+   * A finished audit keeps the admission and loses the offer. Which readings were guessed is a fact
+   * about what was recorded; the buttons are writes the server would refuse.
+   */
+  it('still says what was guessed on a finished audit, without offering to change it', () => {
+    render(
+      <CapturedPanel
+        runId="run-1"
+        phaseKey="phase-1-current"
+        answers={answers({
+          [HOURS]: { value: '20', valueJson: 20, sourceType: 'inferred', confidence: 4 },
+        })}
+        onSaved={onSaved}
+        onDiscuss={onDiscuss}
+        readOnly
+      />
+    );
+
+    expect(screen.getByText('Inferred')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'That is right' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Talk through/ })).not.toBeInTheDocument();
+  });
+
   it('records a confirmation as a confirmation, not as a fresh statement', async () => {
     render(
       <CapturedPanel
@@ -112,7 +293,7 @@ describe('CapturedPanel', () => {
       />
     );
 
-    await userEvent.click(screen.getByRole('button', { name: 'Yes, that is right' }));
+    await userEvent.click(screen.getByRole('button', { name: 'That is right' }));
 
     await waitFor(() =>
       expect(saveAnswer).toHaveBeenCalledWith('run-1', {
@@ -165,7 +346,7 @@ describe('CapturedPanel', () => {
       />
     );
 
-    await userEvent.click(screen.getByRole('button', { name: 'Yes, that is right' }));
+    await userEvent.click(screen.getByRole('button', { name: 'That is right' }));
 
     expect(await screen.findByText(/did not save/)).toBeInTheDocument();
     expect(onSaved).not.toHaveBeenCalled();
@@ -205,7 +386,7 @@ describe('CapturedPanel', () => {
     expect(screen.getByText('How little recovery there is')).toBeInTheDocument();
     // Never offered back as a reading to verify: they said it, and second-guessing their own sentence
     // is the form creeping back in.
-    expect(screen.queryByRole('button', { name: 'Yes, that is right' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'That is right' })).not.toBeInTheDocument();
   });
 
   /**
@@ -244,7 +425,7 @@ describe('CapturedPanel', () => {
       />
     );
 
-    expect(screen.getByText(/The coach will ask before this phase closes/)).toBeInTheDocument();
+    expect(screen.getByText(/The coach will ask before this section closes/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Write it myself' })).not.toBeInTheDocument();
     expect(screen.queryByRole('textbox', { name: 'Your reflection' })).not.toBeInTheDocument();
   });

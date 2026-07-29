@@ -36,7 +36,7 @@ export function Signpost({
   return (
     <div className="bg-muted rounded-2xl px-7 py-6">
       <p className="text-muted-foreground text-[0.7rem] font-medium tracking-[0.2em] uppercase">
-        Phase {index} · {label}
+        Section {index} · {label}
       </p>
       {signpost && (
         <>

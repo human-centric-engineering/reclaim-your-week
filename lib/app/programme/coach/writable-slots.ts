@@ -143,8 +143,19 @@ export const COACH_WRITABLE_SLOTS_IN_REFUSED_GROUPS: readonly string[] = [
  *
  * So the derivation is deliberately narrow and admits nothing that requires interpretation:
  *
- * - **number** — the whole trimmed string is a finite number. "25" yes; "about 25", "25 hours",
- *   "twenty five" all no, because each of those needs a reading rather than a parse.
+ * - **number** — the string names exactly one figure, and that figure is the reading. "25" yes, and
+ *   so are "25 hours" and "roughly 25", because the words around a single figure change how sure the
+ *   leader is of it and never what it is. "twenty five" no: spelled out, there is no figure to parse.
+ *   "2 to 3", "8-10" and "5 on Mondays and 2 on Fridays" no, and this is the case the rule is for —
+ *   a string naming two figures needs someone to choose between them, which is a reading and not a
+ *   parse. The coach's way through that refusal is to offer one figure back and let the leader agree
+ *   it, which is the same way through it has always had.
+ *
+ *   This was once "the whole trimmed string is a finite number", which refused "25 hours" on the
+ *   grounds that it needed interpreting. It does not — but the tool telling the coach to write a
+ *   figure the way the leader said it (see `record-answers.ts`) would have collided with a gate that
+ *   only accepted naked ones, and the reading would have been refused for being well phrased. A
+ *   single figure in a sentence is unambiguous, and nothing below this line reads the sentence.
  * - **boolean** — the whole trimmed string is one of the four words a yes or a no is written as.
  *   Anything longer is a sentence, and a sentence about a yes-or-no slot is the coach's summary of
  *   an answer rather than the answer.
@@ -159,8 +170,10 @@ export function deriveTypedValue(dataType: string, value: string): unknown {
   const text = value.trim();
   switch (dataType) {
     case SLOT_DATA_TYPE.number: {
-      if (!/^-?\d+(\.\d+)?$/.test(text)) return undefined;
-      const n = Number(text);
+      // Every figure in the string, so "one and only one" is a decision this can actually make.
+      const figures = text.match(/-?\d+(?:\.\d+)?/g);
+      if (figures === null || figures.length !== 1) return undefined;
+      const n = Number(figures[0]);
       return Number.isFinite(n) ? n : undefined;
     }
     case SLOT_DATA_TYPE.boolean: {
@@ -174,6 +187,83 @@ export function deriveTypedValue(dataType: string, value: string): unknown {
     default:
       return undefined;
   }
+}
+
+/**
+ * What a figure is called, for the slots whose prose reading would otherwise be a naked number.
+ *
+ * A number slot stores its reading twice: `valueJson` for everything that computes, and `value` for
+ * everything a person reads. The two writers here both had a reason to put the bare figure in the
+ * prose — the coach because a count arrived as a count, the sweep because its schema has no
+ * `valueJson` at all and the figure must travel in `value` to be derived from — and the result was a
+ * captured panel that said **"Deep work, hours a week: 5"**. A row whose value is "5" is a row that
+ * only makes sense while you are looking at its label, and the leader is asked to check these
+ * readings, correct them, and recognise them again in a summary weeks later.
+ *
+ * So a prose reading that is a figure and nothing else is dressed in the unit the figure is in. This
+ * is presentation, not interpretation: the typed value is untouched, and no reading is refused or
+ * altered by it. Only the case with nothing to lose is touched — see `numberProse`.
+ */
+interface FigureUnit {
+  /** The unit at one, so "1 hour" is not written "1 hours". */
+  singular: string;
+  plural: string;
+}
+
+/**
+ * The noun and nothing more, deliberately: "5 hours", not "5 hours a week".
+ *
+ * Every hours slot in this audit is a weekly rate and every label already says so ("Deep work, hours
+ * a week", "Your weekly hours", "A sustainable weekly total"). A dressed value repeating it reads as
+ * the audit talking to itself — "Your weekly hours: 55 hours a week" — while "55 hours" is a reading
+ * that stands on its own wherever it is quoted and says nothing twice where it sits beside a label.
+ */
+const HOURS: FigureUnit = { singular: 'hour', plural: 'hours' };
+
+/**
+ * The units that are not the weekly-hours pattern.
+ *
+ * Deliberately only the slots the coach may write. The remaining number slots in the audit
+ * (`reclaim_calendar_events_per_day`, `_back_to_back`, `_longest_block` and the computed lanes
+ * beside them) are refused to conversational capture outright, so they never reach this and giving
+ * them units here would be inventing a contract nothing exercises.
+ */
+const FIGURE_UNITS: Readonly<Record<string, FigureUnit>> = {
+  reclaim_setup_weekly_hours: HOURS,
+  reclaim_ideal_total_hours: HOURS,
+  reclaim_gap_hours_to_remove: HOURS,
+  reclaim_profile_direct_reports: { singular: 'direct report', plural: 'direct reports' },
+};
+
+/** The unit for one slot: the per-area hour lanes by pattern, the rest by name. */
+function figureUnitFor(slotSlug: string): FigureUnit | undefined {
+  // `reclaim_current_hours__deep_work`, `reclaim_ideal_hours__delivery`, and the seven others.
+  if (slotSlug.includes('_hours__')) return HOURS;
+  return FIGURE_UNITS[slotSlug];
+}
+
+/** A figure and nothing else. The same shape `deriveTypedValue` reads a number out of. */
+const BARE_FIGURE = /^-?\d+(\.\d+)?$/;
+
+/**
+ * The prose to store for a number reading, when the one that arrived was a naked figure.
+ *
+ * `undefined` means leave the caller's prose exactly as it is, and that is the answer for everything
+ * except the one unambiguous case: a string with no words in it at all. Anything the leader put words
+ * around is theirs and stands — "roughly 5 hours", "about 8, more some weeks", "5 hrs" — because the
+ * point is to keep the reading in the way they articulated it, and a rule that appended a unit to
+ * prose that already carried one in different words would be correcting them into "5 hrs hours".
+ * A bare "5" has no phrasing to preserve, so dressing it takes nothing away.
+ *
+ * Exported because the sweep needs the same string to compare against: it proposes bare figures, and
+ * "have we already got this reading" must be asked of the prose as stored, not as sent.
+ */
+export function numberProse(slotSlug: string, value: string): string | undefined {
+  const text = value.trim();
+  if (!BARE_FIGURE.test(text)) return undefined;
+  const unit = figureUnitFor(slotSlug);
+  if (unit === undefined) return undefined;
+  return `${text} ${Number(text) === 1 ? unit.singular : unit.plural}`;
 }
 
 /** Slug → definition, built once. Mirrors the lookup `saveAnswer` does for masking. */
@@ -200,6 +290,15 @@ export interface SlotWriteAccepted {
   slotSlug: string;
   /** The validated typed form for a non-text slot; `undefined` for text slots. */
   valueJson?: Prisma.InputJsonValue;
+  /**
+   * The prose to store instead of the one the caller sent, when the one it sent would not have read
+   * as an answer.
+   *
+   * Two cases, both narrow and both in `checkSlotWrite`: a yes-or-no whose sentence contradicted its
+   * typed value, and a figure that arrived with no words around it at all. `undefined` means the
+   * caller's own prose stands, which is the ordinary case.
+   */
+  value?: string;
 }
 
 export type SlotWriteCheck =
@@ -322,6 +421,42 @@ export function checkSlotWrite(
         message: `"${slotSlug}" needs a ${dataType} in valueJson, not only a description. Offer the leader a specific figure and record it once they confirm it.`,
       },
     };
+  }
+
+  // A yes-or-no is stored as the word for the answer it is, and never as a sentence about it.
+  //
+  // **The failure this closes, in full, because it is quiet and it costs a question.** A leader asked
+  // whether they were in a period of change said "change is a constant". The coach recorded
+  // `reclaim_setup_in_transition` with that sentence as the prose and `false` as the typed value, and
+  // nothing anywhere compared the two. Three readers then disagreed about the same reading: the panel
+  // beside the leader showed their own sentence, which reads as a yes; `slotApplies` read the boolean,
+  // which is a no, and told the coach that "What the change is" does not apply to this leader and must
+  // not be asked; and the leader, looking at a row that said change is constant and a blank row
+  // underneath it, saw a question the coach had simply skipped.
+  //
+  // Neither half can be trusted over the other here, so what is fixed is that they can differ at all.
+  // The typed value is what every reader downstream acts on, so the prose is made to say the same
+  // thing, in the one word a yes-or-no has. A leader who then sees "In a period of change — No" beside
+  // their own answer can say so, and the coach can put it right; a leader shown their own sentence
+  // over a stored `false` has nothing to notice.
+  //
+  // Untouched when the prose already is the answer ("Yes", "no."), which is the ordinary case and the
+  // one the forms and the sweep both produce.
+  if (dataType === SLOT_DATA_TYPE.boolean && typeof typed === 'boolean') {
+    const word = typed ? 'Yes' : 'No';
+    if (conditions.value !== undefined && deriveTypedValue(dataType, conditions.value) !== typed) {
+      return { ok: true, accepted: { slotSlug, valueJson: typed, value: word } };
+    }
+  }
+
+  // A figure is stored as the reading it is, never as a naked number. The leader is shown this prose
+  // beside the conversation and asked to check it, so "5" under a label is the audit making them do
+  // the reading. Only a value with no words in it is touched; see `numberProse`.
+  if (dataType === SLOT_DATA_TYPE.number && conditions.value !== undefined) {
+    const dressed = numberProse(slotSlug, conditions.value);
+    if (dressed !== undefined) {
+      return { ok: true, accepted: { slotSlug, valueJson: typed, value: dressed } };
+    }
   }
 
   return { ok: true, accepted: { slotSlug, valueJson: typed } };

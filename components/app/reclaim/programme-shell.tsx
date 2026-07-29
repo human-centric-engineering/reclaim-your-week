@@ -227,7 +227,7 @@ export function ProgrammeShell() {
 
   return (
     <>
-      <ProgrammeChrome here={`Phase ${headingIndex} · ${headingPhase.label}`} />
+      <ProgrammeChrome here={`Section ${headingIndex} · ${headingPhase.label}`} />
 
       <div className="flex min-h-0 flex-1">
         {/* The spine keeps its own column on a wide screen, and its own scroll: seven phases fit, but
@@ -261,7 +261,7 @@ export function ProgrammeShell() {
               signposts={signposts ?? undefined}
               conversationId={state.run.conversationId}
               phaseMarks={state.run.phaseMarks}
-              returnLabel={`phase ${currentIndex}, ${currentPhase.label}`}
+              returnLabel={`section ${currentIndex}, ${currentPhase.label}`}
               onReturn={() => setReviewingKey(null)}
             />
           ) : talking ? (

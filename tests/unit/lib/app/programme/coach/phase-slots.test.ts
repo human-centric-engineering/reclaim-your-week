@@ -63,6 +63,18 @@ describe('the slots a phase captures', () => {
     ]);
   });
 
+  it('leaves the computed gap summary off phase 4, so the turn cannot be told to ask for it', () => {
+    // `reclaim_gap_summary` is "per-bucket deltas, computed" — `json`, written by nothing, and not a
+    // sentence anyone says. It sat first in declaration order in `reclaim_gap`, which made it phase
+    // 4's first unanswered reading. That was survivable while the list was only a worklist; it is
+    // not now the coach is required to end every turn on the first unanswered reading, because a
+    // reading nothing can answer would hold that slot for the whole phase.
+    expect(reclaimSlotDefinitions.some((d) => d.slug === 'reclaim_gap_summary')).toBe(true);
+    const captured = phaseCaptureSlots('phase-4-gap').map((s) => s.slug);
+    expect(captured).not.toContain('reclaim_gap_summary');
+    expect(captured.length).toBeGreaterThan(0);
+  });
+
   it('carries the data type, because a typed slot is refused without a typed value', () => {
     const hours = phaseCaptureSlots('phase-1-current').find(
       (s) => s.slug === 'reclaim_current_hours__deep_work'

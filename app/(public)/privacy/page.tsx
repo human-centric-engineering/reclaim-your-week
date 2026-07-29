@@ -124,7 +124,7 @@ export default function PrivacyPage() {
           <strong className="text-foreground font-medium">Your answers.</strong> Everything you
           enter during an audit: your role and organisation type, how many hours you are working,
           your priorities, what is on your mind, the hours you attribute to each of the nine areas,
-          your reflections at the end of each phase, and the action you choose. Each answer is
+          your reflections at the end of each section, and the action you choose. Each answer is
           stamped with which audit it belongs to, so a second audit never overwrites your first.
         </p>
         <p>

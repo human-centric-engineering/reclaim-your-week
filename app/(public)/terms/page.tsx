@@ -153,7 +153,7 @@ export default function TermsPage() {
 
       <Clause title="Whose the method is">
         <p>
-          The nine areas, the benchmark ranges, the phase structure and the diagnostic writing
+          The nine areas, the benchmark ranges, the section structure and the diagnostic writing
           behind them are Rashmir Balasubramaniam&rsquo;s intellectual property. You are welcome to
           use them for your own leadership and to talk about what you learned.
         </p>

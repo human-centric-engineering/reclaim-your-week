@@ -15,14 +15,16 @@
 
 import React from 'react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-const { readAnswers, readLabels, saveAnswer, advancePhase } = vi.hoisted(() => ({
+const { readAnswers, readLabels, saveAnswer, advancePhase, ask } = vi.hoisted(() => ({
   readAnswers: vi.fn(),
   readLabels: vi.fn(),
   saveAnswer: vi.fn(),
   advancePhase: vi.fn(),
+  /** What the panel sent into the conversation, via the chat's one imperative move. */
+  ask: vi.fn(),
 }));
 vi.mock('@/components/app/reclaim/phase/actions', () => ({
   readAnswers,
@@ -37,17 +39,25 @@ vi.mock('@/components/app/reclaim/coach-chat', () => ({
   CoachChat: ({
     onTurnComplete,
     openMoment,
+    controlsRef,
     intro,
     beats,
     footer,
   }: {
     onTurnComplete?: () => void;
     openMoment?: string | null;
+    controlsRef?: React.RefObject<{ ask: (message: string) => void } | null>;
     intro?: React.ReactNode;
     beats?: { key: string; node: React.ReactNode }[];
     footer?: React.ReactNode;
   }) => (
-    <div>
+    <div
+      // The one way the panel can reach the conversation. Filled during render rather than from an
+      // effect so it is already there for the first click a test makes.
+      ref={() => {
+        if (controlsRef !== undefined) controlsRef.current = { ask };
+      }}
+    >
       {/* The moment the phase hands the chat, surfaced so the tests below can read which one it is.
           The real chat posts it; a stub cannot, and what matters here is the choice, not the post. */}
       <span data-testid="open-moment">{openMoment ?? 'none'}</span>
@@ -163,7 +173,7 @@ describe('PhaseConversation', () => {
     await waitFor(() => expect(readAnswers).toHaveBeenCalled());
 
     expect(
-      screen.queryByRole('button', { name: /Continue to the next phase/ })
+      screen.queryByRole('button', { name: /Continue to the next section/ })
     ).not.toBeInTheDocument();
     expect(await screen.findByText(/coach will ask what stands out/i)).toBeInTheDocument();
   });
@@ -173,7 +183,7 @@ describe('PhaseConversation', () => {
     await waitFor(() => expect(readAnswers).toHaveBeenCalled());
 
     await userEvent.click(
-      await screen.findByRole('button', { name: /Continue to the next phase/ })
+      await screen.findByRole('button', { name: /Continue to the next section/ })
     );
 
     await waitFor(() => expect(advancePhase).toHaveBeenCalledWith('run-1', 'phase-2-energy'));
@@ -194,7 +204,7 @@ describe('PhaseConversation', () => {
     await waitFor(() => expect(readAnswers).toHaveBeenCalled());
 
     expect(
-      screen.queryByRole('button', { name: /Continue to the next phase/ })
+      screen.queryByRole('button', { name: /Continue to the next section/ })
     ).not.toBeInTheDocument();
   });
 
@@ -204,7 +214,7 @@ describe('PhaseConversation', () => {
     await waitFor(() => expect(readAnswers).toHaveBeenCalled());
 
     await userEvent.click(
-      await screen.findByRole('button', { name: /Continue to the next phase/ })
+      await screen.findByRole('button', { name: /Continue to the next section/ })
     );
 
     expect(await screen.findByText(/A reflection is needed before moving on/)).toBeInTheDocument();
@@ -236,7 +246,7 @@ describe('PhaseConversation', () => {
     );
 
     expect(
-      await screen.findByRole('button', { name: /Continue to the next phase/ })
+      await screen.findByRole('button', { name: /Continue to the next section/ })
     ).toBeInTheDocument();
   });
 });
@@ -259,7 +269,7 @@ describe('PhaseConversation — when the way onward is offered', () => {
     await waitFor(() => expect(readAnswers).toHaveBeenCalled());
 
     expect(
-      screen.queryByRole('button', { name: /Continue to the next phase/ })
+      screen.queryByRole('button', { name: /Continue to the next section/ })
     ).not.toBeInTheDocument();
     expect(await screen.findByText(/are 10 things still to cover/i)).toBeInTheDocument();
   });
@@ -281,7 +291,7 @@ describe('PhaseConversation — when the way onward is offered', () => {
     render(<PhaseConversation {...setup} />);
 
     expect(
-      await screen.findByRole('button', { name: /Continue to the next phase/ })
+      await screen.findByRole('button', { name: /Continue to the next section/ })
     ).toBeInTheDocument();
   });
 
@@ -305,7 +315,7 @@ describe('PhaseConversation — when the way onward is offered', () => {
     render(<PhaseConversation {...setup} />);
 
     expect(
-      await screen.findByRole('button', { name: /Continue to the next phase/ })
+      await screen.findByRole('button', { name: /Continue to the next section/ })
     ).toBeInTheDocument();
   });
 
@@ -318,7 +328,7 @@ describe('PhaseConversation — when the way onward is offered', () => {
     render(<PhaseConversation {...setup} />);
 
     expect(
-      await screen.findByRole('button', { name: /Continue to the next phase/ })
+      await screen.findByRole('button', { name: /Continue to the next section/ })
     ).toBeInTheDocument();
     expect(await screen.findByText(/you may move on whenever you wish/i)).toBeInTheDocument();
     expect(
@@ -330,7 +340,7 @@ describe('PhaseConversation — when the way onward is offered', () => {
     readAnswers.mockResolvedValue(allOf(SETUP));
     render(<PhaseConversation {...setup} />);
 
-    await screen.findByRole('button', { name: /Continue to the next phase/ });
+    await screen.findByRole('button', { name: /Continue to the next section/ });
     expect(screen.queryByText(/you may move on whenever you wish/i)).not.toBeInTheDocument();
   });
 
@@ -341,14 +351,14 @@ describe('PhaseConversation — when the way onward is offered', () => {
     const { unmount } = render(<PhaseConversation {...setup} coveredPercent={70} />);
 
     expect(
-      await screen.findByRole('button', { name: /Continue to the next phase/ })
+      await screen.findByRole('button', { name: /Continue to the next section/ })
     ).toBeInTheDocument();
     unmount();
 
     render(<PhaseConversation {...setup} />);
     await waitFor(() => expect(readAnswers).toHaveBeenCalledTimes(2));
     expect(
-      screen.queryByRole('button', { name: /Continue to the next phase/ })
+      screen.queryByRole('button', { name: /Continue to the next section/ })
     ).not.toBeInTheDocument();
   });
 
@@ -360,7 +370,7 @@ describe('PhaseConversation — when the way onward is offered', () => {
     await waitFor(() => expect(readAnswers).toHaveBeenCalled());
 
     expect(
-      screen.queryByRole('button', { name: /Continue to the next phase/ })
+      screen.queryByRole('button', { name: /Continue to the next section/ })
     ).not.toBeInTheDocument();
     unmount();
 
@@ -368,7 +378,7 @@ describe('PhaseConversation — when the way onward is offered', () => {
     render(<PhaseConversation {...setup} coveredPercent={400} />);
 
     expect(
-      await screen.findByRole('button', { name: /Continue to the next phase/ })
+      await screen.findByRole('button', { name: /Continue to the next section/ })
     ).toBeInTheDocument();
   });
 
@@ -393,7 +403,7 @@ describe('PhaseConversation — when the way onward is offered', () => {
     await waitFor(() => expect(readAnswers).toHaveBeenCalled());
 
     expect(
-      screen.queryByRole('button', { name: /Continue to the next phase/ })
+      screen.queryByRole('button', { name: /Continue to the next section/ })
     ).not.toBeInTheDocument();
   });
 });
@@ -589,7 +599,7 @@ describe('PhaseConversation — the beats of phase 1', () => {
 
     expect(await screen.findByText(/shape of your week before moving on/i)).toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: /Continue to the next phase/ })
+      screen.queryByRole('button', { name: /Continue to the next section/ })
     ).not.toBeInTheDocument();
   });
 
@@ -610,25 +620,37 @@ describe('PhaseConversation — the beats of phase 1', () => {
     );
 
     expect(
-      await screen.findByRole('button', { name: /Continue to the next phase/ })
+      await screen.findByRole('button', { name: /Continue to the next section/ })
     ).toBeInTheDocument();
   });
 });
 
 /** The panel has no column of its own on a narrow screen, so it has to be reachable another way. */
 describe('PhaseConversation — the captured panel on a narrow screen', () => {
+  /**
+   * The drawer stays mounted so it can slide rather than appear, so "closed" is not "gone".
+   *
+   * What has to hold instead is that a closed drawer cannot be reached: `inert` takes it out of the
+   * tab order and out of the accessibility tree, which is the fact this asserts. Testing a class
+   * would test the animation; this tests whether a leader can tab into a panel they cannot see.
+   */
+  const drawer = () => screen.getByRole('dialog', { name: 'What the coach has noted' });
+
   it('opens and closes the drawer, and says how much has been noted', async () => {
     render(<PhaseConversation {...props} />);
+
+    expect(drawer()).toHaveAttribute('inert');
 
     const trigger = await screen.findByRole('button', { name: /of \d+ noted/ });
     await userEvent.click(trigger);
 
-    // Two copies now — the always-there column and the drawer — which is the point: the drawer is the
+    // Two copies — the always-there column and the drawer — which is the point: the drawer is the
     // same panel, not a summary of it.
     expect(screen.getAllByLabelText('What the coach has recorded').length).toBeGreaterThan(1);
+    expect(drawer()).not.toHaveAttribute('inert');
 
     await userEvent.click(screen.getByRole('button', { name: 'Close' }));
-    expect(screen.getAllByLabelText('What the coach has recorded')).toHaveLength(1);
+    expect(drawer()).toHaveAttribute('inert');
   });
 
   it('closes on the backdrop too, which is where a thumb lands first', async () => {
@@ -637,7 +659,7 @@ describe('PhaseConversation — the captured panel on a narrow screen', () => {
     await userEvent.click(await screen.findByRole('button', { name: /of \d+ noted/ }));
     await userEvent.click(screen.getByRole('button', { name: 'Close what the coach has noted' }));
 
-    expect(screen.getAllByLabelText('What the coach has recorded')).toHaveLength(1);
+    expect(drawer()).toHaveAttribute('inert');
   });
 
   it('offers the form path from inside the drawer, not only from the column', async () => {
@@ -648,5 +670,284 @@ describe('PhaseConversation — the captured panel on a narrow screen', () => {
     await userEvent.click(switches[switches.length - 1]);
 
     expect(props.onSwitchToForm).toHaveBeenCalled();
+  });
+});
+
+/**
+ * The drawer's width, once the leader has taken hold of it.
+ *
+ * A drag sets what **open** means, and closing is untouched by it: going back to the conversation
+ * returns the drawer to its narrow resting width however far it was pulled out, and the next touch
+ * on the panel opens it at the width the leader chose. That split is the whole of what these pin —
+ * a drag that also switched off the closing would leave a half-screen panel over the transcript
+ * until someone remembered to put it back.
+ *
+ * jsdom lays nothing out and `setPointerCapture` does not exist on its elements, so it is stubbed.
+ * That is honest here — what is under test is the arithmetic between the press and the width, not the
+ * browser's pointer machinery.
+ */
+describe('PhaseConversation — dragging the drawer wider', () => {
+  const grip = () => screen.getByRole('button', { name: /Resize what the coach has noted/ });
+  /** The drawer is the grip's parent; its inline width is the thing the drag moves. */
+  const widthOf = (): number => Number.parseInt(grip().parentElement!.style.width, 10);
+
+  /** One press-drag-release on the grip. Negative `by` pulls left, which widens a right-anchored drawer. */
+  const drag = (by: number) => {
+    const handle = grip();
+    // jsdom has no pointer capture; the drag only needs the handler to not throw on the way past.
+    handle.setPointerCapture = () => undefined;
+    fireEvent.pointerDown(handle, { clientX: 600, pointerId: 1 });
+    fireEvent.pointerMove(handle, { clientX: 600 + by, pointerId: 1 });
+    fireEvent.pointerUp(handle, { clientX: 600 + by, pointerId: 1 });
+  };
+
+  it('widens by however far the edge was pulled', async () => {
+    render(<PhaseConversation {...props} />);
+    await waitFor(() => expect(readAnswers).toHaveBeenCalled());
+
+    expect(widthOf()).toBe(320);
+    drag(-200);
+    expect(widthOf()).toBe(520);
+  });
+
+  it('will not be dragged so wide that the conversation is buried', async () => {
+    render(<PhaseConversation {...props} />);
+    await waitFor(() => expect(readAnswers).toHaveBeenCalled());
+
+    // Far past anything reachable. The cap is the smaller of the ceiling and "leave room to talk",
+    // and jsdom's window is 1024 wide, so the second one bites: 1024 - 420.
+    drag(-5000);
+    expect(widthOf()).toBe(604);
+  });
+
+  /**
+   * The ask this behaviour exists for: a hand-pulled drawer still closes when the leader goes back
+   * to the conversation. Otherwise a panel dragged out to half the screen sits over the transcript
+   * until they remember to put it back, and tidying their own screen becomes something to remember.
+   */
+  it('closes a hand-dragged drawer all the way back when the leader clicks the conversation', async () => {
+    render(<PhaseConversation {...props} />);
+    await waitFor(() => expect(readAnswers).toHaveBeenCalled());
+
+    drag(-200);
+    expect(widthOf()).toBe(520);
+
+    fireEvent.pointerDown(document.body);
+    expect(widthOf()).toBe(320);
+  });
+
+  it('opens again at the width they dragged it to, not at ours', async () => {
+    render(<PhaseConversation {...props} />);
+    await waitFor(() => expect(readAnswers).toHaveBeenCalled());
+
+    drag(-200);
+    fireEvent.pointerDown(document.body);
+    expect(widthOf()).toBe(320);
+
+    // What the drag bought: it set what *open* means. 520, not the 480 default it would otherwise be.
+    fireEvent.pointerDown(screen.getAllByLabelText('What the coach has recorded')[0]);
+    expect(widthOf()).toBe(520);
+  });
+
+  it('closes on Escape too, from a dragged width', async () => {
+    render(<PhaseConversation {...props} />);
+    await waitFor(() => expect(readAnswers).toHaveBeenCalled());
+
+    drag(-200);
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(widthOf()).toBe(320);
+  });
+
+  it('forgets a dragged width on a double-click, back to the default open width', async () => {
+    render(<PhaseConversation {...props} />);
+    await waitFor(() => expect(readAnswers).toHaveBeenCalled());
+
+    drag(-100);
+    expect(widthOf()).toBe(420);
+
+    fireEvent.doubleClick(grip());
+    expect(widthOf()).toBe(480);
+  });
+
+  it('resizes from the keyboard too, so the handle is not mouse-only', async () => {
+    render(<PhaseConversation {...props} />);
+    await waitFor(() => expect(readAnswers).toHaveBeenCalled());
+
+    fireEvent.keyDown(grip(), { key: 'ArrowLeft' });
+    expect(widthOf()).toBe(352);
+    fireEvent.keyDown(grip(), { key: 'ArrowRight' });
+    expect(widthOf()).toBe(320);
+  });
+
+  /** A press that never travelled is a click, and a click is still the open/closed toggle it was. */
+  it('still toggles between the two resting widths when the grip is clicked, not dragged', async () => {
+    render(<PhaseConversation {...props} />);
+    await waitFor(() => expect(readAnswers).toHaveBeenCalled());
+
+    await userEvent.click(grip());
+    expect(widthOf()).toBe(480);
+
+    await userEvent.click(grip());
+    expect(widthOf()).toBe(320);
+  });
+
+  /**
+   * The bug this pins, reported 2026-07-29: reopening a drawer that had been dragged and closed made
+   * it "open all the way to the previously opened position and then close again very quickly".
+   *
+   * It was not closing. The press opened the drawer *and* recorded the width to drag from in the same
+   * moment, so the recorded width was still the closed 320 — the state had not rendered. Every frame
+   * after that resolved to `320 + travelled`, and a mouse click carries a pixel or two of jitter, so
+   * `pointermove` fired, computed 320, and wrote it over the leader's remembered width. The panel
+   * flashed open at the old width and snapped shut.
+   *
+   * Two things make it hold: the press changes nothing, and a movement inside the slop threshold is
+   * not a resize. Both are asserted, because either alone would leave the other free to come back.
+   */
+  it('does not let the jitter in a click overwrite the width it is about to open at', async () => {
+    render(<PhaseConversation {...props} />);
+    await waitFor(() => expect(readAnswers).toHaveBeenCalled());
+
+    drag(-200);
+    fireEvent.pointerDown(document.body);
+    expect(widthOf()).toBe(320);
+
+    const handle = grip();
+    handle.setPointerCapture = () => undefined;
+    fireEvent.pointerDown(handle, { clientX: 600, pointerId: 1 });
+    // The press on its own does nothing: it used to flash the drawer open here, which is the half of
+    // the report that looked like "opens all the way to the previously opened position".
+    expect(widthOf()).toBe(320);
+
+    // A pixel of jitter, which is what a real mouse does between press and release.
+    fireEvent.pointerMove(handle, { clientX: 601, pointerId: 1 });
+    expect(widthOf()).toBe(320);
+
+    fireEvent.pointerUp(handle, { clientX: 601, pointerId: 1 });
+    fireEvent.click(handle);
+
+    // Their width, not 320 and not the 480 default — and it stays there.
+    expect(widthOf()).toBe(520);
+  });
+
+  /**
+   * Reported 2026-07-29: pressing "Not quite" on an inferred reading opened the drawer instead of
+   * opening the correction field.
+   *
+   * The cause is a browser fact jsdom cannot show, so what is asserted here is the rule that fixes
+   * it rather than the symptom. Widening on `pointerdown` reflows the panel between the press and
+   * the release; the button moves out from under the cursor, `pointerup` lands elsewhere, and the
+   * browser fires `click` on the common ancestor of the two rather than on the button. jsdom has no
+   * layout, so the click would land either way and a test of the symptom would pass on the broken
+   * code. **A press on a control must not change the width** is the thing that is true in both.
+   */
+  it('leaves the width alone when the press lands on a control, so the control gets the click', async () => {
+    readAnswers.mockResolvedValue({
+      ...reflected,
+      reclaim_energy_protected: {
+        value: 'No',
+        valueJson: false,
+        sourceType: 'inferred',
+        confidence: 4,
+      },
+    });
+    render(<PhaseConversation {...props} />);
+
+    const [notQuite] = await screen.findAllByRole('button', { name: 'Not quite' });
+    fireEvent.pointerDown(notQuite);
+    expect(widthOf()).toBe(320);
+
+    // And the control still works, which is the whole point of not moving it.
+    await userEvent.click(notQuite);
+    expect(screen.getAllByLabelText('Your correction').length).toBeGreaterThan(0);
+  });
+
+  /** The field is the moment the width is actually wanted, and it arrives after the click. */
+  it('opens around the correction field once it has taken focus', async () => {
+    readAnswers.mockResolvedValue({
+      ...reflected,
+      reclaim_energy_protected: {
+        value: 'No',
+        valueJson: false,
+        sourceType: 'inferred',
+        confidence: 4,
+      },
+    });
+    render(<PhaseConversation {...props} />);
+
+    const [notQuite] = await screen.findAllByRole('button', { name: 'Not quite' });
+    await userEvent.click(notQuite);
+
+    expect(widthOf()).toBe(480);
+  });
+
+  it('opens from a click on the panel at the remembered width, and stays there', async () => {
+    render(<PhaseConversation {...props} />);
+    await waitFor(() => expect(readAnswers).toHaveBeenCalled());
+
+    drag(-200);
+    fireEvent.pointerDown(document.body);
+    expect(widthOf()).toBe(320);
+
+    const panel = screen.getAllByLabelText('What the coach has recorded')[0];
+    fireEvent.pointerDown(panel);
+    expect(widthOf()).toBe(520);
+
+    // And a second press inside it does not close what the first one opened.
+    fireEvent.pointerDown(panel);
+    expect(widthOf()).toBe(520);
+  });
+});
+
+/**
+ * The panel's third move on a guess, and the only one that is not a write.
+ *
+ * A leader who cannot tell whether an inferred reading is right has nothing useful to type into a
+ * box. What they want is to be asked about it, which is the one thing this surface can do that the
+ * form it replaced could not — so the panel hands the reading back to the conversation instead of
+ * settling it, and the coach picks the question back up.
+ */
+describe('PhaseConversation — handing a guessed reading back to the coach', () => {
+  const guessed = {
+    ...reflected,
+    reclaim_energy_protected: {
+      value: 'No',
+      valueJson: false,
+      sourceType: 'inferred',
+      confidence: 4,
+    },
+  };
+
+  it('sends the leader saying so, in words they can see in their own transcript', async () => {
+    readAnswers.mockResolvedValue(guessed);
+    render(<PhaseConversation {...props} />);
+
+    const [talk] = await screen.findAllByRole('button', {
+      name: /Talk through .* with the coach/,
+    });
+    await userEvent.click(talk);
+
+    // Named, so the coach knows which reading to reopen, and phrased as the leader — because a
+    // message sent on someone's behalf lands in their column of the transcript either way.
+    expect(ask).toHaveBeenCalledWith(
+      expect.stringMatching(/Can we come back to whether your week protects it\?/i)
+    );
+    // Not settled on the way past: handing it back is the opposite of confirming it.
+    expect(saveAnswer).not.toHaveBeenCalled();
+  });
+
+  it('closes the drawer on the way, so the answer is not arriving behind it', async () => {
+    readAnswers.mockResolvedValue(guessed);
+    render(<PhaseConversation {...props} />);
+
+    await userEvent.click(await screen.findByRole('button', { name: /of \d+ noted/ }));
+    const drawer = screen.getByRole('dialog', { name: 'What the coach has noted' });
+    expect(drawer).not.toHaveAttribute('inert');
+
+    const talks = screen.getAllByRole('button', { name: /Talk through .* with the coach/ });
+    await userEvent.click(talks[talks.length - 1]);
+
+    expect(drawer).toHaveAttribute('inert');
   });
 });

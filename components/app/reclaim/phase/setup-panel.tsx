@@ -14,6 +14,11 @@ import { parseHours, isHours } from '@/components/app/reclaim/phase/hours';
 import { saveBatch, advancePhase, type AnswerInput } from '@/components/app/reclaim/phase/actions';
 import { readShortcut } from '@/components/app/reclaim/repeat/actions';
 import {
+  RECLAIM_ROLES,
+  RECLAIM_ORG_TYPES,
+  RECLAIM_AUDIT_PERIODS,
+} from '@/lib/app/programme/coach/slot-choices';
+import {
   TextField,
   TextAreaField,
   NumberField,
@@ -115,9 +120,14 @@ function prefillFrom(answers: Record<string, string>): Partial<SetupState> {
   };
 }
 
-const ROLES = ['CEO', 'Founder', 'Programme Officer', 'Philanthropist', 'Director', 'Other'];
-const ORG_TYPES = ['Nonprofit', 'Startup', 'Established business', 'Other'];
-const PERIODS = ['last week', 'last month', 'last quarter', 'last year'];
+// The three option sets this panel draws, read from the slot they belong to rather than held here.
+// They used to be three local arrays, which was fine while the form was the only way to answer: the
+// conversation asks the same questions and now offers the same answers, and two copies of "last
+// week, last month, last quarter, last year" is the arrangement in which one of them eventually says
+// something the other does not. See `coach/slot-choices.ts`.
+const ROLES = RECLAIM_ROLES;
+const ORG_TYPES = RECLAIM_ORG_TYPES;
+const PERIODS = RECLAIM_AUDIT_PERIODS;
 
 /** Build the batch answers from the filled fields — optional/empty fields are skipped. */
 function toAnswers(s: SetupState): AnswerInput[] {

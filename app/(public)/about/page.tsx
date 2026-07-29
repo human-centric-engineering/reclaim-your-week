@@ -92,7 +92,7 @@ export default function AboutPage() {
               The seven phases
             </h2>
             <p className="text-muted-foreground mt-4 max-w-xs text-sm leading-relaxed">
-              Each ends with a pause. You cannot move on from a phase without saying what you
+              Each ends with a pause. You cannot move on from a section without saying what you
               noticed in it, which is deliberate.
             </p>
           </div>

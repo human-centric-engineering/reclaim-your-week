@@ -180,7 +180,7 @@ the guard.
 ## I6 — The agent never selects the run, and never transitions
 
 Granted capabilities: `get_journey_state`, `get_next_steps`, `get_state`,
-`reclaim_audit__record_answers`.
+`reclaim_audit__record_answers`, `reclaim_audit__offer_choices`.
 
 **`fill_slot` was granted here and has been removed (2026-07-27).** The reasoning that put it there
 is kept below because it is the same reasoning that justifies `record_answers`' shape. It covered
@@ -211,6 +211,17 @@ takes the run from the server may write the audit.
 | --------------------------------- | ---------------------------------------------- | ------------------- |
 | `fill_slot` _(no longer granted)_ | `contextKey`, an LLM-supplied argument         | nothing here        |
 | `reclaim_audit__record_answers`   | `CapabilityContext.scope`, issued by the route | the allowlist below |
+| `reclaim_audit__offer_choices`    | `CapabilityContext.scope`, issued by the route | nothing at all      |
+
+**`offer_choices` is granted and writes nothing** (added 2026-07-29). It answers one question about
+static data — "which answers does this reading offer?" — so the screen can draw them instead of an
+empty box. The model names the reading; the **product** owns the answers (`coach/slot-choices.ts`),
+so there is no argument that can make a leader be shown an option their audit cannot store. The
+section is read from `readCoachScope(context.scope)`, never from an argument, and a dispatch with no
+scope refuses rather than falling back to "any section" — so a coach in section 2 cannot put section
+4's answers in front of the leader. The answer a leader taps is sent as an ordinary turn in their own
+column and recorded through `record_answers` like anything else: nothing is stored because a button
+was drawn. `record_answers` therefore remains the only capability on this agent that writes.
 
 **Why the distinction.** `contextKey` is an optional argument on the framework's own tools
 (`lib/framework/guidance/capabilities/shared.ts:18-21`) and the model can pass any string, so

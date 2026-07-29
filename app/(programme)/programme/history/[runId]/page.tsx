@@ -13,7 +13,7 @@ import { RunReview } from '@/components/app/reclaim/history/run-review';
 
 export const metadata: Metadata = {
   title: 'An audit you have run',
-  description: 'The summary of a finished audit, and the conversation behind each phase.',
+  description: 'The summary of a finished audit, and the conversation behind each section.',
 };
 
 export default async function RunReviewPage({ params }: { params: Promise<{ runId: string }> }) {

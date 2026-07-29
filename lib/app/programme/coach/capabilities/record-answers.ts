@@ -203,7 +203,7 @@ export class ReclaimRecordAnswersCapability extends BaseCapability<
               value: {
                 type: 'string',
                 description:
-                  "The reading in plain language, close to the leader's own words. Always a string, including for a count or a yes or no: the typed form of those goes in valueJson beside it.",
+                  'The reading in plain language, close to the leader\'s own words. Always a string, including for a count or a yes or no: the typed form of those goes in valueJson beside it. A figure is written the way the leader put it and never as a bare number — "5 hours", "5 hours a week", "roughly 5 hours", "about 25 direct reports" — because this line is shown to them beside the conversation to check, and a lone "5" is not a reading anyone can check.',
               },
               verbatim: {
                 type: 'string',
@@ -385,7 +385,9 @@ export class ReclaimRecordAnswersCapability extends BaseCapability<
         userId: context.userId,
         runId: scope.runId,
         slotSlug: check.accepted.slotSlug,
-        value: answer.value,
+        // The gate's own prose where it had something to say about it, which is a yes-or-no whose
+        // sentence would not have matched its typed value. See `checkSlotWrite`.
+        value: check.accepted.value ?? answer.value,
         ...(answer.verbatim !== undefined ? { verbatim: answer.verbatim } : {}),
         ...(check.accepted.valueJson !== undefined ? { valueJson: check.accepted.valueJson } : {}),
         confidence: answer.confidence,

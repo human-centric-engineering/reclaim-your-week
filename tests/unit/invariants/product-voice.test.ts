@@ -81,6 +81,10 @@ const COACH_VOICED = [
   // The conversational phase surface. The panel speaks to the leader about their own answers ("Taken
   // from what you said. Have we got it right?"), which is as much coach voice as a phase panel is.
   'components/app/reclaim/coach/captured-panel.tsx',
+  // The composer, for a question whose answers are a fixed set. Every word in it is read at the
+  // moment a leader is deciding what to say, including the line that tells them the set is an offer
+  // rather than a limit, which is the sentence that keeps the choice open.
+  'components/app/reclaim/coach/choice-composer.tsx',
   'components/app/reclaim/coach/phase-conversation.tsx',
   // What a leader is told the coach is doing while a turn runs. Four short strings, and every one of
   // them is the tool speaking about itself mid-conversation, which is exactly where I1's "never in
@@ -150,6 +154,9 @@ const NOT_COACH_VOICED = [
   'components/app/reclaim/access/actions.ts',
   'components/app/reclaim/calendar/types.ts',
   'components/app/reclaim/chart/palette.ts',
+  // Validating the offer off the stream. It draws nothing and says nothing; the answers it carries
+  // were authored server-side and are guarded where they live.
+  'components/app/reclaim/coach/choices.ts',
   'components/app/reclaim/format.ts',
   'components/app/reclaim/history/actions.ts',
   'components/app/reclaim/phase/actions.ts',

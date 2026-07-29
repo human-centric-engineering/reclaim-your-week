@@ -59,7 +59,7 @@ describe('PhaseRail — the compact strip', () => {
     render(<PhaseRail phases={phases} currentPhaseKey="phase-2-energy" variant="compact" />);
 
     expect(screen.getByText('2 · Energy')).toBeInTheDocument();
-    expect(screen.getByText(/phase 2 of 6/)).toBeInTheDocument();
+    expect(screen.getByText(/section 2 of 6/)).toBeInTheDocument();
   });
 
   it('keeps the same landmark as the spine it replaces', () => {
@@ -138,8 +138,8 @@ describe('PhaseRail — going back', () => {
       />
     );
 
-    await userEvent.click(screen.getByRole('button', { name: 'Go to phase 1, Current reality' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Go to section 1, Current reality' }));
     expect(onSelect).toHaveBeenCalledWith('phase-1-current');
-    expect(screen.queryByRole('button', { name: /Go to phase 4/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Go to section 4/ })).not.toBeInTheDocument();
   });
 });

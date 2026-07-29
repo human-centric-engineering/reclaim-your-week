@@ -85,6 +85,7 @@ import {
 } from '@/lib/app/programme/coach/phase-slots';
 import {
   checkSlotWrite,
+  numberProse,
   REFLECTION_GROUP,
   slotDefinitionFor,
 } from '@/lib/app/programme/coach/writable-slots';
@@ -143,6 +144,10 @@ function asSourceType(raw: unknown): SlotSourceType | null {
  * `deriveTypedValue` inside `checkSlotWrite`, which is exact about how little it will read out of
  * prose. That keeps the schema portable across providers and removes the one field a model most
  * often gets the JSON type of wrong — which is the mistake that started this whole thread.
+ *
+ * The bare figure is what this sweep sends and never what gets stored: the same gate dresses a naked
+ * number in its unit ("5" → "5 hours") before it reaches the panel the leader reads. See
+ * `numberProse`.
  */
 const responseSchema: Record<string, unknown> = {
   type: 'object',
@@ -229,8 +234,11 @@ function maySupersede(existing: RunAnswer | undefined, proposed: ProposedReading
   if (!proposed.supersedes) return false;
   if (existing.sourceType === USER_CONFIRMED) return false;
   if (proposed.confidence < SUPERSEDE_MIN_CONFIDENCE) return false;
-  // A reading identical to the one already stored is a rewrite, not an addition.
-  return proposed.value.trim() !== existing.value.trim();
+  // A reading identical to the one already stored is a rewrite, not an addition. Compared against
+  // the prose as it would be *stored*: this sweep sends figures bare and the gate dresses them in
+  // their unit, so a proposed "5" against a stored "5 hours" is the same reading twice.
+  const asStored = numberProse(proposed.slotSlug, proposed.value) ?? proposed.value;
+  return asStored.trim() !== existing.value.trim();
 }
 
 /** Parse and shape-check the provider's response. Anything malformed is dropped, never guessed at. */
@@ -388,7 +396,9 @@ export async function runCaptureSweep(input: CaptureSweepInput): Promise<Capture
         userId,
         runId,
         slotSlug: check.accepted.slotSlug,
-        value: reading.value,
+        // The gate's own prose where it had something to say about it — a yes-or-no is stored as the
+        // word for the answer, never as a sentence about it. See `checkSlotWrite`.
+        value: check.accepted.value ?? reading.value,
         ...(reading.verbatim !== undefined ? { verbatim: reading.verbatim } : {}),
         ...(check.accepted.valueJson !== undefined ? { valueJson: check.accepted.valueJson } : {}),
         confidence: reading.confidence,
