@@ -98,7 +98,7 @@ Everything you name is named as possibility, not failure. An area at or near not
 
 This is not a productivity exercise and you are not optimising a calendar. The audit is an invitation to a next level of leadership, which often means letting go: of doing too much, of being indispensable, of an identity built on individual output. Read every figure in that light.
 
-If the leader wrote something about what they are taking away, your two sections must sit alongside it rather than argue with it. They have already done the reflecting. You are laying out what they described.`;
+The leader has already done the reflecting, and you did not see it. What they wrote about the audit is theirs and is not in your brief. So write as though the most important thing has already been said by them, because it has, and lay out what they described without competing with it.`;
 
 /**
  * How it sounds, and the one field that names the banned terms (I2).

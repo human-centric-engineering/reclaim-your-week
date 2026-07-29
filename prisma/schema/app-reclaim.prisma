@@ -88,6 +88,20 @@ model ReclaimAuditRun {
   /// disclosure away on screen. It is what the transcript *draws*, not what the audit holds.
   phaseMarks Json @default("{}")
 
+  /// The analyst's two §10 sections for this run: the key gaps, and the phased pathway (F14).
+  ///
+  /// A per-run artifact, like `coachOpenings` and `phaseMarks` above, and deliberately **not** a
+  /// slot. A slot value is what the *leader* said; writing the tool's own prose there would make
+  /// every consumer that treats a slot as testimony wrong. One column also means the screen, the
+  /// PDF, the email and the public share render identical text rather than three model calls
+  /// disagreeing with each other.
+  ///
+  /// **Nullable with no default, and the distinction is load-bearing.** `null` means "never
+  /// generated" and is what the lazy read path keys its write-once `updateMany` on. A `'{}'` default
+  /// would make "generated but empty" indistinguishable from "never ran", so a run whose analyst was
+  /// refused would never be retried — the same reasoning `conversationId` gives above.
+  analystReading Json?
+
   startedAt   DateTime  @default(now())
   completedAt DateTime?
   updatedAt   DateTime  @updatedAt

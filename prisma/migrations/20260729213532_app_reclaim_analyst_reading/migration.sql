@@ -1,0 +1,13 @@
+-- F14: the analyst's two §10 sections for a run — the key gaps, and the phased pathway.
+--
+-- Nullable with NO default, deliberately. `NULL` means "never generated" and is what the lazy read
+-- path keys its write-once `updateMany` on; a `'{}'` default would make "generated but empty"
+-- indistinguishable from "never ran", so a run whose analyst was refused would never be retried.
+--
+-- Hand-authored rather than produced by `prisma migrate dev`, which refuses to run against this
+-- database: `_prisma_migrations` carries a duplicate row for 20260727210425_app_reclaim_phase_marks
+-- (one applied, one failed), so Prisma reads the history as modified-after-apply and offers a reset.
+-- Resetting is never the answer here (see .context/app/prisma-migration-recovery.md), and this
+-- schema authors migrations by hand in any case, because `migrate dev` drops the ~25 FKs and 4
+-- indexes Prisma cannot model.
+ALTER TABLE "app_reclaim_audit_run" ADD COLUMN "analystReading" JSONB;
