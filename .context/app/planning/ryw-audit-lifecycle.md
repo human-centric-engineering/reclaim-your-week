@@ -97,8 +97,8 @@ One confirmation, stating what is kept ("what you have said stays in your histor
 
 | t-N | What                                                                                          | Files                                                                                                                         | Status  | PR  |
 | --- | --------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ------- | --- |
-| t-1 | Abandon: the column, the service, the route, the control, the I15 guard.                      | migration, `runs/service.ts`, `runs/[runId]/abandon/route.ts`, `begin-audit.tsx`, `history/audit-history.tsx`, invariant test | ready ▲ | —   |
-| t-2 | A failed turn can be retried once, without posting twice.                                     | `coach-chat.tsx`                                                                                                              | ready ▲ | —   |
+| t-1 | Abandon: the column, the service, the route, the control, the I15 guard.                      | migration, `runs/service.ts`, `runs/[runId]/abandon/route.ts`, `begin-audit.tsx`, `history/audit-history.tsx`, invariant test | done    | —   |
+| t-2 | A failed turn gives the words back, without posting twice.                                    | `coach-chat.tsx`                                                                                                              | done    | —   |
 | t-3 | Phase 6 asks its question in the conversation, and `opening.ts`'s stale comment is corrected. | `coach/opening.ts`, `phase/phase6-panel.tsx`, `programme-shell.tsx`                                                           | ready ▲ | —   |
 
 ## Invariants this feature touches

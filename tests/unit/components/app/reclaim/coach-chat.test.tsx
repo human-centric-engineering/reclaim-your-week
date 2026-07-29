@@ -37,6 +37,32 @@ function sseBody(text: string): ReadableStream<Uint8Array> {
   });
 }
 
+/**
+ * A stream that opens and then fails (F16 t-2).
+ *
+ * The `start` frame is the client's signal that the server has persisted the leader's message —
+ * `streamChat` writes the user row before it calls the model — so a failure after it is a different
+ * situation from one before it, and the two must not be recovered the same way.
+ */
+function sseFailsAfterStart(): ReadableStream<Uint8Array> {
+  return new ReadableStream({
+    start(controller) {
+      controller.enqueue(
+        encoder.encode(
+          `event: start\ndata: ${JSON.stringify({ type: 'start', conversationId: 'conv-9' })}\n\n`
+        )
+      );
+      controller.enqueue(
+        encoder.encode(
+          // `code` is required by the shared client union; a frame without it is dropped silently.
+          `event: error\ndata: ${JSON.stringify({ type: 'error', code: 'MODEL_ERROR', message: 'The model stopped.' })}\n\n`
+        )
+      );
+      controller.close();
+    },
+  });
+}
+
 const json = (data: unknown) => ({ ok: true, json: async () => ({ success: true, data }) });
 
 /**
@@ -851,5 +877,87 @@ describe('CoachChat — a question with a fixed set of answers', () => {
 
     expect(await screen.findByText('Which period should we look at?')).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: 'Your message' })).toBeInTheDocument();
+  });
+});
+
+/**
+ * A failed turn used to cost the leader their sentence (F16 t-2).
+ *
+ * `send()` cleared the composer before opening the stream, so a turn that failed left "You can try
+ * again" beside an empty box and a message the leader would have to retype from memory. The fix is
+ * not simply "put it back": whether that is safe depends on whether the server already holds it,
+ * and re-sending a persisted message would put it in the conversation twice.
+ *
+ * Both directions are tested, because getting one right and the other wrong is worse than neither:
+ * losing a sentence is annoying, and silently duplicating one in somebody's own record of their
+ * working life is a defect they would have to spot themselves.
+ */
+describe('CoachChat — a turn that failed', () => {
+  it('gives the words back when the server never received them', async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 500, body: null });
+
+    render(<CoachChat runId="run-1" conversationId={null} />);
+    const box = screen.getByRole('textbox', { name: 'Your message' });
+    await userEvent.type(box, 'I keep getting pulled into delivery');
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent(/could not be reached/);
+    // Back in the composer, exactly as written, so "try again" is one press rather than retyping.
+    await waitFor(() => expect(box).toHaveValue('I keep getting pulled into delivery'));
+    expect(screen.getByRole('status')).toHaveTextContent(/back in the box below/);
+  });
+
+  it('does not leave the optimistic line behind when it restores the draft', async () => {
+    // The line was drawn assuming the turn would work. Leaving it beside a refilled composer would
+    // show the leader their sentence twice and make sending it look like a duplicate.
+    fetchMock.mockResolvedValue({ ok: false, status: 500, body: null });
+
+    render(<CoachChat runId="run-1" conversationId={null} />);
+    await userEvent.type(screen.getByRole('textbox', { name: 'Your message' }), 'a thing I said');
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    await screen.findByRole('status');
+    // The transcript is back to empty, which is the state it was in before the turn that failed.
+    // Asserted this way rather than by querying for the sentence: the composer now holds it, on
+    // purpose, and it sits inside the same labelled region as the transcript.
+    expect(screen.getByText(/there are no wrong answers here/)).toBeInTheDocument();
+  });
+
+  it('keeps the words sent when the server already has them, rather than inviting a duplicate', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'content-type': 'text/event-stream' }),
+      body: sseFailsAfterStart(),
+    });
+
+    render(<CoachChat runId="run-1" conversationId={null} />);
+    const box = screen.getByRole('textbox', { name: 'Your message' });
+    await userEvent.type(box, 'something already recorded');
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent(/The model stopped/);
+    // The composer stays empty: their words are in the conversation, and putting them back would
+    // invite the leader to say the same thing twice.
+    expect(box).toHaveValue('');
+    expect(screen.getByRole('status')).toHaveTextContent(/no need to write it again/);
+    // And the line stays in the transcript, because the server really does hold it.
+    expect(screen.getByText('something already recorded')).toBeInTheDocument();
+  });
+
+  it('never overwrites something the leader has started typing since', async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 500, body: null });
+
+    render(<CoachChat runId="run-1" conversationId={null} />);
+    const box = screen.getByRole('textbox', { name: 'Your message' });
+    await userEvent.type(box, 'first thought');
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await screen.findByRole('status');
+
+    // A leader who began a new sentence while the turn was failing keeps it: restoring over the top
+    // would take away words they can see in favour of words they cannot.
+    await userEvent.clear(box);
+    await userEvent.type(box, 'second thought');
+    expect(box).toHaveValue('second thought');
   });
 });
