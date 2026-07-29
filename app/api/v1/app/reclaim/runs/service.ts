@@ -35,6 +35,9 @@ import { readRunAnswers } from '@/lib/app/programme/runs/answers';
 import { readBucketLabels } from '@/lib/app/programme/buckets/labels';
 import { buildAnalystBrief } from '@/lib/app/programme/analyst/brief';
 import { runAnalyst } from '@/lib/app/programme/analyst/reading';
+import { auditSummaryUrl } from '@/lib/app/programme/urls';
+import { sendEmail } from '@/lib/email/send';
+import AuditCompleteEmail from '@/components/app/emails/audit-complete';
 
 export const RUN_STATUS = {
   inProgress: 'in_progress',
@@ -144,7 +147,65 @@ export async function completeRun(userId: string, runId: string): Promise<Reclai
   // timed out, and must never see a failure for a section that did not exist a week ago.
   await ensureAnalystReading(userId, runId);
 
+  // F15: the one message a finished audit sends. **After the analyst, deliberately** — the email
+  // links to the summary, and sending first would point a leader at a page missing the two sections
+  // that had just been generated. That is the one ordering they would actually notice.
+  await sendCompletionEmail(userId, runId);
+
   return updated;
+}
+
+/**
+ * Tell the leader their audit is finished and where it lives (F15 t-3).
+ *
+ * Sent directly rather than through the email registry, because `EmailPropsMap` is a closed
+ * interface of four auth kinds and a leaf cannot add one (sunrise#468). `quarterly-nudge` set the
+ * precedent; when that ask lands, both move to `lib/app/emails.ts` together.
+ *
+ * **Never throws, and never blocks.** A leader has just pressed "finish my audit". A provider outage
+ * must not turn that into an error on a screen that has already done everything it needed to do.
+ * `sendEmail` already swallows provider failures into a result object; this catches everything
+ * around it as well, including a missing name lookup.
+ */
+async function sendCompletionEmail(userId: string, runId: string): Promise<void> {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true, name: true },
+    });
+    if (user === null) return;
+
+    // The audit's own first name where it captured one, falling back to the account name. The audit
+    // asks for a first name; an account holds whatever was typed at signup, which is often a full
+    // one, so the greeting takes the first word rather than "Hello Sam Patel,".
+    const answers = await readRunAnswers(userId, runId);
+    const fromAudit = answers['reclaim_profile_first_name']?.value?.trim();
+    const firstName =
+      fromAudit !== undefined && fromAudit.length > 0
+        ? fromAudit.split(/\s+/)[0]
+        : (user.name?.trim().split(/\s+/)[0] ?? null);
+
+    const result = await sendEmail({
+      to: user.email,
+      subject: 'Your time audit is finished',
+      react: AuditCompleteEmail({
+        firstName: firstName === undefined || firstName === '' ? null : firstName,
+        summaryUrl: auditSummaryUrl(runId),
+      }),
+    });
+
+    // Logged either way: an unsent completion email is invisible otherwise, and "did the leader ever
+    // hear from us" is a question an operator will eventually ask. Status only, never content.
+    logger.info('Reclaim completion email', { runId, status: result.status });
+  } catch (error: unknown) {
+    logger.warn(
+      'Reclaim: the completion email could not be sent; the audit is finished regardless',
+      {
+        runId,
+        error: error instanceof Error ? error.message : String(error),
+      }
+    );
+  }
 }
 
 /**

@@ -18,8 +18,9 @@
 
 import { prisma } from '@/lib/db/client';
 import { logger } from '@/lib/logging';
-import { env } from '@/lib/env';
 import { sendEmail } from '@/lib/email/send';
+// One definition of the app's own origin, shared with F15's completion email. See `urls.ts`.
+import { appUrl } from '@/lib/app/programme/urls';
 import QuarterlyNudgeEmail from '@/components/app/emails/quarterly-nudge';
 import { decideNudges, type NudgeCandidate } from '@/lib/app/programme/nudges/select';
 import { readReclaimNudgeConfig } from '@/lib/app/programme/config';
@@ -28,10 +29,6 @@ import { isUniqueViolation } from '@/lib/app/programme/access/grants';
 /** 244 bits of randomness, the same shape as the F7 share token. */
 function mintToken(): string {
   return (globalThis.crypto.randomUUID() + globalThis.crypto.randomUUID()).replace(/-/g, '');
-}
-
-function appUrl(): string {
-  return env.NEXT_PUBLIC_APP_URL ?? process.env.BETTER_AUTH_URL ?? 'http://localhost:3000';
 }
 
 export interface NudgeTickResult {

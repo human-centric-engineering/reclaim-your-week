@@ -25,7 +25,7 @@ import { readReclaimAccessConfig } from '@/lib/app/programme/config';
 import { RECLAIM_BUCKETS, bucketToken } from '@/lib/app/programme/content';
 import { buildSummary } from '@/lib/app/programme/summary';
 import { renderSummaryPdf } from '@/app/api/v1/app/reclaim/runs/[runId]/_lib/render-summary-pdf';
-import { createRun, saveRunAnswer } from '@/app/api/v1/app/reclaim/runs/service';
+import { completeRun, createRun, saveRunAnswer } from '@/app/api/v1/app/reclaim/runs/service';
 
 const PREFIX = 'smoke-reclaim-report';
 
@@ -114,7 +114,19 @@ async function main(): Promise<void> {
     }
     console.log(`[4] renders with the reading: ${withReading.length} bytes`);
 
-    console.log('✓ smoke:reclaim-report passed — a real run renders, with and without a reading');
+    // ── 5. Completing a run sends exactly one message, and cannot be broken by it ──
+    //
+    // `sendEmail` returns `{status:'disabled'}` outside production when no provider is configured,
+    // which is the shape CI runs in. What is being proved here is not that mail left the building:
+    // it is that `completeRun` survives the whole email path, and that a leader who finishes an
+    // audit is not handed an error by a best-effort side effect. The analyst is skipped for the
+    // same reason it is everywhere in this script.
+    const completed = await completeRun(uid, run.id);
+    if (completed.status !== 'complete') fail('completeRun did not complete the run');
+    if (completed.completedAt === null) fail('a completed run carries no completion time');
+    console.log('[5] completeRun survives the analyst attempt and the completion email');
+
+    console.log('✓ smoke:reclaim-report passed — a real run renders, and completes cleanly');
   } finally {
     await eraseUser({ userId: uid, userEmail: email, actorUserId: uid, reason: 'self_service' });
   }

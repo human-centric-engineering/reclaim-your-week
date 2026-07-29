@@ -2,7 +2,7 @@
 name: ryw-report
 feature: F15 · ryw-report
 epic: RYW post-v1
-status: in flight
+status: shipped
 owner: John
 depends_on: F14 t-3 (AuditSummary's three new fields — the PDF must be laid out against the final shape)
 spec: ../sources/Time_Audit_App_Notes.md:46-47 ("Summary Report. Downloadable, shareable") · ../content-source.md §10 · ../invariants.md (I8, I12, I16, I17)
@@ -77,6 +77,21 @@ It says the audit is finished, here is where it lives, and stops.
 - **I2 / product voice** — the email and the document are coach-voiced copy the app authors, so both
   must be classified in `product-voice.test.ts`. The suite fails until they are, which is that
   guard's completeness assertion working.
+
+## What the build changed about this plan
+
+**One shared URL helper, not two.** The nudge resolved the app's origin with a private `appUrl()` in
+`nudges/tick.ts`. F15's email needed the same rule, and a second copy would mean an install that set
+`NEXT_PUBLIC_APP_URL` but not `BETTER_AUTH_URL` could have working nudge links and broken completion
+links with nothing to say why. `lib/app/programme/urls.ts` now holds it, and the nudge uses it too.
+Third time this pattern has come up in three features, after `composite.ts`'s thresholds and the
+analyst's imperative openers.
+
+**`product-voice.test.ts` earned its keep twice.** It caught all three new files as unclassified,
+which is its completeness assertion doing its job. Classifying the PDF document then failed a second
+time on a real defect: it used `—` as the "no figure" placeholder in the ideal column. That is
+precisely what `NO_VALUE` exists for, and it is why the em-dash ban can stay zero-tolerance with no
+allowlist.
 
 ## Notes / deferrals
 

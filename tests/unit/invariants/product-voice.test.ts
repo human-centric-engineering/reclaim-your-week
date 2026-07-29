@@ -147,6 +147,9 @@ const COACH_VOICED = [
   'components/app/emails/invitation.tsx',
   'components/app/emails/quarterly-nudge.tsx',
   'components/app/emails/welcome.tsx',
+  // F15. The one message a finished audit sends. Most of its design is what it does not say, and
+  // the voice rules are the half a guard can hold.
+  'components/app/emails/audit-complete.tsx',
   // F15. The PDF is the artifact a leader keeps and may hand to someone else, so it is the single
   // most durable thing the product says in its own voice. Its headings ("Where the week went", "One
   // way this could go") and its one framing sentence are authored here rather than passed in.
