@@ -263,7 +263,7 @@ export function PhaseConversation({
    */
   const stillOpen =
     canAdvance && outstanding > 0
-      ? 'We have answered most of the questions in this part, so you may move on whenever you wish. The conversation can also carry on here for a few more rounds, if you would like to clarify anything or add to what you have said.'
+      ? 'We have answered most of the questions in this part, so you may move on whenever you wish, or carry on here to clarify or add anything.'
       : null;
 
   const advance = async () => {
@@ -430,8 +430,12 @@ export function PhaseConversation({
                 >
                   {busy ? 'Saving…' : 'Continue to the next phase'}
                 </button>
+                {/* Runs to the end of the row rather than to a fixed measure, so it takes the same
+                    width as the composer below it and settles on two lines beside the button. The
+                    basis is what makes it wrap onto its own line instead of squeezing when the row
+                    is too narrow to hold both. */}
                 {stillOpen !== null && (
-                  <p className="text-muted-foreground max-w-md text-xs leading-relaxed">
+                  <p className="text-muted-foreground min-w-0 flex-1 basis-64 text-xs leading-relaxed">
                     {stillOpen}
                   </p>
                 )}

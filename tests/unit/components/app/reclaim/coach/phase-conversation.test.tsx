@@ -321,7 +321,9 @@ describe('PhaseConversation — when the way onward is offered', () => {
       await screen.findByRole('button', { name: /Continue to the next phase/ })
     ).toBeInTheDocument();
     expect(await screen.findByText(/you may move on whenever you wish/i)).toBeInTheDocument();
-    expect(await screen.findByText(/carry on here for a few more rounds/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/carry on here to clarify or add anything/i)
+    ).toBeInTheDocument();
   });
 
   it('says nothing about what is left when nothing is', async () => {
