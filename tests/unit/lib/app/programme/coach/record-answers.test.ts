@@ -351,10 +351,12 @@ describe('a batch survives one bad entry, because a failed call costs the coach 
     expect(result.data?.refused).toEqual([]);
     expect(result.data?.recorded).toHaveLength(4);
 
-    // The prose is the prose, and the typed forms are real values rather than strings — which is
-    // what everything downstream of a number or a boolean slot depends on.
+    // The typed forms are real values rather than strings — which is what everything downstream of a
+    // number or a boolean slot depends on. The prose is the prose, except where the coach sent a
+    // figure with no words around it: the leader is shown this line to check, and a lone "25" is not
+    // a reading anyone can check, so the gate dresses it in the unit the figure is in.
     expect(store.get('reclaim_profile_direct_reports')).toMatchObject({
-      value: '25',
+      value: '25 direct reports',
       valueJson: 25,
     });
     expect(store.get('reclaim_profile_distributed_team')).toMatchObject({
@@ -522,15 +524,48 @@ describe('an unambiguous figure is read out of the prose; an approximate one sti
     expect(store.get('reclaim_setup_in_transition')?.valueJson).toBe(false);
   });
 
-  it.each(['About eight, some weeks more.', '8 hours', 'eight', 'somewhere between 6 and 10'])(
-    'still refuses %s, because that needs a reading rather than a parse',
-    async (prose) => {
-      const result = await record('reclaim_current_hours__deep_work', prose);
-      expect(result.data?.recorded).toEqual([]);
-      expect(result.data?.refused[0]?.code).toBe('typed_value_required');
-      expect(store.size).toBe(0);
-    }
-  );
+  // One figure in a sentence is still one figure. The words around it say how sure the leader is of
+  // it, which is what `confidence` and their own verbatim are for, and never what the figure is.
+  it.each([
+    ['8 hours', 8],
+    ['roughly 8 hours a week', 8],
+    ['about 8', 8],
+    ['1.5 hours', 1.5],
+  ])('reads the one figure in %s', async (prose, expected) => {
+    const result = await record('reclaim_current_hours__deep_work', prose);
+    expect(result.data?.refused).toEqual([]);
+    expect(store.get('reclaim_current_hours__deep_work')?.valueJson).toBe(expected);
+    // Their phrasing is theirs: only a naked figure is dressed, never a sentence rewritten.
+    expect(store.get('reclaim_current_hours__deep_work')?.value).toBe(prose);
+  });
+
+  it.each([
+    'About eight, some weeks more.',
+    'eight',
+    'somewhere between 6 and 10',
+    '2 to 3 hours',
+    '5 on Mondays and 2 on Fridays',
+  ])('still refuses %s, because that needs a reading rather than a parse', async (prose) => {
+    const result = await record('reclaim_current_hours__deep_work', prose);
+    expect(result.data?.recorded).toEqual([]);
+    expect(result.data?.refused[0]?.code).toBe('typed_value_required');
+    expect(store.size).toBe(0);
+  });
+
+  // The failure the dressing is for: the panel beside the conversation said "Deep work, hours a
+  // week: 5", which is a row that only means anything while you are looking at its label.
+  it('stores a naked figure as the reading it is', async () => {
+    await record('reclaim_current_hours__deep_work', '5');
+    expect(store.get('reclaim_current_hours__deep_work')).toMatchObject({
+      value: '5 hours',
+      valueJson: 5,
+    });
+  });
+
+  it('keeps the unit singular at one', async () => {
+    await record('reclaim_current_hours__deep_work', '1');
+    expect(store.get('reclaim_current_hours__deep_work')?.value).toBe('1 hour');
+  });
 
   it('still refuses a sentence about a yes-or-no slot, which is a summary and not an answer', async () => {
     const result = await record(

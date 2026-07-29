@@ -6,8 +6,13 @@ parent: post-v1.md
 
 # `ryw-chat-ux` — the conversation, as a conversation looks
 
-**Owner:** John · **Status:** built, one branch (`feat/ryw-chat-ux`) · **Depends on:**
-[[ryw-conversational]] (all stages shipped)
+**Owner:** John · **Status:** **shipped** — #56 (2026-07-27), #57 (2026-07-28), #58 (2026-07-29) ·
+**Depends on:** [[ryw-conversational]] (all stages shipped)
+
+> Planned as one branch and delivered as three. Each merge put the surface in front of a real leader,
+> and each time the next thing wrong with it only became visible once the previous one was fixed —
+> the frame (`app/(programme)/`) was not in the original plan at all. Recorded because the plan-first
+> bar in [[post-v1]] assumes a branch is scoped before it starts, and this one genuinely was not.
 
 ---
 

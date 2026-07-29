@@ -131,8 +131,73 @@ describe('applyContentEdits', () => {
     const view = buildContentView(defaults());
     const keys = view.rules.map((r) => r.key);
 
-    expect(keys).toEqual(['abandonedAfterDays', 'aggregateMinimumCohort']);
+    expect(keys).toEqual(['abandonedAfterDays', 'aggregateMinimumCohort', 'phaseCoveredPercent']);
     expect(view.prose.map((f) => f.key)).toContain('consultationEmail');
+  });
+
+  it('carries the coverage threshold with the bounds the conversation is built around', () => {
+    // The number that decides when a leader is offered the next phase. Bounded on the form as well as
+    // in the schema, and the floor matters: a threshold low enough to pass on two readings out of
+    // fifteen offers the way out while the coach is still on its third question, which is the gate
+    // this replaced.
+    const rule = buildContentView(defaults()).rules.find((r) => r.key === 'phaseCoveredPercent');
+
+    expect(rule).toMatchObject({ value: '90', min: 50, max: 100 });
+  });
+
+  it('writes a new coverage threshold, and drops one that is not a number', () => {
+    const config = defaults();
+
+    expect(applyContentEdits(config, { phaseCoveredPercent: '75' }).phaseCoveredPercent).toBe(75);
+    expect(applyContentEdits(config, { phaseCoveredPercent: 'most' }).phaseCoveredPercent).toBe(
+      config.phaseCoveredPercent
+    );
+  });
+
+  it('applies a signpost’s involves line, duration and an opening beat', () => {
+    const config = defaults();
+    const next = applyContentEdits(config, {
+      'phaseSignposts.0.involves': 'Naming the week you are auditing',
+      'phaseSignposts.0.duration': 'About ten minutes',
+      'phaseSignposts.0.opening.0': 'This is where we begin.',
+    });
+
+    expect(next.phaseSignposts[0]?.involves).toBe('Naming the week you are auditing');
+    expect(next.phaseSignposts[0]?.duration).toBe('About ten minutes');
+    expect(next.phaseSignposts[0]?.opening[0]).toBe('This is where we begin.');
+    // The copy the edit did not name is untouched, and the source config is not written through.
+    expect(config.phaseSignposts[0]?.involves).not.toBe('Naming the week you are auditing');
+  });
+
+  it('refuses to grow a signpost’s opening, because a new beat has no default behind it', () => {
+    // A beat past the end would render as permanently diverged copy with nothing to compare against,
+    // so an out-of-range index is dropped rather than appended.
+    const config = defaults();
+    const beats = config.phaseSignposts[0]?.opening.length ?? 0;
+    const next = applyContentEdits(config, {
+      [`phaseSignposts.0.opening.${String(beats)}`]: 'A beat nobody wrote',
+    });
+
+    expect(next.phaseSignposts[0]?.opening).toHaveLength(beats);
+    expect(next.phaseSignposts[0]?.opening).not.toContain('A beat nobody wrote');
+  });
+
+  it('ignores a signpost index that does not exist rather than throwing', () => {
+    const config = defaults();
+    const next = applyContentEdits(config, { 'phaseSignposts.99.involves': 'Nowhere' });
+
+    expect(next.phaseSignposts).toEqual(config.phaseSignposts);
+  });
+
+  it('applies an hour-band label, and ignores a band index that does not exist', () => {
+    const config = defaults();
+    const next = applyContentEdits(config, {
+      'hourBands.0.label': 'A long week',
+      'hourBands.99.label': 'Nowhere',
+    });
+
+    expect(next.hourBands[0]?.label).toBe('A long week');
+    expect(next.hourBands).toHaveLength(config.hourBands.length);
   });
 
   it('ignores an out-of-range index rather than throwing', () => {

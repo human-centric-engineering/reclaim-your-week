@@ -52,12 +52,13 @@ describe('reclaimCoachAgent authored content', () => {
 });
 
 describe('reclaimCoachAgent capability grants', () => {
-  it('grants four capabilities, one per slug (no duplicates)', () => {
-    // Four, not five: `fill_slot` was removed once `record_answers` covered the same group from a
-    // server-issued run. See `agent.ts` for why the narrower tool was the less safe one.
+  it('grants five capabilities, one per slug (no duplicates)', () => {
+    // `fill_slot` is still not among them: it was removed once `record_answers` covered the same
+    // group from a server-issued run. See `agent.ts` for why the narrower tool was the less safe
+    // one. The fifth is `offer_choices`, which writes nothing at all.
     const slugs = reclaimCoachAgent.capabilities.map((c) => c.slug);
-    expect(slugs).toHaveLength(4);
-    expect(new Set(slugs).size).toBe(4);
+    expect(slugs).toHaveLength(5);
+    expect(new Set(slugs).size).toBe(5);
   });
 
   it('attaches an exposure config to the one write and to none of the reads', () => {

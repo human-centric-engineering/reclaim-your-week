@@ -348,7 +348,7 @@ export function Phase1Panel({
         disabled={busy || reflection.trim().length === 0 || !isRevealed}
         className="bg-primary text-primary-foreground rounded-full px-8 py-3 text-[0.95rem] font-medium disabled:opacity-40"
       >
-        {busy ? 'Saving…' : 'Continue to the next phase'}
+        {busy ? 'Saving…' : 'Continue to the next section'}
       </button>
     </div>
   );

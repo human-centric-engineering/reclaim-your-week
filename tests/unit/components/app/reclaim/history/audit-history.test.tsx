@@ -69,11 +69,11 @@ describe('AuditHistory', () => {
     expect(link).toHaveAttribute('href', '/programme');
   });
 
-  it('names the phase an unfinished audit stopped at, so coming back does not start with guessing', async () => {
+  it('names the section an unfinished audit stopped at, so coming back does not start with guessing', async () => {
     readRuns.mockResolvedValue([OPEN]);
     render(<AuditHistory />);
 
-    expect(await screen.findByText(/phase 2, Energy/)).toBeInTheDocument();
+    expect(await screen.findByText(/section 2, Energy/)).toBeInTheDocument();
   });
 
   it('invites a first audit rather than showing an empty list', async () => {

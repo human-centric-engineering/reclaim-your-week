@@ -73,6 +73,12 @@ export function ProgrammeShell() {
    */
   const [signposts, setSignposts] = useState<PhaseSignpost[] | null>(null);
   /**
+   * How much of a phase has to be covered before the move onward is offered, as the operator
+   * currently has it. `null` until the config arrives, and on failure, which leaves the conversation
+   * on its own fallback rather than on a threshold nobody set.
+   */
+  const [coveredPercent, setCoveredPercent] = useState<number | null>(null);
+  /**
    * A finished phase the leader has gone back to look at, or `null` for "wherever the audit is".
    *
    * Held here rather than in the URL because it is a view, not a position: the run's phase is the
@@ -132,7 +138,10 @@ export function ProgrammeShell() {
         const json: unknown = await res.json();
         const data = json !== null && typeof json === 'object' && 'data' in json ? json.data : null;
         const parsed = uiConfigSchema.safeParse(data);
-        if (parsed.success) setSignposts(parsed.data.phaseSignposts);
+        if (parsed.success) {
+          setSignposts(parsed.data.phaseSignposts);
+          setCoveredPercent(parsed.data.phaseCoveredPercent);
+        }
       } catch {
         // Defaults stand.
       }
@@ -218,7 +227,7 @@ export function ProgrammeShell() {
 
   return (
     <>
-      <ProgrammeChrome here={`Phase ${headingIndex} · ${headingPhase.label}`} />
+      <ProgrammeChrome here={`Section ${headingIndex} · ${headingPhase.label}`} />
 
       <div className="flex min-h-0 flex-1">
         {/* The spine keeps its own column on a wide screen, and its own scroll: seven phases fit, but
@@ -252,7 +261,7 @@ export function ProgrammeShell() {
               signposts={signposts ?? undefined}
               conversationId={state.run.conversationId}
               phaseMarks={state.run.phaseMarks}
-              returnLabel={`phase ${currentIndex}, ${currentPhase.label}`}
+              returnLabel={`section ${currentIndex}, ${currentPhase.label}`}
               onReturn={() => setReviewingKey(null)}
             />
           ) : talking ? (
@@ -272,6 +281,7 @@ export function ProgrammeShell() {
               conversationId={state.run.conversationId}
               coachOpenings={state.run.coachOpenings}
               phaseMarks={state.run.phaseMarks}
+              coveredPercent={coveredPercent ?? undefined}
               // Quiet, and this is the call site the flag exists for: it fires after *every* coach
               // turn, not only when the phase moves, so a loud reload would unmount the transcript
               // mid-answer each time the coach finished speaking.

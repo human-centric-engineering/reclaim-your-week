@@ -16,6 +16,7 @@
 import { z } from 'zod';
 import { parseEnvelope } from '@/components/app/reclaim/calendar/types';
 import { isCoachSyntheticMessage } from '@/lib/app/programme/coach/opening';
+import { RECLAIM_BUCKETS } from '@/lib/app/programme/content';
 
 /** One message, as either surface draws it. The id is what the phase windows are cut against. */
 export interface TranscriptMessage {
@@ -92,6 +93,129 @@ export function splitParagraphs(text: string): string[] {
   return parts.length > 0 ? parts : [text];
 }
 
+/**
+ * The nine areas as the coach says them out loud, longest first.
+ *
+ * The titles are written with an ampersand (`Learning & development`) and spoken with a word
+ * (`learning and development`), so each is matched either way, at any casing, across any run of
+ * whitespace — the coach's own wording is what gets drawn, this only says where it starts and ends.
+ * Longest first because the alternation is ordered: a shorter name that is a prefix of a longer one
+ * must not win.
+ */
+const AREA_NAMES = new RegExp(
+  `\\b(${[...RECLAIM_BUCKETS]
+    .map((b) => b.title)
+    .sort((a, b) => b.length - a.length)
+    .map((title) =>
+      title
+        .split(/\s*&\s*/)
+        .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+'))
+        .join('\\s+(?:&|and)\\s+')
+    )
+    .join('|')})\\b`,
+  'i'
+);
+
+/**
+ * The area a question is about, marked for the leader when the coach did not mark it itself.
+ *
+ * **Why this exists rather than trusting the instruction.** The coach is asked to wrap the phrase
+ * (see `BRAND_VOICE_INSTRUCTIONS`), and when it does, that is what is drawn. But the pinned model is
+ * `gpt-4o`, which already ignores the older and blunter prohibition in the same block against opening
+ * with "Certainly" — so a leader's ability to see what they are being asked cannot rest on the model
+ * remembering a formatting rule twenty turns in. The nine area names are known, finite and authored
+ * (`RECLAIM_BUCKETS`), so where the coach names one, this app can mark it with no model in the loop.
+ *
+ * Deliberately narrow. Only the **first** name in a paragraph, so a question mentioning two does not
+ * become a highlighter; only when the turn carries no `**` of its own, so the coach's judgement always
+ * wins over this fallback; and the caller only asks for it on the paragraph holding the question. The
+ * coach is told to put the question last and in a paragraph of its own, so marking the area where it
+ * is *reflected back* would emphasise the sentence the leader has already read.
+ */
+function markKnownArea(text: string): string {
+  return text.replace(AREA_NAMES, '**$1**');
+}
+
+/**
+ * The few words a question turns on, drawn so they can be found without reading the turn twice.
+ *
+ * Two things can mark them: the coach, with `**…**`, and this app, with `markKnownArea` when the
+ * coach did not. `**` is the only markup either surface understands. A leader half-way down a
+ * nineteen-reading section is asked about a different area every turn or two, and the name of that
+ * area was previously indistinguishable from the sentence carrying it: the question was legible but
+ * not *scannable*, and the panel beside it lists the same nineteen names in bold. This closes that
+ * gap.
+ *
+ * **Deliberately not a markdown renderer.** The voice bans bullets, headings and tables in
+ * conversation, so parsing them would only give the model permission to use them. Bold is the whole
+ * grammar, and there is no `dangerouslySetInnerHTML` anywhere near it: the parts come back as React
+ * nodes, so a leader who types `**` at the coach can never inject anything.
+ *
+ * **The streaming tail is the interesting case.** Words arrive two characters at a time, so a marker
+ * spends a frame as `*` and the closing pair does not exist yet for as long as the phrase takes to
+ * type. An unclosed `**` therefore opens emphasis for whatever has arrived since, and a lone trailing
+ * `*` is dropped: the phrase brightens as it is spoken instead of the leader watching asterisks land
+ * and then vanish.
+ *
+ * `markArea` is the caller saying "this paragraph is the question, and nothing in this turn was
+ * marked" — see `coachParagraphs`, which is what both surfaces actually call.
+ */
+export function renderEmphasis(rawText: string, markArea = false): React.ReactNode[] {
+  const text = markArea ? markKnownArea(rawText) : rawText;
+  const nodes: React.ReactNode[] = [];
+  let cursor = 0;
+  let key = 0;
+  const strong = (content: string) => (
+    <strong key={(key += 1)} className="text-foreground font-semibold">
+      {content}
+    </strong>
+  );
+
+  for (const match of text.matchAll(/\*\*([^*]+)\*\*/g)) {
+    const at = match.index;
+    if (at > cursor) nodes.push(text.slice(cursor, at));
+    nodes.push(strong(match[1]));
+    cursor = at + match[0].length;
+  }
+
+  const tail = text.slice(cursor);
+  const opening = tail.indexOf('**');
+  if (opening >= 0) {
+    if (opening > 0) nodes.push(tail.slice(0, opening));
+    const arrived = tail.slice(opening + 2);
+    if (arrived.length > 0) nodes.push(strong(arrived));
+  } else {
+    const trimmed = tail.endsWith('*') ? tail.slice(0, -1) : tail;
+    if (trimmed.length > 0) nodes.push(trimmed);
+  }
+  return nodes;
+}
+
+/** One paragraph of a coach turn, and whether this app should mark the area named in it. */
+export interface CoachParagraph {
+  text: string;
+  markArea: boolean;
+}
+
+/**
+ * A coach turn split into its paragraphs, with the question's paragraph flagged.
+ *
+ * The flag is what keeps the fallback honest, and it is off in three cases. When the coach marked
+ * something itself, its judgement stands and nothing is added. When the paragraph is not the last
+ * one, it is a reflection or an observation rather than the question. And **while the turn is still
+ * arriving**: the "last paragraph" of a half-spoken turn is whichever one is being typed, so marking
+ * it would bold an area named in the reflection and then unbold it the moment the question began.
+ * The mark lands when the turn settles, which is the same beat the leader starts reading it.
+ */
+export function coachParagraphs(text: string, live = false): CoachParagraph[] {
+  const parts = splitParagraphs(text);
+  const eligible = !live && !text.includes('**');
+  return parts.map((paragraph, i) => ({
+    text: paragraph,
+    markArea: eligible && i === parts.length - 1,
+  }));
+}
+
 /** The leader's own line. */
 export function LeaderLine({ text }: { text: string }) {
   // `bg-accent`, not `bg-muted`. Full-strength cream is this app's *section band* — the signpost, the
@@ -117,9 +241,9 @@ export function CoachLine({ text }: { text: string }) {
     // `space-y-4`, a little wider than the line spacing inside a paragraph: enough that the question
     // at the end reads as its own beat, not so much that one turn looks like several.
     <div className="max-w-[92%] space-y-4">
-      {splitParagraphs(text).map((paragraph, p) => (
+      {coachParagraphs(text).map((paragraph, p) => (
         <p key={p} className="text-foreground text-[1.02rem] leading-relaxed whitespace-pre-wrap">
-          {paragraph}
+          {renderEmphasis(paragraph.text, paragraph.markArea)}
         </p>
       ))}
     </div>

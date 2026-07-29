@@ -441,13 +441,15 @@ describe('CoachChat — the frame it is given', () => {
         conversationId={null}
         intro={<p>the signpost</p>}
         beats={[{ key: 'chart', node: <p>the chart</p> }]}
-        footer={<button type="button">Continue to the next phase</button>}
+        footer={<button type="button">Continue to the next section</button>}
       />
     );
 
     expect(screen.getByText('the signpost')).toBeInTheDocument();
     expect(screen.getByText('the chart')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Continue to the next phase' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Continue to the next section' })
+    ).toBeInTheDocument();
   });
 
   it('keys the beats it is handed, rather than warning about the caller that built them', async () => {
@@ -641,5 +643,213 @@ describe('CoachChat — this phase’s part of one long conversation', () => {
 
     await userEvent.click(open);
     expect(screen.getByText('That is half the week.')).toBeInTheDocument();
+  });
+});
+
+/**
+ * The composer, for a question whose answers are a fixed set.
+ *
+ * Most of this audit is answered in the leader's own words. Some of it is not, and until now the
+ * conversation asked those the same way: "which quarter or timeframe should we consider" above an
+ * empty box, with the four answers visible only on the form path. The coach names the reading by
+ * calling `offer_choices`, the result reaches the client on the `capability_result` frame the
+ * platform already yields, and the box gives way to the answers.
+ *
+ * Three properties are load-bearing and each has a test below:
+ *
+ *  - **The answers appear only once the question has.** A tool result precedes the reply it informs,
+ *    so drawing on receipt would put four buttons under a question still being written.
+ *  - **Tapping one sends a turn**, identical on the wire to the same words typed, so capture and the
+ *    transcript stay honest about where a reading came from.
+ *  - **It never closes the question.** The way back to typing is always there, and the offer is gone
+ *    by the next turn whatever the leader did with it.
+ */
+
+/** An SSE body carrying an offer, then the coach's question, then done — the real frame order. */
+function sseWithOffer(text: string, result: unknown): ReadableStream<Uint8Array> {
+  return new ReadableStream({
+    start(controller) {
+      controller.enqueue(
+        encoder.encode(
+          `event: capability_result\ndata: ${JSON.stringify({
+            type: 'capability_result',
+            capabilitySlug: 'reclaim_audit__offer_choices',
+            result,
+          })}\n\n`
+        )
+      );
+      controller.enqueue(
+        encoder.encode(
+          `event: content\ndata: ${JSON.stringify({ type: 'content', delta: text })}\n\n`
+        )
+      );
+      controller.enqueue(
+        encoder.encode(`event: done\ndata: ${JSON.stringify({ type: 'done' })}\n\n`)
+      );
+      controller.close();
+    },
+  });
+}
+
+const offered = (result: unknown, text = 'Which period should we look at?') => ({
+  ok: true,
+  status: 200,
+  headers: new Headers({ 'content-type': 'text/event-stream' }),
+  body: sseWithOffer(text, result),
+});
+
+const PERIOD_OFFER = {
+  success: true,
+  data: {
+    slotSlug: 'reclaim_setup_audit_period',
+    label: 'The period being audited',
+    options: ['last week', 'last month', 'last quarter', 'last year'],
+  },
+};
+
+/** Send one turn from the text box, so the offer on the reply has somewhere to land. */
+async function speak(message = 'hello') {
+  await userEvent.type(screen.getByRole('textbox', { name: 'Your message' }), message);
+  await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+}
+
+describe('CoachChat — a question with a fixed set of answers', () => {
+  it('puts the answers where the text box was, once the question has arrived', async () => {
+    fetchMock.mockResolvedValue(offered(PERIOD_OFFER));
+
+    render(<CoachChat runId="run-1" conversationId={null} />);
+    await speak();
+
+    expect(await screen.findByRole('button', { name: 'last quarter' })).toBeInTheDocument();
+    // The box is gone rather than sitting underneath: a row of answers with a text field still below
+    // it asks the leader to work out which of the two the tool wants.
+    expect(screen.queryByRole('textbox', { name: 'Your message' })).not.toBeInTheDocument();
+    // The reading is named for anyone not reading the screen, in the words the panel uses.
+    expect(screen.getByRole('group', { name: /the period being audited/i })).toBeInTheDocument();
+  });
+
+  it('sends a tapped answer as an ordinary leader turn', async () => {
+    fetchMock.mockResolvedValue(offered(PERIOD_OFFER));
+
+    render(<CoachChat runId="run-1" conversationId={null} />);
+    await speak();
+    await userEvent.click(await screen.findByRole('button', { name: 'last quarter' }));
+
+    // Byte-identical to the same words typed. That is what keeps capture and the transcript honest:
+    // nothing is written to a slot because a button was drawn, the coach records what was said.
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/v1/app/reclaim/runs/run-1/coach/stream',
+        expect.objectContaining({
+          body: JSON.stringify({ kind: 'leader', message: 'last quarter' }),
+        })
+      )
+    );
+    expect(await screen.findByText('last quarter')).toBeInTheDocument();
+  });
+
+  it('always leaves a way to say something else', async () => {
+    // A set is what the audit expects, not what the leader is allowed. Somebody auditing the last
+    // six weeks says so, and the answer they type is the answer.
+    fetchMock.mockResolvedValue(offered(PERIOD_OFFER));
+
+    render(<CoachChat runId="run-1" conversationId={null} />);
+    await speak();
+    await userEvent.click(await screen.findByRole('button', { name: /say it in your own words/i }));
+
+    expect(screen.getByRole('textbox', { name: 'Your message' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'last quarter' })).not.toBeInTheDocument();
+  });
+
+  it('lets the leader go back to the answers after opening the text box', async () => {
+    // Taking the way out used to discard the offer, which made it a door that opened once. Somebody
+    // who opens the box to reconsider and then decides the offered answer was right after all should
+    // not have to ask the coach to offer them again.
+    fetchMock.mockResolvedValue(offered(PERIOD_OFFER));
+
+    render(<CoachChat runId="run-1" conversationId={null} />);
+    await speak();
+    await userEvent.click(await screen.findByRole('button', { name: /say it in your own words/i }));
+    await userEvent.click(screen.getByRole('button', { name: /choose from the answers instead/i }));
+
+    expect(screen.getByRole('button', { name: 'last quarter' })).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: 'Your message' })).not.toBeInTheDocument();
+  });
+
+  it('offers no way back on a turn that never had answers', async () => {
+    // The mirror of the rule above: the way back exists only while an offer is standing, so an
+    // ordinary open question is not given a control pointing at answers that do not exist.
+    fetchMock.mockResolvedValue(sse('What does that time actually look like?'));
+
+    render(<CoachChat runId="run-1" conversationId={null} />);
+    await speak();
+
+    expect(await screen.findByText('What does that time actually look like?')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /choose from the answers instead/i })
+    ).not.toBeInTheDocument();
+  });
+
+  it('tells the leader what to do with the answers, in the words the app labels sections with', async () => {
+    fetchMock.mockResolvedValue(offered(PERIOD_OFFER));
+
+    render(<CoachChat runId="run-1" conversationId={null} />);
+    await speak();
+
+    // The advisory. Without it the four pills were a row of unexplained buttons sitting in the gap
+    // under the continue button, reading as chrome rather than as the answer to the question above.
+    expect(await screen.findByText('Choose one')).toBeInTheDocument();
+  });
+
+  it('does not carry an offer into the next turn', async () => {
+    // Cleared at the top of every turn rather than when one is answered, so whatever the leader does
+    // next, the only thing that can put answers back is the coach calling for them again.
+    fetchMock.mockResolvedValueOnce(offered(PERIOD_OFFER));
+    render(<CoachChat runId="run-1" conversationId={null} />);
+    await speak();
+    expect(await screen.findByRole('button', { name: 'last quarter' })).toBeInTheDocument();
+
+    fetchMock.mockResolvedValue(sse('And what does that time look like?'));
+    await userEvent.click(screen.getByRole('button', { name: 'last quarter' }));
+
+    expect(await screen.findByText('And what does that time look like?')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'last quarter' })).not.toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Your message' })).toBeInTheDocument();
+  });
+
+  it('leaves the text box alone for a refusal, or for a frame it cannot read', async () => {
+    // The capability refuses when the reading has no answer set or belongs to another section. Both
+    // mean there is nothing to draw, and the correct failure is the composer the leader always had.
+    fetchMock.mockResolvedValue(
+      offered({ success: false, error: { code: 'no_choices', message: 'Ask it openly.' } })
+    );
+
+    render(<CoachChat runId="run-1" conversationId={null} />);
+    await speak();
+
+    expect(await screen.findByText('Which period should we look at?')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Your message' })).toBeInTheDocument();
+  });
+
+  it('ignores an offer whose answers it cannot trust', async () => {
+    // The frame is external data by the time it is read, whoever we believe sent it. Two buttons
+    // reading the same word is a choice with a wrong answer in it, and the leader cannot tell which
+    // one the audit will hear.
+    fetchMock.mockResolvedValue(
+      offered({
+        success: true,
+        data: {
+          slotSlug: 'reclaim_setup_audit_period',
+          label: 'The period being audited',
+          options: ['last quarter', 'last quarter'],
+        },
+      })
+    );
+
+    render(<CoachChat runId="run-1" conversationId={null} />);
+    await speak();
+
+    expect(await screen.findByText('Which period should we look at?')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Your message' })).toBeInTheDocument();
   });
 });

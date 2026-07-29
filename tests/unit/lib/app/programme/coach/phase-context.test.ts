@@ -70,7 +70,10 @@ const content = {
   strategyMirror: false,
 };
 
-import { buildCoachPhaseContext } from '@/lib/app/programme/coach/phase-context';
+import {
+  buildCoachPhaseContext,
+  pendingChoiceOffer,
+} from '@/lib/app/programme/coach/phase-context';
 
 const direct = (value: string) => ({
   value,
@@ -284,7 +287,7 @@ describe('buildCoachPhaseContext', () => {
   it('names the phase and lists what it captures', async () => {
     const block = await buildCoachPhaseContext('u1');
 
-    expect(block).toContain('phase 2 of 6: Energy');
+    expect(block).toContain('section 2 of 6: Energy');
     expect(block).toContain('reclaim_energy_peak_description');
     expect(block).toContain('not yet captured in this audit');
     expect(readRunAnswers).toHaveBeenCalledWith('u1', 'run-1');
@@ -325,9 +328,12 @@ describe('buildCoachPhaseContext', () => {
 
     expect(block).toContain('reclaim_reflection_p2');
     expect(block).toContain('what stands out to you here?');
-    // The two rules that replaced the blanket refusal: it is theirs to say, and it is theirs to leave.
+    // The two rules that replaced the blanket refusal: it is theirs to say, and it is theirs to
+    // leave. The second is now stated as a prohibition rather than as a hand-off, because "leave the
+    // move to them" was read as "tell them they may move", and the coach cannot see whether the
+    // screen is offering it.
     expect(block).toContain('Never infer it');
-    expect(block).toContain('leave the move to the next phase to them');
+    expect(block).toContain('do not invite them to move on');
   });
 
   it('stops asking for a reflection this run already holds', async () => {
@@ -382,14 +388,14 @@ describe('buildCoachPhaseContext', () => {
     grantFindFirst.mockResolvedValue({ tier: 'standard' });
 
     const block = await buildCoachPhaseContext('u1');
-    expect(block).toContain('phase 6 of 6');
+    expect(block).toContain('section 6 of 6');
     expect(block).toContain('This is the close');
   });
 
   it('still builds when the leader has never relabelled anything', async () => {
     readBucketLabels.mockRejectedValue(new Error('label read failed'));
 
-    expect(await buildCoachPhaseContext('u1')).toContain('phase 2 of 6');
+    expect(await buildCoachPhaseContext('u1')).toContain('section 2 of 6');
   });
 
   it('still builds when the signpost config cannot be read', async () => {
@@ -397,7 +403,7 @@ describe('buildCoachPhaseContext', () => {
     // context, never a leader their turn.
     readSignposts.mockRejectedValue(new Error('config read failed'));
 
-    expect(await buildCoachPhaseContext('u1')).toContain('phase 2 of 6');
+    expect(await buildCoachPhaseContext('u1')).toContain('section 2 of 6');
   });
 });
 
@@ -447,11 +453,24 @@ describe('buildCoachPhaseContext — who speaks first, and how a turn ends', () 
     expect(block).toContain('waiting to be greeted');
   });
 
-  it('asks for something to answer at the end of every turn, not only the first', async () => {
+  it('asks for a question at the end of every turn, not only the first', async () => {
+    // "Something to answer or to do" was wide enough to be satisfied by "if there is anything else
+    // you would like to add, feel free", which is the turn that left a leader with two readings
+    // outstanding and nothing to answer. It is a question now, and a named one.
     const block = await buildCoachPhaseContext('u1');
 
-    expect(block).toContain('End every turn with something for the leader to answer or to do');
+    expect(block).toContain('End every turn with a question');
+    expect(block).toContain('about a named reading from the list');
     expect(block).toContain('Never end on an');
+  });
+
+  it('refuses the open invitation and the announcement that a phase is done', async () => {
+    const block = await buildCoachPhaseContext('u1');
+
+    expect(block).toContain('anything else they');
+    expect(block).toContain('ask for it by name');
+    expect(block).toContain('do not tell them the phase is finished');
+    expect(block).toContain('their screen offers it at the moment it becomes true');
   });
 
   it('says that a sentence about recording is not a recording', async () => {
@@ -809,8 +828,11 @@ describe('buildCoachPhaseContext — the branches out of phase 1', () => {
     expect(block).toContain('Judge the pattern, never the person');
     // A figure can still be corrected after the pause.
     expect(block).toContain('record it as above');
-    // The way out of the phase.
-    expect(block).toContain('they can move on to the next phase');
+    // And the way out of the phase is not the coach's to announce. It used to end this beat by
+    // telling the leader they could move on whenever they were ready, on a turn where the screen may
+    // still have been showing what was left to cover.
+    expect(block).toContain('Do not tell them they can move on');
+    expect(block).not.toContain('The button');
   });
 
   it('gives phase 1 the bands it needs to say anything about a weekly total', async () => {
@@ -1514,12 +1536,13 @@ describe('buildCoachPhaseContext — the texture of an area, not only its hours'
     expect(block).not.toContain('an unfilled list is not a reason to hold this back');
   });
 
-  it('offers what was never asked before the phase is called done', async () => {
+  it('turns what was never asked into the next question rather than a closing summary', async () => {
     readRunAnswers.mockResolvedValue({});
 
     const block = await buildCoachPhaseContext('u1');
 
-    expect(block).toContain('Before you say this phase is done');
+    expect(block).toContain('there is always a next question, and it comes from this list');
+    expect(block).toContain('Your job is the next question');
   });
 
   /**
@@ -1569,12 +1592,13 @@ describe('buildCoachPhaseContext — the texture of an area, not only its hours'
   });
 
   /**
-   * After the reflection the coach gives its reading and points at the way onward. That beat used to
-   * wave the unfilled readings through ("not worth holding them here for"), which is where the eight
-   * missing ones were finally lost. It now names the specific gap: an area with a figure and nothing
-   * else has not been explored.
+   * After the reflection the coach gives its reading and then goes back for what the phase never
+   * asked. That beat used to wave the unfilled readings through ("not worth holding them here for"),
+   * which is where the eight missing ones were finally lost, and it then pointed at the button. It
+   * now names the specific gap (an area with a figure and nothing else has not been explored) and
+   * leaves the way onward to the screen that can actually see whether it is there.
    */
-  it('comes back for an area that has a figure and nothing else, before pointing at the way onward', async () => {
+  it('comes back for an area that has a figure and nothing else, and leaves the way onward alone', async () => {
     readRunAnswers.mockResolvedValue({
       ...(() => {
         const answers: Record<string, unknown> = {};
@@ -1600,7 +1624,559 @@ describe('buildCoachPhaseContext — the texture of an area, not only its hours'
 
     expect(block).toContain('look at what this phase never asked');
     expect(block).toContain('an area has a figure and nothing else');
-    expect(block).toContain('they can move on to the next phase');
+    expect(block).toContain('Do not tell them they can move on');
     expect(block).not.toContain('is not worth holding them here');
+  });
+});
+
+/**
+ * The named next question.
+ *
+ * Every assertion here exists because the prose alone did not hold. The block already said, in three
+ * separate places, that every turn ends with a question drawn from the capture list; the coach was
+ * observed at phase 0 with three readings outstanding ending on "if there is anything else you would
+ * like to add or clarify, feel free to do so" anyway, twice in one conversation. So the choice is made
+ * in code and the slug is handed over. What these tests guard is that the choice is *made* and that it
+ * is the right reading: a selection that silently returns nothing puts the coach back where it was,
+ * and it would still pass every assertion about the prose above.
+ */
+describe('the question the turn ends with, chosen rather than described', () => {
+  beforeEach(() => {
+    loadPhaseProgress.mockResolvedValue({ phases: [], currentPhaseKey: 'phase-0-setup' });
+  });
+
+  it('names the first outstanding reading by slug, so there is nothing to work out', async () => {
+    readRunAnswers.mockResolvedValue({ reclaim_profile_first_name: direct('John') });
+
+    const block = await buildCoachPhaseContext('u1');
+
+    expect(block).toContain(
+      'Your role (reclaim_profile_role), which nobody has asked in this audit yet'
+    );
+    expect(block).toContain('no turn can end without one');
+  });
+
+  it('names the pair as one question where the outstanding reading is an anchor', async () => {
+    // Everything before the transition question answered, so the anchor of a phase-0 pair is next.
+    readRunAnswers.mockResolvedValue({
+      reclaim_profile_first_name: direct('John'),
+      reclaim_profile_role: direct('Head of Engineering'),
+      reclaim_profile_org_type: direct('SaaS'),
+      reclaim_profile_direct_reports: { ...direct('25'), valueJson: 25 },
+      reclaim_profile_distributed_team: { ...direct('Yes'), valueJson: true },
+      reclaim_profile_distributed_impact: direct(
+        'I waste time travelling between the two offices.'
+      ),
+    });
+
+    const block = await buildCoachPhaseContext('u1');
+
+    expect(block).toContain('In a period of change (reclaim_setup_in_transition)');
+    expect(block).toContain(
+      'together with What the change is (reclaim_setup_transition_detail), in that order'
+    );
+  });
+
+  /**
+   * The exact state in the screenshot that prompted this: the leader had said change is a constant,
+   * so `reclaim_setup_transition_detail` applies and is outstanding, and the coach wound down instead
+   * of asking it. A follower whose anchor is already captured is not skipped by the selection.
+   */
+  it('reaches a follower whose anchor is already captured', async () => {
+    readRunAnswers.mockResolvedValue({
+      reclaim_profile_first_name: direct('John'),
+      reclaim_profile_role: direct('Head of Engineering'),
+      reclaim_profile_org_type: direct('SaaS'),
+      reclaim_profile_direct_reports: { ...direct('25'), valueJson: 25 },
+      reclaim_profile_distributed_team: { ...direct('Yes'), valueJson: true },
+      reclaim_profile_distributed_impact: direct(
+        'I waste time travelling between the two offices.'
+      ),
+      reclaim_setup_in_transition: { ...direct('Change is a constant'), valueJson: true },
+    });
+
+    const block = await buildCoachPhaseContext('u1');
+
+    expect(block).toContain('What the change is (reclaim_setup_transition_detail)');
+  });
+
+  it('never names a reading that does not apply to this leader', async () => {
+    // Fundraising is not part of the role, so its follow-on is settled rather than outstanding.
+    readRunAnswers.mockResolvedValue({
+      reclaim_profile_first_name: direct('John'),
+      reclaim_profile_role: direct('Head of Engineering'),
+      reclaim_profile_org_type: direct('SaaS'),
+      reclaim_profile_direct_reports: { ...direct('25'), valueJson: 25 },
+      reclaim_profile_distributed_team: { ...direct('No'), valueJson: false },
+      reclaim_setup_in_transition: { ...direct('No'), valueJson: false },
+      reclaim_setup_fundraising_relevant: { ...direct('No'), valueJson: false },
+    });
+
+    const block = await buildCoachPhaseContext('u1');
+
+    expect(block).not.toContain(
+      'Development team, or you (reclaim_setup_fundraising_support), which nobody has asked'
+    );
+    // The two conditional followers are settled, so the next unasked reading is the weekly hours.
+    expect(block).toContain('Your weekly hours (reclaim_setup_weekly_hours)');
+  });
+
+  /**
+   * With nothing outstanding the coach used to have nothing to ask, which is precisely the turn that
+   * produced the open invitation. An inference the leader has never seen outranks a short answer:
+   * an unconfirmed reading means the audit currently claims something they did not say.
+   */
+  it('falls back to an unconfirmed inference, and prefers it to a short answer', async () => {
+    readRunAnswers.mockResolvedValue({
+      reclaim_profile_first_name: direct('John'),
+      reclaim_profile_role: direct('Head of Engineering'),
+      reclaim_profile_org_type: direct('SaaS'),
+      reclaim_profile_direct_reports: { ...direct('25'), valueJson: 25 },
+      reclaim_profile_distributed_team: { ...direct('No'), valueJson: false },
+      reclaim_setup_in_transition: { ...direct('No'), valueJson: false },
+      reclaim_setup_fundraising_relevant: { ...direct('No'), valueJson: false },
+      reclaim_setup_weekly_hours: { ...direct('80'), valueJson: 80 },
+      // Short, and earlier in the list than the inference below.
+      reclaim_setup_priorities: direct('Growth.'),
+      reclaim_setup_keeping_me_up: {
+        value: 'The board.',
+        valueJson: null,
+        sourceType: 'inferred',
+        confidence: 4,
+      },
+      reclaim_setup_why_now: direct('Because the year has got away from me entirely.'),
+      reclaim_setup_audit_period: direct('Last month'),
+    });
+
+    const block = await buildCoachPhaseContext('u1');
+
+    expect(block).toContain(
+      'What is keeping you up (reclaim_setup_keeping_me_up), which this audit currently holds as "The board." and which they have never confirmed'
+    );
+    expect(block).toContain('Offer your reading of it back in your own words');
+  });
+
+  it('goes back for a short reading when nothing is outstanding or unconfirmed', async () => {
+    readRunAnswers.mockResolvedValue({
+      reclaim_profile_first_name: direct('John'),
+      reclaim_profile_role: direct('Head of Engineering'),
+      reclaim_profile_org_type: direct('SaaS'),
+      reclaim_profile_direct_reports: { ...direct('25'), valueJson: 25 },
+      reclaim_profile_distributed_team: { ...direct('No'), valueJson: false },
+      reclaim_setup_in_transition: { ...direct('No'), valueJson: false },
+      reclaim_setup_fundraising_relevant: { ...direct('No'), valueJson: false },
+      reclaim_setup_weekly_hours: { ...direct('80'), valueJson: 80 },
+      reclaim_setup_priorities: direct('Growth.'),
+      reclaim_setup_keeping_me_up: direct('The board keeps asking for things nobody has time for.'),
+      reclaim_setup_why_now: direct('Because the year has got away from me entirely.'),
+      reclaim_setup_audit_period: direct('Last month'),
+    });
+
+    const block = await buildCoachPhaseContext('u1');
+
+    expect(block).toContain(
+      'Your priorities this year (reclaim_setup_priorities), which this audit currently holds as "Growth."'
+    );
+    expect(block).toContain('ask for the rest of it');
+  });
+
+  it('says so plainly when there is genuinely nothing left, and still offers no way onward', async () => {
+    readRunAnswers.mockResolvedValue({
+      reclaim_profile_first_name: direct('John'),
+      reclaim_profile_role: direct('Head of Engineering'),
+      reclaim_profile_org_type: direct('SaaS'),
+      reclaim_profile_direct_reports: { ...direct('25'), valueJson: 25 },
+      reclaim_profile_distributed_team: { ...direct('No'), valueJson: false },
+      reclaim_setup_in_transition: { ...direct('No'), valueJson: false },
+      reclaim_setup_fundraising_relevant: { ...direct('No'), valueJson: false },
+      reclaim_setup_weekly_hours: { ...direct('80'), valueJson: 80 },
+      reclaim_setup_priorities: direct(
+        'Growing the fellowship programme and closing the Series B.'
+      ),
+      reclaim_setup_keeping_me_up: direct('The board keeps asking for things nobody has time for.'),
+      reclaim_setup_why_now: direct('Because the year has got away from me entirely.'),
+      reclaim_setup_audit_period: direct('Last month'),
+    });
+
+    const block = await buildCoachPhaseContext('u1');
+
+    expect(block).toContain('no reading left to go back for');
+    expect(block).toContain('do not tell them the phase is finished');
+    expect(block).not.toContain('which nobody has asked in this audit yet');
+  });
+
+  /**
+   * Position is the whole point. The block runs to a couple of hundred lines and a model weights its
+   * end most heavily, so a directive that drifts into the middle is the directive that was already
+   * being ignored. It goes after the recording rule, which is the order a turn actually happens in.
+   */
+  it('puts the named question last, after the rule about recording what they just said', async () => {
+    readRunAnswers.mockResolvedValue({});
+
+    const block = await buildCoachPhaseContext('u1');
+
+    expect(block.indexOf('One last thing, before you write anything at all')).toBeGreaterThan(-1);
+    expect(block.indexOf('no turn can end without one')).toBeGreaterThan(
+      block.indexOf('One last thing, before you write anything at all')
+    );
+    // Nothing after the directive, and the directive now ends on its fallback — the reading to ask
+    // instead when the named one turns out to be what the leader has just answered.
+    expect(block.indexOf('let the turn end on this instead')).toBeGreaterThan(
+      block.indexOf('no turn can end without one')
+    );
+    expect(
+      block
+        .trimEnd()
+        .endsWith(
+          'them: shown and read out is the same question twice. They can still type something else.'
+        )
+    ).toBe(true);
+  });
+});
+
+/**
+ * The reading to fall to, and why the directive cannot be a single pointer.
+ *
+ * This whole block is built from the run as it stood *before* the leader's message was read — the
+ * capture sweep runs after the turn, and `record_answers` fires during it. So the reading the coach is
+ * told to end on is, more often than any other single case, the one the leader has just answered: it
+ * is the question the coach asked last turn, and they answered it.
+ *
+ * Observed at phase 0 with everything else captured: named the period being audited, the leader said
+ * "last month", and the coach recorded it and then said "we have a clear view of your current context
+ * and priorities. When you're ready, you can move on to the next phase" — an announcement that the
+ * phase is finished and an offer of a way onward it cannot see, both forbidden in the prose above, and
+ * both said anyway, because a rule about what not to do is no use to a model with nothing left to do
+ * instead. Three thin readings were sitting on its own list at the time.
+ */
+describe('buildCoachPhaseContext — the reading to fall to when the named one has just been answered', () => {
+  beforeEach(() => {
+    loadPhaseProgress.mockResolvedValue({ phases: [], currentPhaseKey: 'phase-0-setup' });
+  });
+
+  it('names a second reading, and says the one condition that makes it the live one', async () => {
+    readRunAnswers.mockResolvedValue({});
+
+    const block = await buildCoachPhaseContext('u1');
+
+    // The first, by declaration order, is the leader's own name.
+    expect(block).toContain(
+      'Your first name (reclaim_profile_first_name), which nobody has asked in this audit yet.'
+    );
+    // The second is the next one nobody has asked, and it arrives with the condition attached.
+    expect(block).toContain('what they have just answered in the message you are replying to');
+    expect(block).toContain('Your role (reclaim_profile_role), which nobody has asked');
+    // And the fallback carries its own instructions, including the answers on screen.
+    expect(block).toContain('call offer_choices for reclaim_profile_role');
+  });
+
+  it('falls to a thin reading when everything that applies has been asked', async () => {
+    // The shape of the live failure: the period is the last unasked reading, and the three readings
+    // behind it are notes rather than accounts. On the turn the leader answers the period, the
+    // fallback is what stops the coach announcing the phase is over.
+    readRunAnswers.mockResolvedValue({
+      reclaim_profile_first_name: direct('John'),
+      reclaim_profile_role: direct('Head of Engineering'),
+      reclaim_profile_org_type: direct('SaaS'),
+      reclaim_profile_direct_reports: { ...direct('25'), valueJson: 25 },
+      reclaim_profile_distributed_team: { ...direct('Yes'), valueJson: true },
+      reclaim_profile_distributed_impact: direct('I waste a lot of time travelling to Manchester.'),
+      reclaim_setup_in_transition: { ...direct('No'), valueJson: false },
+      reclaim_setup_fundraising_relevant: { ...direct('No'), valueJson: false },
+      reclaim_setup_weekly_hours: { ...direct('80'), valueJson: 80 },
+      reclaim_setup_priorities: direct('Break even'),
+      reclaim_setup_keeping_me_up: direct('I sleep well'),
+      reclaim_setup_why_now: direct("I'm testing it"),
+    });
+
+    const block = await buildCoachPhaseContext('u1');
+
+    expect(block).toContain(
+      'The period being audited (reclaim_setup_audit_period), which nobody has asked in this audit yet.'
+    );
+    expect(block).toContain('let the turn end on this instead');
+    expect(block).toContain(
+      'Your priorities this year (reclaim_setup_priorities), which this audit currently holds as "Break even".'
+    );
+    expect(block).toContain('ask for the rest of it');
+  });
+
+  it('never falls to a reading already riding along inside the question above it', async () => {
+    // `reclaim_setup_transition_detail` is asked inside its anchor's question, not after it. Offering
+    // it as the thing to ask *instead* would name, as the fallback, a reading already in the fallback.
+    readRunAnswers.mockResolvedValue({
+      reclaim_profile_first_name: direct('John'),
+      reclaim_profile_role: direct('Head of Engineering'),
+      reclaim_profile_org_type: direct('SaaS'),
+      reclaim_profile_direct_reports: { ...direct('25'), valueJson: 25 },
+      reclaim_profile_distributed_team: { ...direct('No'), valueJson: false },
+    });
+
+    const block = await buildCoachPhaseContext('u1');
+
+    expect(block).toContain(
+      'In a period of change (reclaim_setup_in_transition), which nobody has asked in this audit yet.'
+    );
+    expect(block).toContain(
+      'together with What the change is (reclaim_setup_transition_detail), in that order.'
+    );
+    expect(block).not.toContain(
+      'What the change is (reclaim_setup_transition_detail), which nobody has asked in this audit yet.'
+    );
+  });
+});
+
+/**
+ * Which questions close on a fixed set of answers.
+ *
+ * The link that makes the whole offer work. The context builder already decides, deterministically,
+ * which reading the turn must end on (`nextQuestionFor`); this is where it also says whether that
+ * reading has answers to draw. Without it the coach would have to work out for itself which of the
+ * readings on the list are the closed ones, which is exactly the sort of judgement it makes in the
+ * middle of composing a warm reply and sometimes does not make at all.
+ *
+ * The set itself is deliberately absent from the context, and the last test holds that. The options
+ * are the product's and reach the leader through the tool; a second copy in the model's context is
+ * the copy that eventually gets paraphrased into the reply, which is the one thing the instruction
+ * spends its words forbidding.
+ */
+describe('buildCoachPhaseContext — the questions that have answers to pick from', () => {
+  beforeEach(() => {
+    loadPhaseProgress.mockResolvedValue({ phases: [], currentPhaseKey: 'phase-0-setup' });
+  });
+
+  it('names the tool against the reading the turn was already told to end on', async () => {
+    // Everything before the period captured, so the deterministic next question is the one from the
+    // brief: which quarter or timeframe are we auditing.
+    readRunAnswers.mockResolvedValue({
+      reclaim_profile_first_name: direct('Sam'),
+      reclaim_profile_role: direct('CEO'),
+      reclaim_profile_org_type: direct('Nonprofit'),
+      reclaim_profile_direct_reports: {
+        value: '5',
+        valueJson: 5,
+        sourceType: 'direct',
+        confidence: 10,
+      },
+      reclaim_profile_distributed_team: {
+        value: 'No',
+        valueJson: false,
+        sourceType: 'direct',
+        confidence: 10,
+      },
+      reclaim_setup_in_transition: {
+        value: 'No',
+        valueJson: false,
+        sourceType: 'direct',
+        confidence: 10,
+      },
+      reclaim_setup_fundraising_relevant: {
+        value: 'No',
+        valueJson: false,
+        sourceType: 'direct',
+        confidence: 10,
+      },
+      reclaim_setup_weekly_hours: {
+        value: '55',
+        valueJson: 55,
+        sourceType: 'direct',
+        confidence: 10,
+      },
+      reclaim_setup_priorities: direct('Funding, the new programme, and hiring a deputy'),
+      reclaim_setup_keeping_me_up: direct('Whether we can pay everyone past March'),
+      reclaim_setup_why_now: direct('Because I have not had a clear week since January'),
+    });
+
+    const block = await buildCoachPhaseContext('u1');
+
+    expect(block).toContain('call offer_choices for reclaim_setup_audit_period');
+    // The other half of the instruction, and the one a model is most likely to drop: a question whose
+    // options are shown on screen and also read out is the same question asked twice.
+    expect(block).toContain('do not list them');
+  });
+
+  it('marks the closed readings on the list, and leaves the open ones alone', async () => {
+    const block = await buildCoachPhaseContext('u1');
+
+    // A yes-or-no, and the period. Both are answered by picking, and the note reads as its own
+    // sentence rather than running on from the label the line ends with.
+    expect(block).toContain(
+      'reclaim_setup_in_transition: not yet captured in this audit. In a period of change (needs a yes or a no). This one has a fixed set of answers, so offer them.'
+    );
+    expect(block).toContain(
+      'reclaim_setup_audit_period: not yet captured in this audit. The period being audited. This one has a fixed set of answers, so offer them.'
+    );
+    // Somebody's own account of what is keeping them up. Four buttons under that would be the tool
+    // answering on their behalf.
+    expect(block).toContain('reclaim_setup_keeping_me_up: not yet captured in this audit.');
+    expect(block).not.toMatch(/reclaim_setup_keeping_me_up.*This one has a fixed set of answers/);
+  });
+
+  it('never puts the answers themselves in the model’s context', async () => {
+    // The options belong to the product and reach the leader through the tool. A copy here is the
+    // copy that gets paraphrased into the reply, and a coach that reads out "last week, last month,
+    // last quarter or last year" has asked the question twice over.
+    const block = await buildCoachPhaseContext('u1');
+
+    expect(block).not.toContain('last quarter');
+    expect(block).not.toContain('Established business');
+  });
+});
+
+/**
+ * The offer, worked out without asking the model anything.
+ *
+ * The coach can say which reading its question is about by calling `offer_choices`, and observed on a
+ * live audit it did so once and then asked the identical question three more times with no call at
+ * all, narrating "you can choose from the options on your screen" at a leader looking at a text box.
+ * Prose does not fix that. What does is that the decision was never the model's in the first place:
+ * `nextQuestionFor` picked the reading before the turn ran, and this reads the same choice back so
+ * the route can put the answers up regardless.
+ *
+ * The point of these tests is that it is **the same decision**, not a second one that happens to
+ * agree today. So they pin it against the question the context tells the coach to ask.
+ */
+describe('pendingChoiceOffer — the answers the turn closes on', () => {
+  beforeEach(() => {
+    loadPhaseProgress.mockResolvedValue({ phases: [], currentPhaseKey: 'phase-0-setup' });
+  });
+
+  it('returns the answers for the reading the context named as this turn’s question', async () => {
+    // Everything before the period captured, so both the context and this agree the question is the
+    // one from the brief: which quarter or timeframe are we auditing.
+    readRunAnswers.mockResolvedValue({
+      reclaim_profile_first_name: direct('Sam'),
+      reclaim_profile_role: direct('CEO'),
+      reclaim_profile_org_type: direct('Nonprofit'),
+      reclaim_profile_direct_reports: {
+        value: '5',
+        valueJson: 5,
+        sourceType: 'direct',
+        confidence: 10,
+      },
+      reclaim_profile_distributed_team: {
+        value: 'No',
+        valueJson: false,
+        sourceType: 'direct',
+        confidence: 10,
+      },
+      reclaim_setup_in_transition: {
+        value: 'No',
+        valueJson: false,
+        sourceType: 'direct',
+        confidence: 10,
+      },
+      reclaim_setup_fundraising_relevant: {
+        value: 'No',
+        valueJson: false,
+        sourceType: 'direct',
+        confidence: 10,
+      },
+      reclaim_setup_weekly_hours: {
+        value: '55',
+        valueJson: 55,
+        sourceType: 'direct',
+        confidence: 10,
+      },
+      reclaim_setup_priorities: direct('Funding, the new programme, and hiring a deputy'),
+      reclaim_setup_keeping_me_up: direct('Whether we can pay everyone past March'),
+      reclaim_setup_why_now: direct('Because I have not had a clear week since January'),
+    });
+
+    const offer = await pendingChoiceOffer({
+      userId: 'u1',
+      runId: 'run-1',
+      phaseKey: 'phase-0-setup',
+    });
+
+    expect(offer).toEqual({
+      slotSlug: 'reclaim_setup_audit_period',
+      label: 'The period being audited',
+      options: ['last week', 'last month', 'last quarter', 'last year'],
+    });
+    // The same reading the coach was told to end on. If these two ever disagree, the leader gets
+    // answers belonging to a question nobody asked.
+    const block = await buildCoachPhaseContext('u1');
+    expect(block).toContain('call offer_choices for reclaim_setup_audit_period');
+  });
+
+  it('offers nothing when the turn’s question is answered in the leader’s own words', async () => {
+    // Nothing captured yet, so the first outstanding reading is their first name: a text box.
+    const offer = await pendingChoiceOffer({
+      userId: 'u1',
+      runId: 'run-1',
+      phaseKey: 'phase-0-setup',
+    });
+
+    expect(offer).toBeNull();
+  });
+
+  it('goes back to a reading the coach guessed, because that is where the question goes next', async () => {
+    // The live case. Every applicable reading captured, but the period was inferred rather than
+    // heard, so the deterministic next question is to offer it back for the leader to put right,
+    // and that question closes on the same four answers as the first asking did.
+    readRunAnswers.mockResolvedValue({
+      reclaim_profile_first_name: direct('Sam'),
+      reclaim_profile_role: direct('CEO'),
+      reclaim_profile_org_type: direct('Nonprofit'),
+      reclaim_profile_direct_reports: {
+        value: '5',
+        valueJson: 5,
+        sourceType: 'direct',
+        confidence: 10,
+      },
+      reclaim_profile_distributed_team: {
+        value: 'No',
+        valueJson: false,
+        sourceType: 'direct',
+        confidence: 10,
+      },
+      reclaim_setup_in_transition: {
+        value: 'No',
+        valueJson: false,
+        sourceType: 'direct',
+        confidence: 10,
+      },
+      reclaim_setup_fundraising_relevant: {
+        value: 'No',
+        valueJson: false,
+        sourceType: 'direct',
+        confidence: 10,
+      },
+      reclaim_setup_weekly_hours: {
+        value: '55',
+        valueJson: 55,
+        sourceType: 'direct',
+        confidence: 10,
+      },
+      reclaim_setup_priorities: direct('Funding, the new programme, and hiring a deputy'),
+      reclaim_setup_keeping_me_up: direct('Whether we can pay everyone past March'),
+      reclaim_setup_why_now: direct('Because I have not had a clear week since January'),
+      reclaim_setup_audit_period: {
+        value: 'last quarter',
+        valueJson: null,
+        sourceType: 'inferred',
+        confidence: 5,
+      },
+    });
+
+    const offer = await pendingChoiceOffer({
+      userId: 'u1',
+      runId: 'run-1',
+      phaseKey: 'phase-0-setup',
+    });
+
+    expect(offer?.slotSlug).toBe('reclaim_setup_audit_period');
+    expect(offer?.options).toContain('last quarter');
+  });
+
+  it('offers nothing for a section that captures nothing conversationally', async () => {
+    const offer = await pendingChoiceOffer({
+      userId: 'u1',
+      runId: 'run-1',
+      phaseKey: 'phase-6-summary',
+    });
+
+    expect(offer).toBeNull();
   });
 });

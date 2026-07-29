@@ -38,7 +38,7 @@ parked with a reason. Nothing leaves by being forgotten.
 | --- | ----------------------------------------------------------- | ------- | ---------------- | --------- | --------------------------- |
 | P1  | The asks ledger describes code that is not there            | John    | **shipped**      | integrity | —                           |
 | P2  | `invariants.md` says its own tests are unwritten            | John    | **shipped**      | integrity | —                           |
-| P3  | No reclaim smoke runs in any gate                           | John    | **shipped**      | gate      | 2 of 5 still manual (below) |
+| P3  | No reclaim smoke runs in any gate                           | John    | **shipped**      | gate      | 1 of 7 needs a key (P16)    |
 | P4  | The public surface is still the starter template            | John    | **shipped**      | launch    | copy sign-off: Rashmir      |
 | P5  | The quarterly nudge has no scheduler                        | John    | **shipped**      | launch    | needs wiring at deploy      |
 | P6  | Doc drift: stale cross-references                           | John    | **shipped**      | integrity | —                           |
@@ -53,22 +53,27 @@ parked with a reason. Nothing leaves by being forgotten.
 | P15 | The parked epics                                            | —       | parked           | scope     | future epics                |
 | P16 | A provider key for CI, or a nightly smoke run               | —       | ready ▲          | gate      | P3's remainder; a cost call |
 | P18 | The audit is seven forms; it was meant to be a conversation | John    | **shipped**      | feature   | [[ryw-conversational]]      |
-| P19 | The conversation shipped laid out as a document             | John    | in flight        | feature   | [[ryw-chat-ux]]             |
-| P20 | A finished audit left the product the moment it finished    | John    | in flight        | feature   | —                           |
+| P19 | The conversation shipped laid out as a document             | John    | **shipped**      | feature   | [[ryw-chat-ux]]             |
+| P20 | A finished audit left the product the moment it finished    | John    | **shipped**      | feature   | —                           |
+| P21 | Two key-less smokes never joined the gate                   | John    | ready ▲          | gate      | P3's rule, re-broken        |
+| P22 | The captured panel read as one grey column, guesses and all | John    | in flight        | feature   | P19's surface               |
 
 **Doing P1–P3 first was deliberate.** They are the three where the repository told a reader something
 untrue, or where a claim the product makes to users was not gated by anything. Every other item was
 honest about its own state; those three were not.
 
-**Everything the team owns is now shipped, with two in flight.** P1–P3, P5–P11 and P4's build landed
+**Everything the team owns is now shipped, bar one gate item.** P1–P3, P5–P11 and P4's build landed
 across two branches on 2026-07-26; **P18** landed on 2026-07-27, and **P19** — the surface half of the
-same epic, opened the same day the first real leader used it — is on `feat/ryw-chat-ux`. **P20** joined
-on 2026-07-28, from the same source as P19: someone asked where their finished audits were, and the
-answer was that there was nowhere for them to be. What remains beyond those is the items nobody here
-can close alone:
-**P12** (the eight things Rashmir owes), **P16** (a cost decision about a provider key in CI), and the
-three parked scope items — plus **P4's copy sign-off**, since the pages exist and the words in them
-are a draft until she reads them.
+same epic, opened the same day the first real leader used it — merged on 2026-07-27 (#56), with its
+frame and phase-review halves following in #57 (2026-07-28) and #58 (2026-07-29). **P20** joined on
+2026-07-28, from the same source as P19: someone asked where their finished audits were, and the
+answer was that there was nowhere for them to be; it merged in #58. **P21** is new and is ours —
+reconciling this board on 2026-07-29 found P3's rule quietly re-broken. **P22** is newer still and
+came from the same place P19 and P20 did: someone used the surface and said what was wrong with it.
+What remains beyond it is the
+items nobody here can close alone: **P12** (the eight things Rashmir owes), **P16** (a cost decision
+about a provider key in CI), and the three parked scope items — plus **P4's copy sign-off**, since the
+pages exist and the words in them are a draft until she reads them.
 
 > **The table above said otherwise until 2026-07-27**, listing P5 to P11 as `ready ▲` a day after each
 > one had shipped and its own section said so. Nothing was lost by it, but this is the file a reader
@@ -76,6 +81,15 @@ are a draft until she reads them.
 > rather than quietly correcting: a board is only load-bearing while the summary line and the rows
 > agree, and the rows are the part people scan. Same family as P1 and P2 — the repository describing
 > itself inaccurately — one file along.
+>
+> **And it happened again, the same way, on 2026-07-29.** P19 and P20 sat at `in flight` for two days
+> and one day after merging (#56/#57/#58); P3's row still read `2 of 5 still manual` when the count had
+> been corrected to one in P16's own section three days earlier, and the true denominator had since
+> gone to seven. Twice is a pattern, not a slip, and the cause is structural: **both rows were written
+> by the branch that was doing the work, and nothing flips them when that branch merges.** The board is
+> the one file here with no gate behind it — `leaf:checks` proves content and invariants, and neither
+> can see a status column. Until something closes that loop, the honest instruction is the one at the
+> top of P1: reconcile this board as the first act of any new branch, not the last act of the old one.
 
 ---
 
@@ -163,9 +177,10 @@ does exist.
 (`npx tsx scripts/smoke/…`, env from the job block, no `.env.local`). The job's `db:seed` already
 materialises the reclaim module, map and coach agent, because the seed runner walks subdirectories.
 
-**`smoke:reclaim` and `smoke:reclaim-calendar` remain manual**, because both make real model calls and
-CI holds no provider key. That is a real remaining hole and it is the one that already bit us, so what
-covers it now is worth stating precisely:
+**Only `smoke:reclaim-calendar` remains manual**, because it alone makes a real model call and CI
+holds no provider key. `smoke:reclaim` was assumed to need one and does not — it stubs the LLM with a
+fake provider — so it joined CI on 2026-07-26; see the correction in P16. That leaves one real hole,
+and it is the one that already bit us, so what covers it now is worth stating precisely:
 
 | Claim                                  | Gated by                                                      | Runs in CI |
 | -------------------------------------- | ------------------------------------------------------------- | ---------- |
@@ -178,6 +193,13 @@ covers it now is worth stating precisely:
 So the **structural** half of I4 is gated and the **end-to-end** half is not. Closing that needs a
 provider key in CI — a cost/secret decision rather than a code change, so it is **P16** below rather
 than something to decide unilaterally here.
+
+> **The count above is as of 2026-07-26, and the set has grown since.** There are now **seven** leaf
+> smokes, not five: `smoke:reclaim-coach` arrived with the conversational stages and
+> `smoke:reclaim-join` with F11. Neither needs a provider key and neither runs in CI, which means
+> P3's _done when_ — every smoke that can run without a key runs on every PR — stopped being true
+> without anybody changing P3. That is **P21**, not a re-opening of this item: what shipped here
+> shipped, and the rule it established is what broke.
 
 ---
 
@@ -402,7 +424,13 @@ articulate themselves, and a textarea under the transcript is the opposite of th
 what replaced the refusal is three narrower guards (this phase only, never inferred, always visible
 and editable). Full reasoning in [[ryw-chat-ux]] and in [[invariants]] I6.
 
-_Owner:_ John · _Status:_ in flight · _Class:_ feature
+**Shipped across three PRs, not one.** #56 (2026-07-27) made the conversation look like a
+conversation; #57 (2026-07-28) gave phase 1 its pause, its picture and its way back; #58 (2026-07-29)
+landed the `app/(programme)/` route group described above, so every page a leader can reach is finally
+in the same frame. The split was not planned — each merge put the surface in front of someone, and
+each time the next thing wrong with it only became visible once the previous one was fixed.
+
+_Owner:_ John · _Status:_ **shipped** · _Class:_ feature
 
 ### P20 · A finished audit left the product the moment it finished
 
@@ -434,6 +462,103 @@ links to nothing.
 
 No new plan document: this is one PR against an existing surface, which is the bar [[post-v1]] sets
 for plan-first.
+
+**Shipped in #58** (2026-07-29), alongside P19's frame and the capture split — the same PR, because
+`/programme/history` had nowhere coherent to render until the route group existed.
+
+_Owner:_ John · _Status:_ **shipped** · _Class:_ feature
+
+### P21 · Two key-less smokes never joined the gate
+
+Found while reconciling this board on 2026-07-29, by counting the smokes rather than trusting the
+count written here. **P3 established a rule and shipped it; the rule then broke quietly**, because
+adding a smoke and wiring a smoke into CI are two separate acts and only the first is anybody's habit.
+
+| Leaf smoke               | Needs a key? | In CI's `smoke` job |
+| ------------------------ | ------------ | ------------------- |
+| `smoke:reclaim`          | no           | ✅ yes              |
+| `smoke:reclaim-run`      | no           | ✅ yes              |
+| `smoke:reclaim-erasure`  | no           | ✅ yes              |
+| `smoke:reclaim-access`   | no           | ✅ yes              |
+| `smoke:reclaim-coach`    | no           | ❌ **no**           |
+| `smoke:reclaim-join`     | no           | ❌ **no**           |
+| `smoke:reclaim-calendar` | **yes**      | ❌ no — P16         |
+
+Both gaps guard concurrency against a real engine, which is exactly what unit tests with a mocked
+Prisma cannot reach: `reclaim-coach` covers the moment ledger's conditional `updateMany` (two tabs on
+the same beat) and `reclaim-join` covers the seat check in a WHERE clause under a burst of concurrent
+claims (two people taking the last seat). A mocked test asserts the _shape_ of those statements and
+proves nothing about whether Postgres serialises them.
+
+**One of them also carries a false claim in its own header.** `scripts/smoke/reclaim-coach.ts` says
+"it is in `leaf:checks`". It is not — `leaf:checks` is `leaf:content-diff && leaf:invariants`. Fix
+the comment in the same change that makes it true.
+
+_Done when:_ both run in CI's `smoke` job beside the other four, and `reclaim-coach.ts`'s header
+describes where it actually runs.
+
+_Owner:_ John · _Status:_ ready ▲ · _Class:_ gate
+
+### P22 · The captured panel read as one grey column, guesses and all
+
+Raised on 2026-07-29 by the owner, from a screenshot of phase 0. P19 built the panel and P18 gave it
+its reason to exist; what neither did was make it **legible at a glance**, and three separate things
+were wrong with it.
+
+**Filled and unfilled looked the same.** Every reading was a label and a value in the same weights,
+and an unanswered one was the same line with the value missing and the label a shade dimmer. Nothing
+separated one reading from the next. The panel's whole job is to answer "how much of this is left",
+and it was answering it in a sentence at the top while the list underneath said nothing.
+
+**The guesses were unannounced.** A reading the coach _inferred_ carried a left rule and the sentence
+"Taken from what you said. Have we got it right?" — which reads as a politeness, not as an admission.
+A leader looking at a figure has no way to tell whether they gave it or the coach worked it out, and
+those are different facts about their own audit. The panel's stated reason for existing (see the file
+header, and P18) is exactly this, and it was the thing it said least clearly.
+
+**There were two answers to a guess, and the useful third was missing.** Confirm and correct both
+_end_ the question. A leader who cannot tell whether "20 hours of oversight" is right has nothing to
+type into a box — what they want is to be asked about it properly, which is the one thing this
+surface can do that the seven forms could not.
+
+_What landed:_
+
+- **Rows, with hairlines and a rail.** One row per reading, separated; a two-pixel rail whose colour
+  carries the state (teal settled, cream being checked, hairline not yet asked), and a soft band
+  behind the ones being checked. Plus a segmented track in the header — one segment per reading, in
+  the order they are asked — so the shape of the phase is readable before a word is.
+- **`Inferred` and `Unsure`, as two words.** Inferred means the coach was never told this and read it
+  between the lines; unsure means it _was_ told and did not trust its own hearing. Both are shown on
+  a finished audit too — which was guessed is a fact about the audit, not an invitation to change it.
+- **"Talk it over."** Hands the reading back to the conversation as an ordinary leader turn, in
+  the transcript, visible. It is the only one of the three moves that is not a write: nothing is
+  settled on the leader's behalf on the way past. `CoachChat` grew one imperative method for it
+  (`CoachChatControls.ask`) rather than lifting the stream out of the component that owns it.
+- **A drawer that pulls out.** Correcting a reading in a 20rem column meant a text field and three
+  choices wrapping onto five lines. Touching the panel widens it to 30rem and it slides back when
+  attention returns to the conversation. It is positioned **over** the transcript rather than beside
+  it, so the conversation's measure never changes — losing your place mid-sentence because you
+  clicked a side panel is a worse bug than the one being fixed.
+- **And a drawer the leader can size themselves.** The edge is a real drag handle: `cursor-col-resize`,
+  a hairline that thickens and takes the brand teal under the cursor, arrow keys for anyone not using
+  a mouse. **A drag sets what _open_ means, and does not touch the closing.** Clicking back into the
+  conversation returns the drawer to 20rem however far it was pulled out — the transcript comes back
+  in full at the click that returns the leader to it — and the next touch on the panel opens it at
+  the width they chose rather than at ours. Double-clicking the grip forgets it.
+
+  > The first cut had the drag switch the automatic sizing off entirely, on the reasoning that a
+  > width the leader chose is an instruction and the product should stop arguing with it. Owner's
+  > call, and the right one: that leaves a half-screen panel sitting over the conversation until
+  > somebody remembers to put it back, which makes tidying your own screen a chore rather than a
+  > side-effect of getting on with the audit. Keeping the width and dropping the pin gets both.
+
+  The drag is floored so the conversation keeps 420px whatever happens: a panel that can bury the
+  thing it is a panel about is a trap, not a preference. It is also floored at 20rem, so "open"
+  cannot end up narrower than "closed".
+
+No schema change, no server change, no new invariant. The narrow-screen drawer is now always mounted
+so it can slide rather than appear, and `inert` while closed — which its tests assert, because
+"cannot be tabbed into" is the fact that matters and a transition class is not.
 
 _Owner:_ John · _Status:_ in flight · _Class:_ feature
 

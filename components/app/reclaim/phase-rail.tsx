@@ -97,7 +97,7 @@ export function PhaseRail({
                     type="button"
                     onClick={() => onSelect(phase.key)}
                     className="flex items-center px-0.5 py-2.5"
-                    aria-label={`Go to phase ${i}, ${phase.label}`}
+                    aria-label={`Go to section ${i}, ${phase.label}`}
                     aria-current={phase.key === viewingPhaseKey ? 'page' : undefined}
                   >
                     {dot}
@@ -114,7 +114,7 @@ export function PhaseRail({
             <span className="text-foreground font-medium">
               {index} · {current.label}
             </span>
-            <span className="sr-only">, phase {index} of 6</span>
+            <span className="sr-only">, section {index} of 6</span>
           </p>
         )}
       </nav>

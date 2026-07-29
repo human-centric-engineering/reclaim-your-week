@@ -116,9 +116,9 @@ export default function ContactPage() {
             </Note>
 
             <Note title="Something not working">
-              A sign-in that will not take, a phase that will not advance, a chart that looks wrong.
-              Say roughly what you were doing and when. There is no ticket number and no support
-              portal; it comes straight through.
+              A sign-in that will not take, a section that will not advance, a chart that looks
+              wrong. Say roughly what you were doing and when. There is no ticket number and no
+              support portal; it comes straight through.
             </Note>
 
             <Note title="Your data">

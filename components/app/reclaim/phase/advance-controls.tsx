@@ -15,7 +15,7 @@ export function AdvanceControls({
   answers,
   canAdvance,
   onAdvanced,
-  label = 'Continue to the next phase',
+  label = 'Continue to the next section',
 }: {
   runId: string;
   fromPhase: string;

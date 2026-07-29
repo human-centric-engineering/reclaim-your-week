@@ -72,7 +72,7 @@ export function CalendarBranch({ runId }: { runId: string }) {
       {stage.name === 'done' && (
         <div className="py-10 text-center">
           <p className="text-foreground text-xl font-light">
-            Saved. Your composite picture is ready for Phase 1.
+            Saved. Your composite picture is ready for Section 1.
           </p>
           <p className="text-muted-foreground mt-3 text-sm">
             This blends what your calendar showed with the work that happens off it.

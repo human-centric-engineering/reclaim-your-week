@@ -64,6 +64,17 @@ const conversation = [
   },
 ];
 
+/**
+ * The paragraph reading exactly `text`, matched through the emphasis inside it.
+ *
+ * A coach question now has the area it is about drawn in bold (`coach/transcript.tsx`), so the
+ * paragraph's *direct* text nodes — which is what `getByText` compares by default — are the sentence
+ * with the area name cut out of the middle. Matching on `textContent` asserts the same thing the
+ * plain string used to, and asserts it about the whole sentence rather than a fragment of it.
+ */
+const paragraphReading = (text: string) =>
+  screen.findByText((_content, el) => el?.tagName === 'P' && el.textContent === text);
+
 /** Renders with a ready `userEvent` instance, for the tests below that click through the drawer. */
 function renderWithUser(ui: ReactElement) {
   return { user: userEvent.setup(), ...render(ui) };
@@ -93,9 +104,9 @@ describe('PhaseReview', () => {
   it('shows the conversation that happened in this phase, and not the phases around it', async () => {
     render(<PhaseReview {...props} />);
 
-    expect(await screen.findByText('How many hours go on deep work?')).toBeInTheDocument();
+    expect(await paragraphReading('How many hours go on deep work?')).toBeInTheDocument();
     expect(screen.getByText('About five.')).toBeInTheDocument();
-    expect(screen.getByText('Relationship building is the big one.')).toBeInTheDocument();
+    expect(await paragraphReading('Relationship building is the big one.')).toBeInTheDocument();
     // Phase 0's exchange belongs to phase 0.
     expect(screen.queryByText('What is your role?')).not.toBeInTheDocument();
     expect(screen.queryByText('I run a small charity.')).not.toBeInTheDocument();
@@ -126,7 +137,7 @@ describe('PhaseReview', () => {
     await screen.findByText('About five.');
 
     expect(
-      screen.queryByRole('button', { name: /Continue to the next phase/ })
+      screen.queryByRole('button', { name: /Continue to the next section/ })
     ).not.toBeInTheDocument();
     expect(screen.queryByRole('textbox', { name: 'Your message' })).not.toBeInTheDocument();
   });
@@ -202,7 +213,7 @@ describe('PhaseReview', () => {
       render(<PhaseReview {...props} readOnly />);
 
       await screen.findByText('About five.');
-      expect(screen.queryByRole('button', { name: /Yes, that is right/ })).toBeNull();
+      expect(screen.queryByRole('button', { name: /that is right/i })).toBeNull();
       expect(screen.queryByRole('button', { name: /Not quite/ })).toBeNull();
     });
 
@@ -211,9 +222,7 @@ describe('PhaseReview', () => {
       render(<PhaseReview {...props} />);
 
       await waitFor(() =>
-        expect(
-          screen.getAllByRole('button', { name: /Yes, that is right/ }).length
-        ).toBeGreaterThan(0)
+        expect(screen.getAllByRole('button', { name: /that is right/i }).length).toBeGreaterThan(0)
       );
     });
 
@@ -309,7 +318,7 @@ describe('PhaseReview', () => {
 
     const { user } = renderWithUser(<PhaseReview {...props} />);
 
-    const confirm = await screen.findByRole('button', { name: /Yes, that is right/ });
+    const confirm = await screen.findByRole('button', { name: /that is right/i });
     await user.click(confirm);
 
     // The save landed, and the panel re-read the run rather than only trusting local state.
@@ -325,6 +334,6 @@ describe('PhaseReview', () => {
     // The conversation does not depend on the answers call, so it still reads.
     expect(await screen.findByText('About five.')).toBeInTheDocument();
     // No figures came back, so there is nothing to check and no crash from the rejection.
-    expect(screen.queryByRole('button', { name: /Yes, that is right/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /that is right/i })).toBeNull();
   });
 });

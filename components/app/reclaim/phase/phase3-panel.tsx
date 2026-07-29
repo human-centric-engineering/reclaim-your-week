@@ -94,7 +94,7 @@ export function Phase3Panel({ runId, onAdvanced }: { runId: string; onAdvanced: 
   if (failed) {
     return (
       <p className="text-muted-foreground text-sm">
-        We could not load this phase just now. Please refresh to try again.
+        We could not load this section just now. Please refresh to try again.
       </p>
     );
   }

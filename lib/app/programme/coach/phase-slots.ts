@@ -156,8 +156,22 @@ const SLOT_CONDITIONS: Readonly<Record<string, SlotCondition>> = {
  *
  * The definition stays in `slots.ts` so a week grid can claim it if it is ever built. What comes off
  * is the claim that this phase captures it.
+ *
+ * **`reclaim_gap_summary` is the same shape, and the coach now makes it the same failure.** It is
+ * "per-bucket deltas between current and ideal, computed" — `json`, written by nothing in the
+ * repository, and not a sentence a leader says. It sits first in declaration order in `reclaim_gap`,
+ * so it was always phase 4's first unanswered reading; while that only meant a line on a worklist it
+ * was survivable. It is not any more: `nextQuestionsFor` now walks this list and names the first
+ * unanswered reading as **the question the turn must end on**, and the fallback clause ("unless that
+ * is the one they have just answered") can never fire for a reading nothing can answer. So every
+ * phase-4 turn would end by instructing the coach to ask for a computation. `reclaim_action_options`
+ * looks similar and is not: the coach is told to record the three entry points it offers
+ * (`phase-context.ts`), so that one does have a writer and leaves the unanswered state on its own.
  */
-const NO_SURFACE_CAPTURES_THESE: readonly string[] = ['reclaim_energy_peak_windows'];
+const NO_SURFACE_CAPTURES_THESE: readonly string[] = [
+  'reclaim_energy_peak_windows',
+  'reclaim_gap_summary',
+];
 
 /**
  * Leader-facing labels for the slots that are not one of the nine per-area lanes.

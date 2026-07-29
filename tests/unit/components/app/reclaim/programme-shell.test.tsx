@@ -223,7 +223,7 @@ describe('ProgrammeShell — the frame around a run', () => {
     respond(runState());
     render(<ProgrammeShell />);
 
-    expect(await screen.findByText('Phase 2 · Energy')).toBeInTheDocument();
+    expect(await screen.findByText('Section 2 · Energy')).toBeInTheDocument();
     // Both rails render (the column and the narrow-screen strip); CSS decides which is visible.
     expect(
       screen.getAllByRole('navigation', { name: 'Your progress through the audit' }).length
@@ -351,7 +351,7 @@ describe('ProgrammeShell — the frame around a run', () => {
     respond(runState({ currentPhaseKey: 'phase-4-gap' }));
     render(<ProgrammeShell />);
 
-    expect(await screen.findByText('Phase 4 · Gap analysis')).toBeInTheDocument();
+    expect(await screen.findByText('Section 4 · Gap analysis')).toBeInTheDocument();
   });
 
   it('opens the setup phase as a conversation too, once the leader prefers fields', async () => {
