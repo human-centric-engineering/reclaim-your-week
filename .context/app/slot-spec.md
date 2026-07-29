@@ -303,6 +303,14 @@ calendar, and the composite of the two had nowhere to live. That is the second t
 in the space _between_ documents that each looked complete on their own — the first was the verbatim
 chain (see `sources/README.md`). Cross-reads catch what section-by-section reviews do not.
 
+And to **106** in #54, when the conversational close added `reclaim_reflection_p6` — the takeaway the
+coach asks before the summary exists. **Nothing recorded that at the time**, so three prose references
+and two file headers went on saying 105 for five days, in a repository whose own standard is that a
+document which misdescribes the code is a defect. Corrected in F13 t-2 and now gated:
+`tests/unit/invariants/slot-sensitivity.test.ts` asserts the count, so the next slot to arrive fails
+CI until the number is updated wherever it is written down. Same family as the four board failures
+[[planning/post-v1|post-v1]] records — a claim nothing checks does not stay true.
+
 It rose to **106** on 2026-07-27, with `reclaim_reflection_p6` — the takeaway the source asks for
 before the summary is produced. Same shape of gap a third time: the question was being asked, in the
 sharing form, so nothing looked missing until the _order_ was read against the source.

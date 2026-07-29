@@ -105,4 +105,62 @@ describe('I4 — the categorise path has no route to the database (post-v1 P10)'
       'the calendar branch no longer uses runStructuredCompletion — the canary guards nothing'
     ).toBe(true);
   });
+
+  /**
+   * The derived lanes are `hidden`, so raw calendar figures cannot reach a prompt unframed (F13 t-2).
+   *
+   * **Why this belongs in the I4 file rather than a new one.** `loadModuleContext` injects every
+   * populated slot head whose `visibility !== 'hidden'` as a bare `slug: value` line — no framing, no
+   * I4 context, and **not scoped to the current run**. Before F13 no `reclaim_*` slot set
+   * `visibility` at all, so a leader's calendar figures from a previous audit arrived in this
+   * audit's prompt with nothing marking them as either. Unframed, cross-run calendar figures in a
+   * model's context are the same exposure family as titles, one step down, which is what makes this
+   * an I4 assertion and not a prompt-tidiness one.
+   *
+   * The leader's own answers stay `open` on purpose — `completeness`, `period`, `switch_frequency`,
+   * `reactive_time`, `offcal_work`, `messaging_load` are text they typed, and `hidden` means
+   * system-only. Marking leader-authored prose hidden to shorten a prompt would be a
+   * misclassification taken for a side effect.
+   */
+  it('every derived calendar and composite lane is hidden from the slot-head dump', async () => {
+    const { reclaimSlotDefinitions } = await import('@/lib/app/programme/slots');
+    const { RECLAIM_BUCKETS, bucketToken } = await import('@/lib/app/programme/content');
+
+    const derived = [
+      ...RECLAIM_BUCKETS.map((b) => `reclaim_calendar_hours__${bucketToken(b.slug)}`),
+      ...RECLAIM_BUCKETS.map((b) => `reclaim_composite_hours__${bucketToken(b.slug)}`),
+      'reclaim_composite_variance_note',
+      'reclaim_calendar_uploaded',
+      'reclaim_calendar_total_hours',
+      'reclaim_calendar_ambiguous_items',
+      'reclaim_calendar_events_per_day',
+      'reclaim_calendar_back_to_back',
+      'reclaim_calendar_longest_block',
+    ];
+
+    const byslug = new Map(reclaimSlotDefinitions.map((s) => [s.slug, s]));
+    for (const slug of derived) {
+      expect(byslug.get(slug), `${slug} is not a declared slot`).toBeDefined();
+      expect(
+        byslug.get(slug)?.visibility,
+        `${slug} is computed from an uploaded file, so it must be hidden from the slot-head dump`
+      ).toBe('hidden');
+    }
+
+    // The complement, so the rule cannot be satisfied by hiding everything: the leader's own words
+    // about their calendar stay visible, because they are answers rather than derivations.
+    for (const slug of [
+      'reclaim_calendar_completeness',
+      'reclaim_calendar_period',
+      'reclaim_calendar_switch_frequency',
+      'reclaim_calendar_reactive_time',
+      'reclaim_calendar_offcal_work',
+      'reclaim_calendar_messaging_load',
+    ]) {
+      expect(
+        byslug.get(slug)?.visibility ?? 'open',
+        `${slug} is the leader's own answer; hidden would be a misclassification`
+      ).not.toBe('hidden');
+    }
+  });
 });

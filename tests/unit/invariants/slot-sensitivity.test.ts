@@ -35,4 +35,29 @@ describe('I5 — slot sensitivity is never special_category', () => {
     );
     expect(keepingMeUp?.sensitivity).toBe('sensitive');
   });
+
+  /**
+   * A tripwire on the slot count, because the number is written down in five places and nothing
+   * checked it (F13 t-2).
+   *
+   * The count went 91 → 95 → 105, each move recorded in `slot-spec.md`. Then #54 added
+   * `reclaim_reflection_p6` — the takeaway the conversational close asks for — and recorded nothing,
+   * so `slots.ts`'s own two headers, `.context/app/README.md`'s three references and `slot-spec.md`
+   * all went on saying 105 for five days.
+   *
+   * Nothing broke. But this repository's standard is that a document misdescribing the code is a
+   * defect, and the same family of failure has now been found on the planning board four times
+   * (post-v1 P21/P23) and in `invariants.md`'s own guard table (F12 t-1). The pattern is always the
+   * same: **a claim nothing checks does not stay true.**
+   *
+   * So this fails on the next slot added, and the fix is to update the number wherever it is
+   * written. That is deliberately a small chore rather than a clever derivation — the point is to
+   * make the docs impossible to forget, not to make the count self-maintaining.
+   */
+  it('has exactly the documented number of slots', () => {
+    expect(
+      reclaimSlotDefinitions.length,
+      'the slot count changed — update slots.ts (2 headers), .context/app/README.md (3 references) and slot-spec.md, then this number'
+    ).toBe(106);
+  });
 });

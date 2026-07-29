@@ -1,5 +1,5 @@
 /**
- * The 105 `reclaim-audit` slot definitions (F2 t-2).
+ * The 106 `reclaim-audit` slot definitions (F2 t-2).
  *
  * The canonical source is `.context/app/slot-spec.md` — **every slug is fixed there**;
  * this file must not invent, rename, or "improve" one. Downstream features read slots
@@ -224,6 +224,7 @@ const calendarSlots: SlotDefinitionInput[] = [
   ...perBucket((b) => ({
     slug: `reclaim_calendar_hours__${b.token}`,
     group: 'reclaim_calendar',
+    visibility: 'hidden',
     description: `Calendar-derived hours per week on ${b.title}.`,
     dataType: 'number',
     sensitivity: 'standard',
@@ -231,6 +232,7 @@ const calendarSlots: SlotDefinitionInput[] = [
   {
     slug: 'reclaim_calendar_uploaded',
     group: 'reclaim_calendar',
+    visibility: 'hidden',
     description: 'Whether the calendar-analysis branch was taken.',
     dataType: 'boolean',
     sensitivity: 'standard',
@@ -252,6 +254,7 @@ const calendarSlots: SlotDefinitionInput[] = [
   {
     slug: 'reclaim_calendar_total_hours',
     group: 'reclaim_calendar',
+    visibility: 'hidden',
     description: 'Total calendar-visible hours.',
     dataType: 'number',
     sensitivity: 'standard',
@@ -259,6 +262,7 @@ const calendarSlots: SlotDefinitionInput[] = [
   {
     slug: 'reclaim_calendar_events_per_day',
     group: 'reclaim_calendar',
+    visibility: 'hidden',
     description: 'Average events per day — a task-switching profile.',
     dataType: 'number',
     sensitivity: 'standard',
@@ -273,6 +277,7 @@ const calendarSlots: SlotDefinitionInput[] = [
   {
     slug: 'reclaim_calendar_back_to_back',
     group: 'reclaim_calendar',
+    visibility: 'hidden',
     description: 'Count of back-to-back meetings with no transition between them.',
     dataType: 'number',
     sensitivity: 'standard',
@@ -280,6 +285,7 @@ const calendarSlots: SlotDefinitionInput[] = [
   {
     slug: 'reclaim_calendar_longest_block',
     group: 'reclaim_calendar',
+    visibility: 'hidden',
     description: 'Longest uninterrupted block in the calendar, in minutes.',
     dataType: 'number',
     sensitivity: 'standard',
@@ -294,6 +300,7 @@ const calendarSlots: SlotDefinitionInput[] = [
   {
     slug: 'reclaim_calendar_ambiguous_items',
     group: 'reclaim_calendar',
+    visibility: 'hidden',
     description:
       "Generic-titled events flagged for the user to confirm, with the tool's best guess and reasoning.",
     dataType: 'json',
@@ -325,6 +332,7 @@ const compositeSlots: SlotDefinitionInput[] = [
   ...perBucket((b) => ({
     slug: `reclaim_composite_hours__${b.token}`,
     group: 'reclaim_composite',
+    visibility: 'hidden',
     description: `Reconciled hours per week on ${b.title} — calendar hours plus off-calendar work.`,
     dataType: 'number',
     sensitivity: 'standard',
@@ -332,6 +340,7 @@ const compositeSlots: SlotDefinitionInput[] = [
   {
     slug: 'reclaim_composite_variance_note',
     group: 'reclaim_composite',
+    visibility: 'hidden',
     description:
       'Per-bucket record of where the original estimate differed significantly from calendar reality — the note the chart carries.',
     dataType: 'json',
@@ -608,7 +617,7 @@ const shareSlots: SlotDefinitionInput[] = [
 ];
 
 /**
- * All 105 slot definitions, in group order. Assembled from the per-group arrays above; the
+ * All 106 slot definitions, in group order. Assembled from the per-group arrays above; the
  * per-bucket groups are generated from `BUCKETS` so the nine tokens can never drift apart.
  */
 export const reclaimSlotDefinitions: SlotDefinitionInput[] = [

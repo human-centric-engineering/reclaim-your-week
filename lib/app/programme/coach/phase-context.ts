@@ -61,6 +61,7 @@ import {
 } from '@/lib/app/programme/slots/present';
 import { arrivalMomentFor } from '@/lib/app/programme/coach/opening';
 import { readIdealWeek, challengeEvidence } from '@/lib/app/programme/coach/ideal-week';
+import { readCalendarReading, calendarReadingLines } from '@/lib/app/programme/calendar/reading';
 import { answerFlag, answerFlagNote } from '@/lib/app/programme/coach/answer-quality';
 import { choicesFor, hasChoices } from '@/lib/app/programme/coach/slot-choices';
 
@@ -596,17 +597,34 @@ function momentForPhase(
     const everyAreaAnswered = everyVisibleAreaHasHours(answers);
 
     if (uploaded) {
-      parts.push(
-        '',
-        'The leader has uploaded a calendar and it has been reconciled. What they are looking at is the',
-        'composite: their calendar plus the work that never reaches a calendar. Where that differs from',
-        'what they first estimated, the difference is information about what a calendar does not',
-        'capture, and never evidence that they were wrong. Do not present it as a correction.'
-      );
-      if (completeness !== undefined) {
+      // The perception-versus-reality summary the source asks for by name (`:233`): what is higher
+      // than expected, what is lower, what is confirmed, in real figures.
+      //
+      // **This used to be a paragraph of framing with no numbers in it**, because there were none to
+      // give: `buildChartData` below resolves to the composite *or* the estimate and never both, so
+      // nothing in this briefing could express a difference between them. The deltas were computed
+      // at upload and stored in `reclaim_composite_variance_note.valueJson`, and read by nothing.
+      // `calendar/reading.ts` hands them over, with the I17 framing travelling in the same artefact
+      // so the figures and the words that present them cannot drift apart.
+      const calendar = calendarReadingLines(readCalendarReading(answers, bucketLabels));
+      if (calendar.length > 0) {
+        parts.push('', ...calendar);
+      } else {
+        // Uploaded, but nothing to compare — no estimate survived, or every area is missing one of
+        // the two figures. The framing still has to be said, because the composite is what the chart
+        // below is about to plot and the leader needs to know that is what they are looking at.
         parts.push(
-          `They said this about how completely their calendar reflects their working life: "${completeness.value}". Read every figure in that light.`
+          '',
+          'The leader has uploaded a calendar and it has been reconciled. What they are looking at is the',
+          'composite: their calendar plus the work that never reaches a calendar. Where that differs from',
+          'what they first estimated, the difference is information about what a calendar does not',
+          'capture, and never evidence that they were wrong. Do not present it as a correction.'
         );
+        if (completeness !== undefined) {
+          parts.push(
+            `They said this about how completely their calendar reflects their working life: "${completeness.value}". Read every figure in that light.`
+          );
+        }
       }
     } else if (everyAreaAnswered) {
       // Gated on the data rather than on the model's sense of "have we finished", so the offer can

@@ -188,6 +188,41 @@ async function main(): Promise<void> {
       fail('the coach is still held in the pause after the leader has answered it');
     }
     console.log('[10] I12 holds in all three states: hold, ask, then interpret');
+
+    // ── 11. The calendar reaches the coach as framed arithmetic (F13) ──
+    //
+    // Mocks cannot reach this: the deltas live in `reclaim_composite_variance_note.valueJson`, and
+    // whether a JSONB column survives the round trip into `readCalendarReading` is a fact about
+    // Postgres and Prisma rather than about the pure function, which its own unit tests already
+    // cover. Before F13 the coach was told "2 bucket(s) diverged from the estimate" and no figures.
+    const deepWork = bucketToken('deep-work');
+    await saveRunAnswer(uid, run.id, {
+      slotSlug: 'reclaim_calendar_uploaded',
+      value: 'true',
+      valueJson: true,
+    });
+    await saveRunAnswer(uid, run.id, {
+      slotSlug: `reclaim_composite_hours__${deepWork}`,
+      value: '11',
+      valueJson: 11,
+    });
+    await saveRunAnswer(uid, run.id, {
+      slotSlug: 'reclaim_composite_variance_note',
+      value: '1 bucket(s) diverged from the estimate',
+      valueJson: [{ token: deepWork, estimate: 4, composite: 11, delta: 7 }],
+    });
+
+    const withCalendar = await buildCoachPhaseContext(uid);
+    if (!withCalendar.includes('Higher than they thought:')) {
+      fail('the perception-versus-reality summary never reaches the coach');
+    }
+    if (!withCalendar.includes('the reconciled figure is 11h')) {
+      fail('the coach is given the category but not the figure, which is what :314 asks for');
+    }
+    if (!withCalendar.includes('never evidence that they were wrong')) {
+      fail('the figures arrive without the I17 framing that makes them information, not a verdict');
+    }
+    console.log('[11] the calendar reaches the coach as figures, framed');
   } finally {
     await eraseUser({
       userId: uid,

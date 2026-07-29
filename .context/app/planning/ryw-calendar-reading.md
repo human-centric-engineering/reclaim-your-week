@@ -101,7 +101,7 @@ rows update at boot. No migration: that table is the framework's.
 
 | t-N | What                                                                                                                   | Files                                                                                                                     | Status  | PR  |
 | --- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ------- | --- |
-| t-1 | The pure reading: `readCalendarReading()` + `calendarReadingLines()`; export the two thresholds from `composite.ts`.   | `lib/app/programme/calendar/reading.ts`, `calendar/composite.ts`, `tests/unit/lib/app/programme/calendar/reading.test.ts` | ready ▲ | —   |
+| t-1 | The pure reading: `readCalendarReading()` + `calendarReadingLines()`; export the two thresholds from `composite.ts`.   | `lib/app/programme/calendar/reading.ts`, `calendar/composite.ts`, `tests/unit/lib/app/programme/calendar/reading.test.ts` | done    | —   |
 | t-2 | The framed block **and** the `visibility: 'hidden'` classification, in one PR.                                         | `coach/phase-context.ts`, `lib/app/programme/slots.ts`, `tests/unit/invariants/calendar-privacy.test.ts`                  | ready ▲ | —   |
 | t-3 | The return beat: a `phase-1-calendar-return` data moment, fired when the leader comes back from `/programme/calendar`. | `coach/opening.ts`, `components/app/reclaim/coach/phase-conversation.tsx`, `tests/unit/invariants/chart-beat.test.ts`     | ready ▲ | —   |
 
