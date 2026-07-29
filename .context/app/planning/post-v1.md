@@ -745,16 +745,16 @@ report link, no new bearer token · `transcriptConsent` as a **column** on the e
 
 ### Board
 
-| #   | Feature                  | Owner | Status        | Depends on | Tasks | What it closes                                                              |
-| --- | ------------------------ | ----- | ------------- | ---------- | ----- | --------------------------------------------------------------------------- |
-| F11 | `ryw-join-links`         | John  | **shipped**   | F8         | 3     | One URL a room can claim from, backed by a QR code (2026-07-26)             |
-| F12 | `ryw-hygiene`            | John  | in flight     | —          | 3     | P21, P23's cause; a board that can fail CI                                  |
-| F13 | `ryw-calendar-reading`   | John  | **shipped**   | F12        | 3     | The calendar reaches the coach framed; the unframed head-dump leak closes   |
-| F14 | `ryw-analyst`            | John  | **shipped**   | F13 t-1    | 3     | §10's two missing bullets, as options and never as verdicts                 |
-| F15 | `ryw-report`             | John  | **shipped**   | F14 t-3    | 3     | The PDF, and the one email a finished audit should send                     |
-| F16 | `ryw-audit-lifecycle`    | John  | in flight     | F12        | 3     | The abandon dead end, an unrecoverable failed turn, phase 6's last textarea |
-| F17 | `ryw-transcript-consent` | John  | ready ▲       | F12        | 2     | Consent before Rashmir reads a conversation, and the export's back door     |
-| F18 | `ryw-admin-care`         | John  | blocked → F16 | F16 t-1    | 2     | Rashmir can preview her own words, and act on a leader who stopped          |
+| #   | Feature                  | Owner | Status      | Depends on | Tasks | What it closes                                                              |
+| --- | ------------------------ | ----- | ----------- | ---------- | ----- | --------------------------------------------------------------------------- |
+| F11 | `ryw-join-links`         | John  | **shipped** | F8         | 3     | One URL a room can claim from, backed by a QR code (2026-07-26)             |
+| F12 | `ryw-hygiene`            | John  | in flight   | —          | 3     | P21, P23's cause; a board that can fail CI                                  |
+| F13 | `ryw-calendar-reading`   | John  | **shipped** | F12        | 3     | The calendar reaches the coach framed; the unframed head-dump leak closes   |
+| F14 | `ryw-analyst`            | John  | **shipped** | F13 t-1    | 3     | §10's two missing bullets, as options and never as verdicts                 |
+| F15 | `ryw-report`             | John  | **shipped** | F14 t-3    | 3     | The PDF, and the one email a finished audit should send                     |
+| F16 | `ryw-audit-lifecycle`    | John  | **shipped** | F12        | 3     | The abandon dead end, an unrecoverable failed turn, phase 6's last textarea |
+| F17 | `ryw-transcript-consent` | John  | ready ▲     | F12        | 2     | Consent before Rashmir reads a conversation, and the export's back door     |
+| F18 | `ryw-admin-care`         | John  | ready ▲     | F16 t-1    | 2     | Rashmir can preview her own words, and act on a leader who stopped          |
 
 **Two hard orderings, both of which cost a rewrite if ignored.** F13 t-1 before F14 t-2, or the
 analyst re-implements I-composite's arithmetic — the thing I-composite's own note warns against. F14

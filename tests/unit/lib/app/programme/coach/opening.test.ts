@@ -44,12 +44,15 @@ describe('the moments', () => {
 });
 
 describe('the phase arrivals', () => {
-  it('gives every phase the leader converses through a moment that opens it', () => {
-    // The point of the change: nothing waits for the leader to say hello. Phase 6 is the exception
-    // and it is not conversed through at all, so it carries no arrival.
-    const conversed = RECLAIM_PHASE_KEYS.filter((key) => key !== FINAL_PHASE_KEY);
-    expect(conversed.filter((key) => arrivalMomentFor(key) === null)).toEqual([]);
-    expect(arrivalMomentFor(FINAL_PHASE_KEY)).toBeNull();
+  it('gives every phase a moment that opens it, phase 6 included', () => {
+    // The point of the change: nothing waits for the leader to say hello.
+    //
+    // **Phase 6 was the exception until F16 t-3**, on the reasoning that its takeaway is asked on
+    // the screen because a reflection is the leader's to write. P19 reversed that refusal on
+    // 2026-07-27 and the exception outlived it, leaving one textarea in a tool that had been rebuilt
+    // as a conversation. Every phase now opens by being spoken to.
+    expect(RECLAIM_PHASE_KEYS.filter((key) => arrivalMomentFor(key) === null)).toEqual([]);
+    expect(arrivalMomentFor(FINAL_PHASE_KEY)).toBe('phase-6-open');
   });
 
   it('points each arrival at the phase it opens, so the route can never refuse one', () => {

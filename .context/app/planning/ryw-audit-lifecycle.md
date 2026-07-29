@@ -2,7 +2,7 @@
 name: ryw-audit-lifecycle
 feature: F16 · ryw-audit-lifecycle
 epic: RYW post-v1
-status: in flight
+status: shipped
 owner: John
 depends_on: F12 (the board and its gate)
 spec: ../invariants.md (I9, I14, I15, I16, I17) · ./post-v1.md (the 2026-07-29 execution-path audit)
@@ -95,11 +95,11 @@ One confirmation, stating what is kept ("what you have said stays in your histor
 
 ## Tasks
 
-| t-N | What                                                                                          | Files                                                                                                                         | Status  | PR  |
-| --- | --------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ------- | --- |
-| t-1 | Abandon: the column, the service, the route, the control, the I15 guard.                      | migration, `runs/service.ts`, `runs/[runId]/abandon/route.ts`, `begin-audit.tsx`, `history/audit-history.tsx`, invariant test | done    | —   |
-| t-2 | A failed turn gives the words back, without posting twice.                                    | `coach-chat.tsx`                                                                                                              | done    | —   |
-| t-3 | Phase 6 asks its question in the conversation, and `opening.ts`'s stale comment is corrected. | `coach/opening.ts`, `phase/phase6-panel.tsx`, `programme-shell.tsx`                                                           | ready ▲ | —   |
+| t-N | What                                                                                          | Files                                                                                                                         | Status | PR  |
+| --- | --------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ------ | --- |
+| t-1 | Abandon: the column, the service, the route, the control, the I15 guard.                      | migration, `runs/service.ts`, `runs/[runId]/abandon/route.ts`, `begin-audit.tsx`, `history/audit-history.tsx`, invariant test | done   | —   |
+| t-2 | A failed turn gives the words back, without posting twice.                                    | `coach-chat.tsx`                                                                                                              | done   | —   |
+| t-3 | Phase 6 asks its question in the conversation, and `opening.ts`'s stale comment is corrected. | `coach/opening.ts`, `phase/phase6-panel.tsx`, `programme-shell.tsx`                                                           | done   | —   |
 
 ## Invariants this feature touches
 
@@ -111,6 +111,25 @@ One confirmation, stating what is kept ("what you have said stays in your histor
   field.
 - **I2 / product voice** — new leader-facing copy in two components already classified
   `COACH_VOICED`, so the voice assertions apply without a new classification.
+
+## What the build found
+
+**Three artefacts were still citing a decision that had been reversed.** P19 lifted I6's refusal of
+the reflection slots on 2026-07-27, replacing a blanket ban with three narrower guards. Phase 6's
+textarea survived because three separate places went on explaining its absence with the old
+reasoning: `opening.ts`'s comment on `ARRIVAL_MOMENTS`, an assertion in `opening.test.ts` that phase
+6 carries no arrival, and one in `phase-context.test.ts` that it must not be told to open itself.
+
+Each was individually plausible, each cited I6, and together they held the last form field in a tool
+that had been rebuilt as a conversation. **A reversed decision does not travel to the places that
+quoted it**, and tests are the artefacts most likely to keep a superseded rule alive, because a
+passing test reads as confirmation rather than as a claim.
+
+**The instruction to ask was already written.** `closingContext` has said "they have not yet said
+what they are taking away… ask them, once, and let it land… record it with record_answers as
+reclaim_reflection_p6" since the conversational close shipped. It had no moment to fire it. That is
+the same shape as everything else the execution-path audit found, and it is why t-3 is a moment name
+and a panel branch rather than any new coaching logic.
 
 ## Notes / deferrals
 
