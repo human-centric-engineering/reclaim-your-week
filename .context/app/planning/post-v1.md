@@ -119,12 +119,13 @@ their own section below, in `plan.md`'s shape rather than this file's.
 > appeared on this board in any state. The paragraph above diagnosed the cause correctly and then did
 > not prevent it, which is worth saying plainly: **an instruction written in the file that the
 > instruction is about is not a control.** Twice was a pattern; four times is a missing gate. The
-> repair is not another sentence here. It is `leaf:board-check` (**F12 t-3**): a script that fails
-> when a `ryw-*.md` frontmatter says `status: shipped` while its board row does not, and when a
-> feature doc exists with no row at all. That is the smallest thing that can see a status column, and
-> it belongs in `leaf:checks` beside the other two. It cannot catch P23's shape — work that never got
-> a doc either — so t-3 also asserts that every `ryw-*.md` on disk has a row, which is the half that
-> would have caught it.
+> repair is not another sentence here. It is `leaf:board-check` (**F12 t-3, shipped**): a script that
+> fails when a `ryw-*.md` frontmatter and its board row disagree about shipped-ness, when a claimed
+> row has no plan doc, and when a feature doc has no row at all. That last rule is the half that
+> catches P23's shape, and it is the one that paid immediately: **its first run found F11
+> `ryw-join-links` — a complete feature, shipped 2026-07-26, with a full plan doc and a smoke — on
+> neither board.** Three days invisible, and every human-facing signal about it was correct in
+> isolation. It is now on the epic board. Full account in [[ryw-hygiene]].
 
 ---
 
@@ -746,6 +747,7 @@ report link, no new bearer token · `transcriptConsent` as a **column** on the e
 
 | #   | Feature                  | Owner | Status        | Depends on | Tasks | What it closes                                                              |
 | --- | ------------------------ | ----- | ------------- | ---------- | ----- | --------------------------------------------------------------------------- |
+| F11 | `ryw-join-links`         | John  | **shipped**   | F8         | 3     | One URL a room can claim from, backed by a QR code (2026-07-26)             |
 | F12 | `ryw-hygiene`            | John  | in flight     | —          | 3     | P21, P23's cause; a board that can fail CI                                  |
 | F13 | `ryw-calendar-reading`   | John  | ready ▲       | F12        | 3     | The calendar reaches the coach framed; the unframed head-dump leak closes   |
 | F14 | `ryw-analyst`            | John  | ready ▲       | F13 t-1    | 3     | §10's two missing bullets, as options and never as verdicts                 |

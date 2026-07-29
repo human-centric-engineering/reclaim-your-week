@@ -11,22 +11,23 @@ load-bearing in aggregate.
 > `package.json` and `.github/workflows/ci.yml` on 2026-07-29.
 >
 > **1 · `npm run leaf:checks` — every PR, via the `app:ci-checks` seam.** It is exactly
-> `leaf:content-diff && leaf:invariants`, and `leaf:invariants` is `vitest run tests/unit/invariants`
-> — so **the directory is the wiring**. A new file dropped in there gates automatically; a guard
-> placed anywhere else does not, however invariant-shaped it looks.
+> `leaf:content-diff && leaf:board-check && leaf:invariants`, and `leaf:invariants` is
+> `vitest run tests/unit/invariants` — so **the directory is the wiring**. A new file dropped in
+> there gates automatically; a guard placed anywhere else does not, however invariant-shaped it looks.
 >
-> | Guard                                            | Invariant | Landed      |
-> | ------------------------------------------------ | --------- | ----------- |
-> | `npm run leaf:content-diff`                      | I11 hop 1 | pre-F2      |
-> | `tests/unit/invariants/voice.test.ts`            | I1, I2    | F2 t-4      |
-> | `tests/unit/invariants/slot-sensitivity.test.ts` | I5        | F2 t-4      |
-> | `tests/unit/invariants/agent-caps.test.ts`       | I6        | F2 t-4      |
-> | `tests/unit/invariants/write-path.test.ts`       | I3        | F4 t-2      |
-> | `tests/unit/invariants/calendar-privacy.test.ts` | I4        | F5          |
-> | `tests/unit/invariants/admin-support.test.ts`    | D4 (F10)  | F10 t-1     |
-> | `tests/unit/invariants/product-voice.test.ts`    | I1, I2    | open item 8 |
-> | `tests/unit/invariants/chart-beat.test.ts`       | I12       | conv. 5     |
-> | `tests/unit/invariants/reachability.test.ts`     | —         | conv. 7     |
+> | Guard                                            | Invariant   | Landed      |
+> | ------------------------------------------------ | ----------- | ----------- |
+> | `npm run leaf:content-diff`                      | I11 hop 1   | pre-F2      |
+> | `npm run leaf:board-check`                       | — (P21/P23) | F12 t-3     |
+> | `tests/unit/invariants/voice.test.ts`            | I1, I2      | F2 t-4      |
+> | `tests/unit/invariants/slot-sensitivity.test.ts` | I5          | F2 t-4      |
+> | `tests/unit/invariants/agent-caps.test.ts`       | I6          | F2 t-4      |
+> | `tests/unit/invariants/write-path.test.ts`       | I3          | F4 t-2      |
+> | `tests/unit/invariants/calendar-privacy.test.ts` | I4          | F5          |
+> | `tests/unit/invariants/admin-support.test.ts`    | D4 (F10)    | F10 t-1     |
+> | `tests/unit/invariants/product-voice.test.ts`    | I1, I2      | open item 8 |
+> | `tests/unit/invariants/chart-beat.test.ts`       | I12         | conv. 5     |
+> | `tests/unit/invariants/reachability.test.ts`     | —           | conv. 7     |
 >
 > **2 · The main test suite — every PR, but not via `leaf:checks`.**
 > `tests/unit/app/programme/content.test.ts` (I11 hop 2, F2 t-3) lives outside
@@ -34,12 +35,14 @@ load-bearing in aggregate.
 > distinction matters to anyone reasoning about which gate protects what: I11's second hop is as
 > gated as the first, by a different job.
 >
-> **3 · CI's `smoke` job — every PR, real Postgres.** `smoke:reclaim-run`, `smoke:reclaim-erasure`,
-> `smoke:reclaim-access`, `smoke:reclaim` (a fake provider, no key).
+> **3 · CI's `smoke` job — every PR, real Postgres.** All six that need no provider key:
+> `smoke:reclaim-run`, `smoke:reclaim-erasure`, `smoke:reclaim-access`, `smoke:reclaim` (a fake
+> provider), and — since F12 t-2 — `smoke:reclaim-coach` (I12's pacing, the moment ledger) and
+> `smoke:reclaim-join` (the seat cap under concurrency).
 >
-> **Not gated anywhere.** `smoke:reclaim-coach` and `smoke:reclaim-join` need no key and still run
-> nowhere ([[planning/post-v1|post-v1]] P21, claimed as F12 t-2). `smoke:reclaim-calendar` needs a
-> real model key and is a deliberate manual gate (P16).
+> **Not gated anywhere.** `smoke:reclaim-calendar` alone, because it needs a real model key. It is a
+> deliberate manual gate ([[planning/post-v1|post-v1]] P16), and F14 will add a second of the same
+> kind.
 >
 > **This block has now been wrong in both directions, which is the thing to take from it.** It first
 > said every test below was "still to be written" and stayed that way through ten features while the

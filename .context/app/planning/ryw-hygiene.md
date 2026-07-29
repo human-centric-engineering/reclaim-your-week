@@ -67,11 +67,11 @@ gates a document. So the smallest honest repair is a third member of that pair.
 
 ## Tasks
 
-| t-N | What                                                                                                                                                                                  | Files                                                                                       | Status  | PR  |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ------- | --- |
-| t-1 | **Docs-only.** Reconcile the board (P22 → shipped, open P23 + P24, the two-board split, the F12–F18 epic section) and correct [[invariants]]'s guard block into its three real gates. | `.context/app/planning/post-v1.md`, `.context/app/invariants.md`, this file                 | done    | —   |
-| t-2 | **P21.** Wire `smoke:reclaim-coach` and `smoke:reclaim-join` into CI's `smoke` job; fix the false header claim at `scripts/smoke/reclaim-coach.ts:12`.                                | `.github/workflows/ci.yml`, `scripts/smoke/reclaim-coach.ts`                                | done    | —   |
-| t-3 | **`leaf:board-check`.** The gate. Added to `leaf:checks` beside `leaf:content-diff` and `leaf:invariants`.                                                                            | `scripts/planning/board-check.ts`, `package.json`, `tests/unit/scripts/board-check.test.ts` | ready ▲ | —   |
+| t-N | What                                                                                                                                                                                  | Files                                                                                              | Status | PR  |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ------ | --- |
+| t-1 | **Docs-only.** Reconcile the board (P22 → shipped, open P23 + P24, the two-board split, the F12–F18 epic section) and correct [[invariants]]'s guard block into its three real gates. | `.context/app/planning/post-v1.md`, `.context/app/invariants.md`, this file                        | done   | —   |
+| t-2 | **P21.** Wire `smoke:reclaim-coach` and `smoke:reclaim-join` into CI's `smoke` job; fix the false header claim at `scripts/smoke/reclaim-coach.ts:12`.                                | `.github/workflows/ci.yml`, `scripts/smoke/reclaim-coach.ts`                                       | done   | —   |
+| t-3 | **`leaf:board-check`.** The gate. Added to `leaf:checks` beside `leaf:content-diff` and `leaf:invariants`.                                                                            | `scripts/planning/{lib,board-check}.ts`, `package.json`, `tests/unit/scripts/planning/lib.test.ts` | done   | —   |
 
 **Done when** (each task): `/pre-pr` green; t-1 skips `/security-review` and `/code-review` as
 docs-only; t-2 and t-3 take the full gate loop.
@@ -128,6 +128,31 @@ would make the check noisy enough to be worked around, which is how a gate stops
 
 **Failure output names the file and the disagreement**, in the shape `leaf:content-diff` already
 uses, because that is the script anyone here already knows how to read.
+
+### What t-3 found on its first run
+
+**F11 `ryw-join-links` had shipped and had no board row.** It is a full feature with a complete plan
+doc, `epic: RYW post-v1`, merged on 2026-07-26 — and it appeared on neither `plan.md` (whose table
+closes at F10) nor `post-v1.md` (whose P-board never carried F-rows). It was invisible to both
+boards for three days.
+
+That is **P23's shape, found before the epic that named it had even finished** — and it is a
+stronger result than P23 itself, because P23 at least had a commit message. F11 had a plan, a PR and
+a smoke, and the one surface that answers "what is in this epic" did not know it existed. Nothing
+short of a machine reading both artefacts would have caught it: every human-facing signal about F11
+was correct in isolation.
+
+The row is now on the epic board. Its `Depends on` and `Tasks` cells come from its own frontmatter.
+
+### The rule the first run corrected
+
+The check originally failed **every** row with no plan doc, which flagged F13–F18 — rows deliberately
+added by t-1 for features nobody has claimed yet. That was the check being wrong, not the board.
+`building-a-feature.md` §1 makes claiming a feature and writing its plan **one step**, so a row at
+`ready ▲` or `blocked → X` is _supposed_ to have no doc. Demanding one would have forced stub plans
+— the failure P2 describes one artefact along, where a thing that reads as written is worse than one
+honestly absent — or pushed planned work off the board entirely, which is the failure this script
+exists to catch. Only `in flight`, `shipped` and `done` rows owe a plan.
 
 ## Invariants this feature touches
 
