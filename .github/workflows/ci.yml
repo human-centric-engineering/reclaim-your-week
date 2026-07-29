@@ -374,6 +374,12 @@ jobs:
         run: npx tsx scripts/smoke/reclaim-coach.ts
       - name: Smoke — reclaim group join links (seat cap under concurrent claims)
         run: npx tsx scripts/smoke/reclaim-join.ts
+      # F15. Renders the summary PDF from a real run read out of the database, which is the half a
+      # fixture cannot reach: a JSONB reading that does not survive the round trip, or a chart with
+      # no buckets because the answers were run-scoped away. The analyst reading is written directly
+      # rather than generated, so this needs no provider key.
+      - name: Smoke — reclaim summary PDF (real run, no provider key)
+        run: npx tsx scripts/smoke/reclaim-report.ts
 
   docker:
     name: Docker Build

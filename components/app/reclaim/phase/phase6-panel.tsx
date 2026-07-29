@@ -16,6 +16,7 @@ import {
 import { SummaryView } from '@/components/app/reclaim/summary/summary-view';
 import { CoachChat } from '@/components/app/reclaim/coach-chat';
 import { ReferralInvite } from '@/components/app/reclaim/referral-invite';
+import { DownloadReport } from '@/components/app/reclaim/report/download-report';
 import { TextAreaField, SelectField } from '@/components/app/reclaim/phase/fields';
 import {
   fetchSummary,
@@ -229,12 +230,17 @@ export function Phase6Panel({
       </div>
 
       <div className="border-border/70 flex flex-wrap gap-3 border-t pt-6 print:hidden">
+        {/* F15. This used to be one button labelled "Download / print", which did neither: it opened
+            the browser's print dialogue, from which a leader could reach "Save as PDF" if they knew
+            to. There is no print stylesheet in the repository, so what came out carried whatever the
+            screen had. The two are now separate and each does what it says. */}
+        <DownloadReport runId={runId} />
         <button
           type="button"
           onClick={() => window.print()}
           className="border-border text-foreground hover:bg-muted rounded-full border px-6 py-2.5 text-sm"
         >
-          Download / print
+          Print this page
         </button>
         <button
           type="button"

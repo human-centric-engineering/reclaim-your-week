@@ -147,6 +147,12 @@ const COACH_VOICED = [
   'components/app/emails/invitation.tsx',
   'components/app/emails/quarterly-nudge.tsx',
   'components/app/emails/welcome.tsx',
+  // F15. The PDF is the artifact a leader keeps and may hand to someone else, so it is the single
+  // most durable thing the product says in its own voice. Its headings ("Where the week went", "One
+  // way this could go") and its one framing sentence are authored here rather than passed in.
+  'components/app/reclaim/report/summary-pdf-document.tsx',
+  // F15. Four words on a control, and they are still four words a leader reads.
+  'components/app/reclaim/report/download-report.tsx',
 ];
 
 /** Plumbing: fetchers, types, palettes, pure arithmetic. Nothing here reaches a leader as prose. */

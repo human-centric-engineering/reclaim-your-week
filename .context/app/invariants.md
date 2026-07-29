@@ -40,9 +40,10 @@ load-bearing in aggregate.
 > provider), and — since F12 t-2 — `smoke:reclaim-coach` (I12's pacing, the moment ledger) and
 > `smoke:reclaim-join` (the seat cap under concurrency).
 >
-> **Not gated anywhere.** `smoke:reclaim-calendar` alone, because it needs a real model key. It is a
-> deliberate manual gate ([[planning/post-v1|post-v1]] P16), and F14 will add a second of the same
-> kind.
+> **Not gated anywhere.** The two that need a real model key, and only those:
+> `smoke:reclaim-calendar` (I4 end to end) and `smoke:reclaim-analyst` (whether a real model can get
+> a reading past the guards at all). Both are deliberate manual gates — see
+> [[planning/post-v1|post-v1]] P16, whose one decision now covers both.
 >
 > **This block has now been wrong in both directions, which is the thing to take from it.** It first
 > said every test below was "still to be written" and stayed that way through ten features while the
