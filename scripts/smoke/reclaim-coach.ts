@@ -29,6 +29,7 @@ import { recordConsent } from '@/lib/app/programme/access/consent';
 import { readReclaimAccessConfig, readReclaimSignposts } from '@/lib/app/programme/config';
 import { buildCoachPhaseContext } from '@/lib/app/programme/coach/phase-context';
 import { CHART_REVEAL_MOMENT } from '@/lib/app/programme/chart/reveal';
+import { CALENDAR_RETURN_MOMENT } from '@/lib/app/programme/coach/opening';
 import { chartRevealed } from '@/lib/app/programme/chart/reveal';
 import { RECLAIM_PROCESS_OUTLINE, RECLAIM_BUCKETS, bucketToken } from '@/lib/app/programme/content';
 import {
@@ -223,6 +224,25 @@ async function main(): Promise<void> {
       fail('the figures arrive without the I17 framing that makes them information, not a verdict');
     }
     console.log('[11] the calendar reaches the coach as figures, framed');
+
+    // ── 12. The return beat claims once, under a burst (F13 t-3) ──
+    //
+    // Two tabs open on `/programme` when the leader comes back from the calendar step both see an
+    // unclaimed moment and both post. The conditional `updateMany` is what makes that one turn, and
+    // whether Postgres serialises it is not something a mocked Prisma can answer.
+    const returns = await Promise.all(
+      Array.from({ length: 5 }, () => claimCoachOpening(uid, run.id, CALENDAR_RETURN_MOMENT))
+    );
+    const returnWinners = returns.filter(Boolean).length;
+    if (returnWinners !== 1) {
+      fail(
+        `five racing calendar-return claims produced ${returnWinners} beats, expected exactly 1`
+      );
+    }
+    if (!(await readCoachOpenings(uid, run.id)).includes(CALENDAR_RETURN_MOMENT)) {
+      fail('the calendar-return beat is not in the ledger, so a reload would replay it');
+    }
+    console.log('[12] the calendar-return beat fires once, however many tabs are open');
   } finally {
     await eraseUser({
       userId: uid,

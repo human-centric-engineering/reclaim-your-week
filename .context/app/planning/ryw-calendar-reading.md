@@ -2,7 +2,7 @@
 name: ryw-calendar-reading
 feature: F13 · ryw-calendar-reading
 epic: RYW post-v1
-status: in flight
+status: shipped
 owner: John
 depends_on: F12 · ryw-hygiene (the board rows and the board gate)
 spec: ../sources/Time_Audit_Tool_Prompt_Text.md:229-237 (the perception-versus-reality summary) · :314 (specific calendar evidence in the gap) · ../invariants.md (I4, I-composite, I12, I17)

@@ -60,6 +60,22 @@ export const COACH_OPENING_PHASES = {
   'phase-1-open': 'phase-1-current',
   /** The perception-versus-reality picture has just been revealed (I12, `Prompt_Text.md:229-237`). */
   'phase-1-chart-reveal': 'phase-1-current',
+  /**
+   * The leader has come back from the calendar step, and it has been reconciled.
+   *
+   * **The beat this closes was silence.** The calendar branch is the one effortful optional thing in
+   * the whole audit: a leader exports a file, uploads it, confirms the ambiguous items and answers
+   * five questions about what a calendar cannot see. `persistComposite` then rewrites every figure
+   * under their chart. Before this moment existed they returned to `/programme` and the conversation
+   * said nothing at all — the arrival moment was long since claimed and the reveal had not been
+   * asked for, so the transcript simply sat there until they typed something. Having done the work,
+   * they had to open the conversation about it themselves.
+   *
+   * A **data** moment rather than an arrival: it fires on figures the leader has just produced, and
+   * the coach's briefing already carries them (`calendar/reading.ts` via `momentForPhase`). Absent
+   * from `ARRIVAL_MOMENTS` for that reason, so it opens with `COACH_OPENING_TRIGGER`.
+   */
+  'phase-1-calendar-return': 'phase-1-current',
   /** Arrival. The energy phase, whose whole value is in why it is worth ten minutes. */
   'phase-2-open': 'phase-2-energy',
   /** Arrival. The week they would want, opened from what the last two phases established. */
@@ -81,6 +97,14 @@ export const COACH_OPENING_PHASES = {
 } as const;
 
 export type CoachOpeningMoment = keyof typeof COACH_OPENING_PHASES;
+
+/**
+ * The moment fired when a leader returns from the calendar step with a reconciled upload.
+ *
+ * Named here rather than at the call site so the surface and the server refer to one string. Moment
+ * names are persisted on the run, so renaming this would replay the beat for anyone mid-audit.
+ */
+export const CALENDAR_RETURN_MOMENT: CoachOpeningMoment = 'phase-1-calendar-return';
 
 export const COACH_OPENING_MOMENTS = Object.keys(COACH_OPENING_PHASES) as [
   CoachOpeningMoment,
