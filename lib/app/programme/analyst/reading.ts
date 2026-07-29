@@ -37,7 +37,11 @@ import { resolveAgentProviderAndModel } from '@/lib/orchestration/llm/agent-reso
 import { runStructuredCompletion } from '@/lib/orchestration/llm/structured-completion';
 import type { LlmMessage } from '@/lib/orchestration/llm/types';
 import { RECLAIM_BANNED_LEXICON } from '@/lib/app/programme/agent';
-import { analystSystemPrompt, reclaimAnalystAgent } from '@/lib/app/programme/analyst/agent';
+import {
+  analystSystemPrompt,
+  reclaimAnalystAgent,
+  ANALYST_IMPERATIVE_OPENERS,
+} from '@/lib/app/programme/analyst/agent';
 import { briefToPrompt, briefTokens, type AnalystBrief } from '@/lib/app/programme/analyst/brief';
 
 /** One difference already present in the leader's own figures, anchored to an area they were asked about. */
@@ -120,32 +124,14 @@ const responseSchema = {
   },
 } as const;
 
-/**
- * Openers that turn a possibility into an instruction.
- *
- * Checked at the start of a field rather than anywhere within it, deliberately. "You could stop
- * chairing that" is fine and is the register the whole feature is for; "Stop chairing that" is the
- * tool deciding. The difference is positional, so the check is too.
- */
-const IMPERATIVE_OPENERS = [
-  'you should',
-  'you need to',
-  'you must',
-  'you have to',
-  'you ought',
-  'start ',
-  'stop ',
-  'begin ',
-  'make sure',
-  'ensure ',
-];
-
 function offends(value: string): string | null {
   const lower = value.toLowerCase();
   const banned = RECLAIM_BANNED_LEXICON.find((term) => lower.includes(term.toLowerCase()));
   if (banned !== undefined) return `banned term "${banned}"`;
   if (value.includes('—')) return 'em dash';
-  const opener = IMPERATIVE_OPENERS.find((o) => lower.trimStart().startsWith(o));
+  // One list, shared with the guardrails prose that tells the model about it. See
+  // `ANALYST_IMPERATIVE_OPENERS` for the live failure that made sharing it non-optional.
+  const opener = ANALYST_IMPERATIVE_OPENERS.find((o) => lower.trimStart().startsWith(o));
   if (opener !== undefined) return `imperative opener "${opener.trim()}"`;
   return null;
 }

@@ -49,6 +49,7 @@
     "smoke:reclaim-coach": "tsx --env-file=.env.local scripts/smoke/reclaim-coach.ts",
     "smoke:reclaim-erasure": "tsx --env-file=.env.local scripts/smoke/reclaim-erasure.ts",
     "smoke:reclaim-calendar": "tsx --env-file=.env.local scripts/smoke/reclaim-calendar.ts",
+    "smoke:reclaim-analyst": "tsx --env-file=.env.local scripts/smoke/reclaim-analyst.ts",
     "postinstall": "prisma generate",
     "prepare": "husky",
     "leaf:content-diff": "tsx scripts/content-source/check.ts",

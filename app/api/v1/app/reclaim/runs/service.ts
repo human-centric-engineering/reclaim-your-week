@@ -30,6 +30,11 @@ import {
   loadPhaseProgress,
   type PhaseView,
 } from '@/lib/app/programme/runs/journey';
+import { Prisma } from '@prisma/client';
+import { readRunAnswers } from '@/lib/app/programme/runs/answers';
+import { readBucketLabels } from '@/lib/app/programme/buckets/labels';
+import { buildAnalystBrief } from '@/lib/app/programme/analyst/brief';
+import { runAnalyst } from '@/lib/app/programme/analyst/reading';
 
 export const RUN_STATUS = {
   inProgress: 'in_progress',
@@ -134,7 +139,58 @@ export async function completeRun(userId: string, runId: string): Promise<Reclai
     data: { isActive: false },
   });
 
+  // F14: §10's last two sections. Best-effort, and wrapped exactly as the referral unlock above is —
+  // a leader who has just pressed "finish my audit" must not be held at a spinner because a model
+  // timed out, and must never see a failure for a section that did not exist a week ago.
+  await ensureAnalystReading(userId, runId);
+
   return updated;
+}
+
+/**
+ * Generate the analyst's reading for a run, once.
+ *
+ * Called from `completeRun`, and again lazily from the summary read — which is what covers the two
+ * cases completion alone cannot: audits finished before F14 shipped, and generations that failed.
+ *
+ * **Write-once via a conditional `updateMany`**, the same pattern `linkRunConversation` uses. Two
+ * tabs opening a finished summary at the same moment would otherwise both generate, and the second
+ * would overwrite the first with a different reading of the same audit — the leader's artifact
+ * changing under them between one refresh and the next.
+ *
+ * Never throws. Both call sites are places a leader is finishing or reading their own audit.
+ */
+export async function ensureAnalystReading(userId: string, runId: string): Promise<void> {
+  try {
+    const run = await prisma.reclaimAuditRun.findFirst({
+      where: { id: runId, userId },
+      select: { analystReading: true },
+    });
+    // `null` means never generated. A stored reading is never regenerated, even if today's guards
+    // would refuse it: `buildSummary` re-parses on the way out, so a stale one is dropped at read
+    // time rather than silently replaced by a second model call the leader did not ask for.
+    if (run === null || run.analystReading !== null) return;
+
+    const [answers, bucketLabels] = await Promise.all([
+      readRunAnswers(userId, runId),
+      readBucketLabels(userId),
+    ]);
+    const reading = await runAnalyst(buildAnalystBrief(answers, bucketLabels));
+    if (reading === null) return;
+
+    await prisma.reclaimAuditRun.updateMany({
+      where: { id: runId, userId, analystReading: { equals: Prisma.DbNull } },
+      data: { analystReading: reading as unknown as Prisma.InputJsonValue },
+    });
+  } catch (error: unknown) {
+    logger.warn(
+      'Reclaim: the analyst reading could not be generated; the summary stands without it',
+      {
+        runId,
+        error: error instanceof Error ? error.message : String(error),
+      }
+    );
+  }
 }
 
 type SlotValueJson = Parameters<typeof saveAnswer>[0]['valueJson'];

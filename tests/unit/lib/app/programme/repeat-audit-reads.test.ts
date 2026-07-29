@@ -33,7 +33,14 @@ const { store, findMany } = vi.hoisted(() => ({
   findMany: vi.fn(),
 }));
 
-vi.mock('@/lib/db/client', () => ({ prisma: { slotValue: { findMany } } }));
+// `buildSummary` also reads the run row for the analyst's stored reading (F14). These fixtures are
+// about run-scoping the *answers*, so every run here simply has no reading.
+vi.mock('@/lib/db/client', () => ({
+  prisma: {
+    slotValue: { findMany },
+    reclaimAuditRun: { findFirst: async () => ({ analystReading: null }) },
+  },
+}));
 
 import { buildSummary } from '@/lib/app/programme/summary';
 

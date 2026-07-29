@@ -43,6 +43,28 @@ export const auditSummarySchema = z.object({
     when: z.string().nullable(),
     howKnown: z.string().nullable(),
   }),
+  /**
+   * §10's key gaps and phased pathway (F14).
+   *
+   * Nullable, and every view renders nothing for `null` — the analyst may not have run, may have
+   * been refused, or may have failed, and the artifact was complete without these two sections for
+   * the whole of v1. `.nullable().default(null)` rather than `.optional()`: an older cached response
+   * that predates the field parses as absent, and absent must read as "no reading" rather than
+   * failing the whole summary and blanking a leader's screen.
+   */
+  analyst: z
+    .object({
+      gaps: z.array(z.object({ token: z.string(), observation: z.string() })),
+      pathway: z.array(
+        z.object({
+          horizon: z.enum(['now', 'next', 'later']),
+          step: z.string(),
+          difference: z.string(),
+        })
+      ),
+    })
+    .nullable()
+    .default(null),
   footnote: z.string(),
 });
 

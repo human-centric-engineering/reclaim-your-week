@@ -26,6 +26,7 @@ import { readFileSync } from 'node:fs';
 import { reclaimSlotDefinitions } from '@/lib/app/programme/slots';
 import { ANALYST_BRIEF_SLUGS } from '@/lib/app/programme/analyst/brief';
 import { parseAnalystReading } from '@/lib/app/programme/analyst/reading';
+import { ANALYST_IMPERATIVE_OPENERS, reclaimAnalystAgent } from '@/lib/app/programme/analyst/agent';
 
 // The parser logs every refusal with its reason, which is the point of it in production and noise
 // here. Silenced rather than asserted on: the return value is the contract.
@@ -255,6 +256,42 @@ describe('parseAnalystReading refuses, and refuses whole', () => {
       ],
     });
     expect(parseAnalystReading(offered, TOKENS)).not.toBeNull();
+  });
+});
+
+describe('the model is told exactly what the parser will refuse', () => {
+  /**
+   * Found by the first live run of `smoke:reclaim-analyst`, and it is the reason that smoke exists.
+   *
+   * The parser refused ten imperative openers; the guardrails prose named five. gpt-4o opened a step
+   * with "Begin ", which it had never been told not to do, and the whole reading was discarded. In
+   * production that failure is **silent** — `null` renders as two absent sections and nothing
+   * anywhere says why — so it would have shipped as "the analyst never produces anything".
+   *
+   * The fix was one shared list. This is the guard that keeps it one.
+   */
+  it('names every refused opener in the guardrails the model actually receives', () => {
+    const guardrails = reclaimAnalystAgent.guardrails.toLowerCase();
+    for (const opener of ANALYST_IMPERATIVE_OPENERS) {
+      expect(
+        guardrails.includes(opener.trim()),
+        `the parser refuses "${opener.trim()}" and the prose never mentions it, so the model will be refused for a rule it was not given`
+      ).toBe(true);
+    }
+  });
+
+  it('refuses every opener it names', () => {
+    // The other direction, so the prose cannot list a rule the parser does not hold either.
+    for (const opener of ANALYST_IMPERATIVE_OPENERS) {
+      const withOpener = reading({
+        pathway: [
+          { horizon: 'now', step: `${opener}protect a morning`, difference: 'Thinking time.' },
+          { horizon: 'next', step: 'Handing over a meeting', difference: 'Two hours back.' },
+          { horizon: 'later', step: 'A standing review', difference: 'Less detail.' },
+        ],
+      });
+      expect(parseAnalystReading(withOpener, TOKENS), `"${opener}" was allowed`).toBeNull();
+    }
   });
 });
 

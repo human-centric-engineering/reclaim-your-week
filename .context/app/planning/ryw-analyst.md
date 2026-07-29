@@ -2,7 +2,7 @@
 name: ryw-analyst
 feature: F14 · ryw-analyst
 epic: RYW post-v1
-status: in flight
+status: shipped
 owner: John
 depends_on: F13 t-1 (readCalendarReading, for the brief's "what is confirmed")
 spec: ../content-source.md §10 (the summary's eight items) · ../sources/Time_Audit_Tool_Prompt_Text.md:344-353 · ../invariants.md (I6, I12, I16, I-frame, I17)
@@ -90,11 +90,11 @@ never reads `reclaim_setup_keeping_me_up`, `reclaim_setup_why_now`, or any `recl
 
 ## Tasks
 
-| t-N | What                                                                          | Files                                                                                                | Status  | PR  |
-| --- | ----------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ------- | --- |
-| t-1 | The authored agent and its seed unit.                                         | `lib/app/programme/analyst/agent.ts`, `prisma/seeds/app-reclaim/005-reclaim-analyst.ts`              | ready ▲ | —   |
-| t-2 | The brief, the call, the refusals, the column.                                | `analyst/brief.ts`, `analyst/reading.ts`, migration, `tests/unit/invariants/analyst-reading.test.ts` | ready ▲ | —   |
-| t-3 | Into the summary: three fields, the completion hook, the lazy path, the view. | `summary.ts`, `runs/service.ts`, `summary/summary-view.tsx`, `summary/types.ts`                      | ready ▲ | —   |
+| t-N | What                                                                          | Files                                                                                                | Status | PR  |
+| --- | ----------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ------ | --- |
+| t-1 | The authored agent and its seed unit.                                         | `lib/app/programme/analyst/agent.ts`, `prisma/seeds/app-reclaim/005-reclaim-analyst.ts`              | done   | —   |
+| t-2 | The brief, the call, the refusals, the column.                                | `analyst/brief.ts`, `analyst/reading.ts`, migration, `tests/unit/invariants/analyst-reading.test.ts` | done   | —   |
+| t-3 | Into the summary: three fields, the completion hook, the lazy path, the view. | `summary.ts`, `runs/service.ts`, `summary/summary-view.tsx`, `summary/types.ts`                      | done   | —   |
 
 **t-3 must merge before F15 t-1**, or the PDF is laid out against a seven-field `AuditSummary` and
 re-laid out against a ten-field one.
@@ -120,6 +120,29 @@ Mirrors 002/003 exactly, and getting it backwards breaks quietly in one of two w
   actually changes what the analyst says (003's reason for existing).
 
 Backwards means either the model reverts on every deploy, or a voice fix ships as a no-op.
+
+## What the first live run found
+
+`smoke:reclaim-analyst` failed the first time it was run, and it failed for the exact reason it was
+written. A real gpt-4o call produced a reading, and `parseAnalystReading` discarded the whole thing
+because a step opened with **"Begin "**.
+
+**The parser refused ten imperative openers and the guardrails prose named five.** The model was
+punished for a rule it had never been given. And the failure mode is silent: `null` renders as two
+absent sections, with no error anywhere, so this would have shipped as "the analyst never produces
+anything" and the only symptom would have been a summary that looked exactly like the pre-F14 one.
+
+Fixed by making it one list — `ANALYST_IMPERATIVE_OPENERS`, exported from `analyst/agent.ts`,
+interpolated into the guardrails and read by the parser. Same discipline as `composite.ts`'s variance
+thresholds one feature earlier, and the same reasoning: two copies of a rule drift, and here the
+drift falls entirely on the model.
+
+Two invariant assertions now hold the pair together, in both directions: every opener the parser
+refuses is named in the prose, and every opener the prose names is refused by the parser.
+
+**This is the whole argument for P16's second script**, made on its first execution. Nothing without
+a real key could have found it: the parser's refusals were unit-tested and correct, the prose was
+plausible, and every test passed.
 
 ## Notes / deferrals
 

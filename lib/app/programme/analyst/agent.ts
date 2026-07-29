@@ -50,6 +50,35 @@ import { RECLAIM_BANNED_LEXICON } from '@/lib/app/programme/agent';
 export const RECLAIM_ANALYST_PROVIDER = 'openai';
 export const RECLAIM_ANALYST_MODEL = 'gpt-4o';
 
+/**
+ * Openers that turn a possibility into an instruction, and the one list that governs both halves.
+ *
+ * **Named here, and named in the prose below from this array**, because the first live run of
+ * `smoke:reclaim-analyst` failed on exactly the gap between them. The parser refused ten openers;
+ * the guardrails named five. gpt-4o wrote a step beginning "Begin ", which it had never been told
+ * not to do, and the whole reading was discarded. In production that is silent: `null` renders as
+ * two absent sections and nothing anywhere says why.
+ *
+ * Same discipline as `composite.ts`'s variance thresholds, and the same reason: two places holding
+ * their own copy of a rule drift, and here the drift means the model is punished for breaking a
+ * rule it was never given.
+ *
+ * The check is **positional** — the start of a field, not anywhere in it. "You could stop chairing
+ * that" is the register this whole feature exists for; "Stop chairing that" is the tool deciding.
+ */
+export const ANALYST_IMPERATIVE_OPENERS: readonly string[] = [
+  'you should',
+  'you need to',
+  'you must',
+  'you have to',
+  'you ought',
+  'start ',
+  'stop ',
+  'begin ',
+  'make sure',
+  'ensure ',
+];
+
 export interface ReclaimAnalystAgentDefinition {
   slug: string;
   name: string;
@@ -92,7 +121,7 @@ const GUARDRAILS = `Never tell the leader what they should do. Offer what they c
 
 Never rank the leader, score them, grade their week, or describe any area as good, bad, poor, healthy or unhealthy. Never say a figure is too high or too low. Say what it is, and what changing it might open up.
 
-Never open a step with "You should", "You need to", "You must", "Start ", or "Stop ". Write what the step is, not an instruction to take it.
+Never open a gap or a step with any of these: ${ANALYST_IMPERATIVE_OPENERS.map((o) => `"${o.trim()}"`).join(', ')}. Write what the step is, not an instruction to take it. A step is a noun phrase or something the leader could do, never a command. "Two protected mornings a week" is right. "Begin two protected mornings" is not, and neither is "Make sure you protect two mornings".
 
 Everything you name is named as possibility, not failure. An area at or near nothing is somewhere the week has quietly taken from, not somewhere the leader chose to neglect, and not a discipline problem.
 

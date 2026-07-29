@@ -71,6 +71,28 @@ export function SummaryView({ summary }: { summary: AuditSummary }) {
         </section>
       )}
 
+      {/*
+        §10's "key gaps identified" (F14). Rendered only when the analyst produced a reading that
+        passed every refusal; `null` draws nothing at all, with no placeholder and no apology,
+        because the artifact satisfied §10's other six items for the whole of v1.
+
+        Placed after the figures and before the action: the gaps are a reading *of* the numbers
+        above, and putting them first would have the tool interpreting before the leader has seen
+        what is being interpreted (I12's ordering, applied to a page rather than a beat).
+      */}
+      {summary.analyst != null && summary.analyst.gaps.length > 0 && (
+        <section>
+          <h2 className="text-foreground text-base font-medium">What stands out</h2>
+          <ul className="mt-3 space-y-2">
+            {summary.analyst.gaps.map((gap) => (
+              <li key={gap.token} className="text-foreground leading-relaxed">
+                {gap.observation}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {summary.action.chosen && (
         <section className="bg-muted rounded-2xl px-6 py-5">
           <h2 className="text-muted-foreground text-[0.7rem] font-medium tracking-[0.2em] uppercase">
@@ -87,6 +109,37 @@ export function SummaryView({ summary }: { summary: AuditSummary }) {
               You will know it worked when: {summary.action.howKnown}
             </p>
           )}
+        </section>
+      )}
+
+      {/*
+        §10's "phased pathway forward". After the chosen action on purpose: the leader has already
+        decided what they are starting, and the pathway exists so they can see further than that one
+        step. Putting it above would read as the tool proposing a plan instead of the one they made.
+
+        The horizons are labelled rather than numbered. "1, 2, 3" is a schedule someone is being held
+        to; "now / next / later" is a shape, which is what a possibility should look like (I16).
+      */}
+      {summary.analyst != null && summary.analyst.pathway.length > 0 && (
+        <section>
+          <h2 className="text-foreground text-base font-medium">One way this could go</h2>
+          <p className="text-muted-foreground mt-1 text-sm leading-relaxed">
+            Not a plan, and nothing here is owed. It is what a sequence could look like from where
+            you are.
+          </p>
+          <ol className="mt-4 space-y-4">
+            {summary.analyst.pathway.map((step) => (
+              <li key={step.horizon} className="border-border/60 border-l-2 pl-4">
+                <p className="text-muted-foreground text-[0.7rem] font-medium tracking-[0.2em] uppercase">
+                  {step.horizon}
+                </p>
+                <p className="text-foreground mt-1 leading-relaxed">{step.step}</p>
+                <p className="text-muted-foreground mt-1 text-sm leading-relaxed">
+                  {step.difference}
+                </p>
+              </li>
+            ))}
+          </ol>
         </section>
       )}
 

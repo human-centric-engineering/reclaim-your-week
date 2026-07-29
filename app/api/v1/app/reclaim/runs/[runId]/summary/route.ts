@@ -11,7 +11,7 @@ import { withAuth } from '@/lib/auth/guards';
 import { successResponse } from '@/lib/api/responses';
 import { ValidationError } from '@/lib/api/errors';
 import { cuidSchema } from '@/lib/validations/common';
-import { loadOwnedRun } from '@/app/api/v1/app/reclaim/runs/service';
+import { ensureAnalystReading, loadOwnedRun } from '@/app/api/v1/app/reclaim/runs/service';
 import { buildSummary } from '@/lib/app/programme/summary';
 
 export const GET = withAuth<{ runId: string }>(async (_request, session, { params }) => {
@@ -21,5 +21,19 @@ export const GET = withAuth<{ runId: string }>(async (_request, session, { param
   const runId = parsed.data;
 
   await loadOwnedRun(runId, session.user.id);
+
+  // F14's lazy path, and the only place it belongs.
+  //
+  // `completeRun` generates the analyst's reading, so the common case has one before anyone reads
+  // the summary. This covers the two it cannot: audits finished before F14 shipped, and generations
+  // that failed. Write-once and best-effort inside, so a second tab cannot produce a second reading
+  // and a model failure cannot break the page.
+  //
+  // **Deliberately not on the public share route or the PDF route.** Both reach `buildSummary` too,
+  // and neither should be the thing that first spends money — a token-holder who is not the leader
+  // must never trigger a billed call, and a twenty-second model call inside a download is a broken
+  // download. Those surfaces render whatever is stored, including nothing.
+  await ensureAnalystReading(session.user.id, runId);
+
   return successResponse(await buildSummary(session.user.id, runId));
 });
