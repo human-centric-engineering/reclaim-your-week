@@ -383,3 +383,189 @@ describe('what the extractor is told', () => {
     expect(brief).not.toContain('reclaim_setup_fundraising_support');
   });
 });
+
+/**
+ * The parser is the boundary between an untrusted model response and the slot store, and every other
+ * test in this file steps over it: `runStructuredCompletion` is stubbed, so the `parse` callback the
+ * sweep hands it is never called and nothing here was exercised at all.
+ *
+ * So these reach for the real callback rather than a copy of it — run the sweep once, take the
+ * function off the recorded call, and drive it. That way the thing under test is the parser this
+ * module actually ships to the runner, and a change to which parser is passed shows up here.
+ *
+ * What it must get right is a refusal, not a rescue. A malformed response is dropped whole (`null`,
+ * which is what tells the runner to retry) and a malformed *row* is dropped on its own; nothing is
+ * guessed at, because a guess here writes a wrong sentence into a leader's audit under their name.
+ */
+describe('what the parser will accept from the model', () => {
+  /** The `parse` callback as the sweep passes it to the runner. */
+  const parser = async (): Promise<(raw: string) => unknown[] | null> => {
+    await runCaptureSweep(input);
+    return runStructuredCompletion.mock.calls[0][0].parse as (raw: string) => unknown[] | null;
+  };
+
+  const row = (over: Record<string, unknown> = {}) => ({
+    slotSlug: 'reclaim_setup_why_now',
+    value: 'The board asked for a plan by September.',
+    confidence: 8,
+    sourceType: 'direct',
+    reasoningNote: 'They said it outright.',
+    ...over,
+  });
+
+  it('takes a well-formed reading whole', async () => {
+    const parse = await parser();
+
+    expect(parse(JSON.stringify({ readings: [row({ verbatim: 'the board asked me' })] }))).toEqual([
+      {
+        slotSlug: 'reclaim_setup_why_now',
+        value: 'The board asked for a plan by September.',
+        verbatim: 'the board asked me',
+        confidence: 8,
+        sourceType: 'direct',
+        reasoningNote: 'They said it outright.',
+        supersedes: false,
+      },
+    ]);
+  });
+
+  it.each([
+    ['prose instead of JSON', 'I found two readings for you.'],
+    ['a JSON scalar', '"readings"'],
+    ['null', 'null'],
+    ['an object with no readings key', '{"found":[]}'],
+    ['readings that is not a list', '{"readings":{"slotSlug":"x"}}'],
+  ])('drops the whole response when it is %s', async (_label, raw) => {
+    const parse = await parser();
+
+    // `null`, not `[]` — the two mean different things to the runner. An empty list is an answer and
+    // ends the call; null is "that was not a response" and buys the one retry.
+    expect(parse(raw)).toBeNull();
+  });
+
+  it('takes an empty list as an answer rather than a failure', async () => {
+    const parse = await parser();
+
+    expect(parse('{"readings":[]}')).toEqual([]);
+  });
+
+  it.each([
+    ['the slug is missing', row({ slotSlug: undefined })],
+    ['the slug is empty', row({ slotSlug: '' })],
+    ['the slug is not a string', row({ slotSlug: 42 })],
+    ['the value is only whitespace', row({ value: '   ' })],
+    ['the value is not a string', row({ value: { hours: 25 } })],
+    ['the source type is outside the vocabulary', row({ sourceType: 'guessed' })],
+    ['the source type is missing', row({ sourceType: undefined })],
+    ['the row is null', null],
+    ['the row is a bare string', 'reclaim_setup_why_now'],
+  ])('drops just the row when %s, and keeps the good one beside it', async (_label, bad) => {
+    const parse = await parser();
+
+    const out = parse(JSON.stringify({ readings: [bad, row()] }));
+
+    // The good reading survives its neighbour. One unusable row in a batch used to cost the whole
+    // batch, which is the failure this parser was written after.
+    expect(out).toHaveLength(1);
+    expect(out?.[0]).toMatchObject({ slotSlug: 'reclaim_setup_why_now' });
+  });
+
+  it('fills in a confidence the model left out rather than dropping the reading', async () => {
+    const parse = await parser();
+
+    expect(
+      parse(JSON.stringify({ readings: [row({ confidence: undefined })] }))?.[0]
+    ).toMatchObject({ confidence: 6 });
+  });
+
+  it.each([
+    ['above the scale', 40, 10],
+    ['below it', 0, 1],
+    ['negative', -3, 1],
+    ['fractional', 7.6, 8],
+  ])('brings a confidence that is %s back onto it', async (_label, given, expected) => {
+    const parse = await parser();
+
+    expect(parse(JSON.stringify({ readings: [row({ confidence: given })] }))?.[0]).toMatchObject({
+      confidence: expected,
+    });
+  });
+
+  it('trims the value and ignores a verbatim that is blank or not a string', async () => {
+    const parse = await parser();
+
+    const [trimmed] = parse(
+      JSON.stringify({ readings: [row({ value: '  spaced out  ', verbatim: '   ' })] })
+    ) as Record<string, unknown>[];
+
+    expect(trimmed.value).toBe('spaced out');
+    // Absent rather than empty: `presentAnswer` falls back to the reading when there is no quote, and
+    // an empty string would pass as one and blank the line it is quoted into.
+    expect(trimmed).not.toHaveProperty('verbatim');
+  });
+
+  it('caps a runaway verbatim rather than storing the whole transcript in it', async () => {
+    const parse = await parser();
+
+    const [capped] = parse(
+      JSON.stringify({ readings: [row({ verbatim: 'x'.repeat(5000) })] })
+    ) as Record<string, string>[];
+
+    expect(capped.verbatim).toHaveLength(2000);
+  });
+
+  it('supplies its own reasoning note when the model gives none', async () => {
+    const parse = await parser();
+
+    const [noted] = parse(JSON.stringify({ readings: [row({ reasoningNote: '' })] })) as Record<
+      string,
+      string
+    >[];
+
+    expect(noted.reasoningNote).toBe('Read from the exchange by the capture sweep.');
+  });
+
+  it('treats supersedes as claimed only when it is exactly true', async () => {
+    const parse = await parser();
+
+    const out = parse(
+      JSON.stringify({
+        readings: [row({ supersedes: true }), row({ supersedes: 'yes' }), row({ supersedes: 1 })],
+      })
+    ) as Record<string, boolean>[];
+
+    // A truthy string is a model being loose with a flag that decides whether a leader's stored
+    // sentence gets overwritten. Only the boolean counts.
+    expect(out.map((r) => r.supersedes)).toEqual([true, false, false]);
+  });
+
+  it('reads no more than ten readings out of one response', async () => {
+    const parse = await parser();
+
+    const many = Array.from({ length: 25 }, (_, i) => row({ value: `Reading ${i}` }));
+
+    expect(parse(JSON.stringify({ readings: many }))).toHaveLength(10);
+  });
+});
+
+describe('the sweep survives the edges it depends on', () => {
+  it('runs without bucket labels when that read fails', async () => {
+    const { readBucketLabels } = await import('@/lib/app/programme/buckets/labels');
+    vi.mocked(readBucketLabels).mockRejectedValueOnce(new Error('labels unavailable'));
+    extracts({ slotSlug: 'reclaim_setup_why_now', value: 'The board asked for a plan.' });
+
+    const result = await runCaptureSweep(input);
+
+    // The labels only dress the brief's wording. Losing them must not cost the leader the capture.
+    expect(result.recorded).toEqual(['reclaim_setup_why_now']);
+  });
+
+  it('does not reach for a provider when the coach agent is not seeded', async () => {
+    findUnique.mockResolvedValue(null);
+
+    const result = await runCaptureSweep(input);
+
+    expect(result.skipped).toBe('provider_unavailable');
+    expect(runStructuredCompletion).not.toHaveBeenCalled();
+  });
+});

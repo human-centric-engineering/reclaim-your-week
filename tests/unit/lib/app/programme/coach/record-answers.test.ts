@@ -851,6 +851,92 @@ describe('provenance redaction', () => {
     expect(serialised).toContain('reclaim_setup_keeping_me_up');
     expect(serialised).toContain('direct');
   });
+
+  it("masks the leader's verbatim as its own key, so the trace still shows a quote was taken", () => {
+    const redacted = capability.redactProvenance(
+      {
+        answers: [
+          {
+            slotSlug: 'reclaim_setup_why_now',
+            value: 'The board asked for a plan by September.',
+            verbatim: 'honestly the board has finally started asking me for a plan',
+            valueJson: { months: 2 },
+            confidence: 9,
+            sourceType: 'direct' as const,
+            reasoningNote: 'They said the board asked.',
+          },
+        ],
+      },
+      { success: true, data: { recorded: [], refused: [] } }
+    );
+    const serialised = JSON.stringify(redacted);
+
+    // The verbatim is the leader's sentence in the strictest sense and the last thing that belongs
+    // in a durable trace — but folding it into `value`'s marker would hide that one was captured.
+    expect(serialised).not.toContain('honestly the board');
+    expect(serialised).toContain('slot-verbatim');
+    expect(serialised).toContain('slot-value-json');
+  });
+
+  it('records the type alone of an entry that is not an answer at all', () => {
+    const redacted = capability.redactProvenance(
+      // The entries arrive unparsed, so this reads defensively rather than trusting a shape
+      // `validate` no longer guarantees.
+      { answers: ['reclaim_setup_why_now', null, 42] as never },
+      { success: false, error: { message: 'nope', code: 'bad' } }
+    );
+
+    // An operator should be able to see that something malformed arrived without seeing what was in
+    // it — so the type, and nothing else.
+    expect(redacted.args).toEqual({
+      answers: [{ malformed: 'string' }, { malformed: 'object' }, { malformed: 'number' }],
+    });
+  });
+
+  it('drops a confidence or source type that arrived as the wrong kind of thing', () => {
+    const redacted = capability.redactProvenance(
+      {
+        answers: [
+          {
+            slotSlug: 'reclaim_setup_why_now',
+            value: 'A plan by September.',
+            confidence: 'high',
+            sourceType: 7,
+            reasoningNote: 'They said so.',
+          },
+        ],
+      },
+      { success: true, data: { recorded: [], refused: [] } }
+    );
+
+    const [entry] = (redacted.args as { answers: Record<string, unknown>[] }).answers;
+    expect(entry).not.toHaveProperty('confidence');
+    expect(entry).not.toHaveProperty('sourceType');
+    // The slug is the one field carried through verbatim, and only when it is the vetted kind.
+    expect(entry.slotSlug).toBe('reclaim_setup_why_now');
+  });
+
+  it('omits the slug entirely when it is not a string', () => {
+    const redacted = capability.redactProvenance(
+      {
+        answers: [
+          {
+            slotSlug: { slug: 'reclaim_setup_why_now' } as unknown as string,
+            value: 'A plan by September.',
+            confidence: 9,
+            sourceType: 'direct' as const,
+            reasoningNote: 'They said so.',
+          },
+        ],
+      },
+      { success: true, data: { recorded: [], refused: [] } }
+    );
+
+    const [entry] = (redacted.args as { answers: Record<string, unknown>[] }).answers;
+    // Better an entry with no slug than a slug that is an object the trace reader will misread as
+    // one of this module's own identifiers.
+    expect(entry).not.toHaveProperty('slotSlug');
+  });
 });
 
 describe('the grant is enforced at run time, not merely stated on the binding', () => {
