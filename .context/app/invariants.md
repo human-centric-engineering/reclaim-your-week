@@ -5,35 +5,54 @@ Every Claude Code session must read it before writing code. These are the rules 
 do not travel on their own: each one is a decision that looks arbitrary in isolation and is
 load-bearing in aggregate.
 
-> **The `Test:` lines below are guards that exist and run.** As of 2026-07-26 (RYW v1 complete),
-> every one named here is built and wired into `npm run leaf:checks`, which CI runs on **every PR**
-> via the `app:ci-checks` seam:
+> **The `Test:` lines below are guards that exist and run — but they do not all run in the same
+> place, and this block used to imply they did.** Three gates matter and they have different reach,
+> so each guard is listed under the one that actually runs it. Verified against
+> `package.json` and `.github/workflows/ci.yml` on 2026-07-29.
 >
-> | Guard                                            | Invariant | Landed  |
-> | ------------------------------------------------ | --------- | ------- |
-> | `npm run leaf:content-diff`                      | I11 hop 1 | pre-F2  |
-> | `tests/unit/app/programme/content.test.ts`       | I11 hop 2 | F2 t-3  |
-> | `tests/unit/invariants/voice.test.ts`            | I1, I2    | F2 t-4  |
-> | `tests/unit/invariants/slot-sensitivity.test.ts` | I5        | F2 t-4  |
-> | `tests/unit/invariants/agent-caps.test.ts`       | I6        | F2 t-4  |
-> | `tests/unit/invariants/write-path.test.ts`       | I3        | F4 t-2  |
-> | `tests/unit/invariants/calendar-privacy.test.ts` | I4        | F5      |
-> | `tests/unit/invariants/admin-support.test.ts`    | D4 (F10)  | F10 t-1 |
-> | `tests/unit/invariants/chart-beat.test.ts`       | I12       | conv. 5 |
-> | `tests/unit/invariants/reachability.test.ts`     | —         | conv. 7 |
-> | `npm run smoke:reclaim-coach`                    | I12, I19  | conv. 9 |
+> **1 · `npm run leaf:checks` — every PR, via the `app:ci-checks` seam.** It is exactly
+> `leaf:content-diff && leaf:invariants`, and `leaf:invariants` is `vitest run tests/unit/invariants`
+> — so **the directory is the wiring**. A new file dropped in there gates automatically; a guard
+> placed anywhere else does not, however invariant-shaped it looks.
 >
-> **This block used to say the opposite** — that every test below was "still to be written" — and it
-> stayed that way through all ten features while the guards were built one by one. Its own closing
-> line was "an unwritten test that reads as written is worse than no test named at all", and the
-> inversion is just as bad: a written guard that reads as unwritten invites the next person to
-> re-do it or to distrust it. Corrected at the v1 close-out audit
-> ([[planning/post-v1|post-v1]] P2).
+> | Guard                                            | Invariant | Landed      |
+> | ------------------------------------------------ | --------- | ----------- |
+> | `npm run leaf:content-diff`                      | I11 hop 1 | pre-F2      |
+> | `tests/unit/invariants/voice.test.ts`            | I1, I2    | F2 t-4      |
+> | `tests/unit/invariants/slot-sensitivity.test.ts` | I5        | F2 t-4      |
+> | `tests/unit/invariants/agent-caps.test.ts`       | I6        | F2 t-4      |
+> | `tests/unit/invariants/write-path.test.ts`       | I3        | F4 t-2      |
+> | `tests/unit/invariants/calendar-privacy.test.ts` | I4        | F5          |
+> | `tests/unit/invariants/admin-support.test.ts`    | D4 (F10)  | F10 t-1     |
+> | `tests/unit/invariants/product-voice.test.ts`    | I1, I2    | open item 8 |
+> | `tests/unit/invariants/chart-beat.test.ts`       | I12       | conv. 5     |
+> | `tests/unit/invariants/reachability.test.ts`     | —         | conv. 7     |
 >
-> **Two things are still specification rather than guard, and are named as such where they appear:**
-> the real-DB smokes (`smoke:reclaim-calendar`, `smoke:reclaim`) are **not** run by any gate — see
-> [[planning/post-v1|post-v1]] P3 — and I-frame, I13, I16 and I17 are judgement rules a test cannot
-> express. For those, read the `Test:` line as "this is what would have to be checked by hand".
+> **2 · The main test suite — every PR, but not via `leaf:checks`.**
+> `tests/unit/app/programme/content.test.ts` (I11 hop 2, F2 t-3) lives outside
+> `tests/unit/invariants/`, so `leaf:invariants` does not run it. CI's `test` job does. The
+> distinction matters to anyone reasoning about which gate protects what: I11's second hop is as
+> gated as the first, by a different job.
+>
+> **3 · CI's `smoke` job — every PR, real Postgres.** `smoke:reclaim-run`, `smoke:reclaim-erasure`,
+> `smoke:reclaim-access`, `smoke:reclaim` (a fake provider, no key).
+>
+> **Not gated anywhere.** `smoke:reclaim-coach` and `smoke:reclaim-join` need no key and still run
+> nowhere ([[planning/post-v1|post-v1]] P21, claimed as F12 t-2). `smoke:reclaim-calendar` needs a
+> real model key and is a deliberate manual gate (P16).
+>
+> **This block has now been wrong in both directions, which is the thing to take from it.** It first
+> said every test below was "still to be written" and stayed that way through ten features while the
+> guards were built one by one — corrected at the v1 close-out audit (P2). The correction then
+> overshot: it put every guard under one heading that claimed `leaf:checks` ran them all, and by
+> 2026-07-29 four statements in it were false — `content.test.ts` is not in `leaf:checks`,
+> `smoke:reclaim-coach` is in no gate at all, `product-voice.test.ts` was missing entirely, and the
+> closing note named `smoke:reclaim` as ungated three days after P16 recorded that it had joined CI.
+> None of that made a guard weaker. It made the map wrong, in the one file `CLAUDE.md` requires
+> every session to read first. **A guard's name is not its wiring; the gate that runs it is.**
+>
+> **Still specification rather than guard:** I-frame, I13, I16 and I17 are judgement rules no test
+> can express. For those, read the `Test:` line as "this is what would have to be checked by hand".
 
 ---
 

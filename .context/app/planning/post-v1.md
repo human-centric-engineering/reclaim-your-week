@@ -1,6 +1,6 @@
 ---
 name: post-v1
-description: The board for everything left after RYW v1 shipped — hygiene, client-owed items, launch tasks, upstream, and the parked epics. Mirrors plan.md's style one epic later.
+description: The board for everything left after RYW v1 shipped — hygiene, client-owed items, launch tasks, upstream, the parked epics, and the F12–F18 epic the 2026-07-29 execution-path audit opened. Mirrors plan.md's style one epic later.
 parent: plan.md
 ---
 
@@ -23,12 +23,21 @@ plan-first for anything larger than a commit.** The differences are that items a
 features (most are one PR, several are one commit) and that many are **not ours to close** — they wait
 on Rashmir, on an upstream release, or on a deployment decision.
 
+**There are now two boards in this file, and the split is deliberate.** The **P-board** below is the
+original: loose ends, each smaller than a feature. [**The next epic**](#the-next-epic--f12-to-f18) is
+a features board in `plan.md`'s shape, opened by the 2026-07-29 execution-path audit, because what
+that audit found was seven features rather than seven loose ends and pretending otherwise would have
+put twenty-odd P-rows on a board designed for commits. Items cross-reference freely: P21 is F12 t-2,
+P24 waits on F16, P16's decision now covers a script F14 adds.
+
 **Legend.** `shipped` — merged to `main`. `in flight` — someone is on it. `ready` ▲ — nothing blocks
 it. `blocked → X` — waiting on X. `waiting: <who>` — outside our control. `parked` — deliberately not
 now.
 
 **The rule that governs the whole board:** an item stays here until it is either merged or explicitly
-parked with a reason. Nothing leaves by being forgotten.
+parked with a reason. Nothing leaves by being forgotten. Since 2026-07-29 that rule has a gate behind
+it rather than only a paragraph — `leaf:board-check` (F12 t-3), after four occasions on which this
+file described itself inaccurately.
 
 ---
 
@@ -56,7 +65,9 @@ parked with a reason. Nothing leaves by being forgotten.
 | P19 | The conversation shipped laid out as a document             | John    | **shipped**      | feature   | [[ryw-chat-ux]]             |
 | P20 | A finished audit left the product the moment it finished    | John    | **shipped**      | feature   | —                           |
 | P21 | Two key-less smokes never joined the gate                   | John    | ready ▲          | gate      | P3's rule, re-broken        |
-| P22 | The captured panel read as one grey column, guesses and all | John    | in flight        | feature   | P19's surface               |
+| P22 | The captured panel read as one grey column, guesses and all | John    | **shipped**      | feature   | P19's surface               |
+| P23 | The coach asked closed questions into an empty box          | John    | **shipped**      | record    | shipped in #59, unrecorded  |
+| P24 | An audit nobody came back to is nobody's to notice          | Rashmir | waiting: Rashmir | client    | ask after F16 ships         |
 
 **Doing P1–P3 first was deliberate.** They are the three where the repository told a reader something
 untrue, or where a claim the product makes to users was not gated by anything. Every other item was
@@ -68,12 +79,23 @@ same epic, opened the same day the first real leader used it — merged on 2026-
 frame and phase-review halves following in #57 (2026-07-28) and #58 (2026-07-29). **P20** joined on
 2026-07-28, from the same source as P19: someone asked where their finished audits were, and the
 answer was that there was nowhere for them to be; it merged in #58. **P21** is new and is ours —
-reconciling this board on 2026-07-29 found P3's rule quietly re-broken. **P22** is newer still and
-came from the same place P19 and P20 did: someone used the surface and said what was wrong with it.
-What remains beyond it is the
-items nobody here can close alone: **P12** (the eight things Rashmir owes), **P16** (a cost decision
-about a provider key in CI), and the three parked scope items — plus **P4's copy sign-off**, since the
-pages exist and the words in them are a draft until she reads them.
+reconciling this board on 2026-07-29 found P3's rule quietly re-broken. **P22** and **P23** both
+merged in #59 on 2026-07-29, and both came from the same place P19 and P20 did: someone used the
+surface and said what was wrong with it.
+
+What remains is the items nobody here can close alone — **P12** (the eight things Rashmir owes),
+**P16** (a cost decision about a provider key in CI), **P24** (a question only she can answer), and
+the three parked scope items, plus **P4's copy sign-off** — and **P21**, which is a two-line gate fix
+and is the first task of the epic below.
+
+**The board did not stop at P22, and this is where it stops being a board of loose ends.** An
+execution-path audit on 2026-07-29 walked the whole app and read the live database. It found no
+half-built feature, again. What it found instead was that **nobody has ever completed an audit** —
+three runs exist, the deepest reached `phase-2-energy`, and two were marked `abandoned` by hand in
+psql because the product has no way to do it. Phases 3 to 6, the summary, the share, the history, the
+trends, the quarterly nudge and the entire admin back half have never executed against a real person.
+The findings are seven features rather than seven loose ends, so they are an **epic** and they sit in
+their own section below, in `plan.md`'s shape rather than this file's.
 
 > **The table above said otherwise until 2026-07-27**, listing P5 to P11 as `ready ▲` a day after each
 > one had shipped and its own section said so. Nothing was lost by it, but this is the file a reader
@@ -90,6 +112,19 @@ pages exist and the words in them are a draft until she reads them.
 > the one file here with no gate behind it — `leaf:checks` proves content and invariants, and neither
 > can see a status column. Until something closes that loop, the honest instruction is the one at the
 > top of P1: reconcile this board as the first act of any new branch, not the last act of the old one.
+>
+> **And a third and fourth time, on 2026-07-29, found by the audit rather than by anyone reconciling.**
+> P22 sat at `in flight` after merging in #59, exactly as P19 and P20 had. Worse, the `offer_choices`
+> work shipped in the _same commit_ and had no row at all — the first item to reach `main` having never
+> appeared on this board in any state. The paragraph above diagnosed the cause correctly and then did
+> not prevent it, which is worth saying plainly: **an instruction written in the file that the
+> instruction is about is not a control.** Twice was a pattern; four times is a missing gate. The
+> repair is not another sentence here. It is `leaf:board-check` (**F12 t-3**): a script that fails
+> when a `ryw-*.md` frontmatter says `status: shipped` while its board row does not, and when a
+> feature doc exists with no row at all. That is the smallest thing that can see a status column, and
+> it belongs in `leaf:checks` beside the other two. It cannot catch P23's shape — work that never got
+> a doc either — so t-3 also asserts that every `ryw-*.md` on disk has a row, which is the half that
+> would have caught it.
 
 ---
 
@@ -497,6 +532,10 @@ the comment in the same change that makes it true.
 _Done when:_ both run in CI's `smoke` job beside the other four, and `reclaim-coach.ts`'s header
 describes where it actually runs.
 
+**Claimed as F12 t-2**, so it is built rather than carried. It is first in the epic for the reason it
+is on this board at all: it is the rule from P3 that broke quietly, and five features are about to
+land on top of it.
+
 _Owner:_ John · _Status:_ ready ▲ · _Class:_ gate
 
 ### P22 · The captured panel read as one grey column, guesses and all
@@ -560,7 +599,60 @@ No schema change, no server change, no new invariant. The narrow-screen drawer i
 so it can slide rather than appear, and `inert` while closed — which its tests assert, because
 "cannot be tabbed into" is the fact that matters and a transition class is not.
 
-_Owner:_ John · _Status:_ in flight · _Class:_ feature
+**Shipped in #59** (2026-07-29), in the same commit as P23.
+
+_Owner:_ John · _Status:_ **shipped** · _Class:_ feature
+
+### P23 · The coach asked closed questions into an empty box
+
+Some of what the audit asks has a fixed set of answers, and the form panels have always shown them
+while the conversation put the same question above a blank text box. The coach now names the reading
+its question is about by calling `offer_choices`, and the composer gives way to the answers.
+
+**The mechanism is the interesting part, and it is the same lesson as the capture sweep.** On a live
+audit the coach called `offer_choices` once, then asked the same question three more times with no
+tool call at all, each time telling the leader "you can choose from the options on your screen" while
+they looked at an empty box. Having called it once, the model believed the answers were still up. No
+amount of prose fixes that: **a side effect asked of a model is a hit rate, and this product does not
+build on hit rates.** So the offer stopped depending on the call. Which reading the turn is about is
+decided server-side before the turn runs, and the stream injects the offer before `done` when the
+model did not make it itself. The coach's own call still wins where it happens, because the model
+knows when it has followed the leader somewhere else and the fallback does not.
+
+The fallback runs **the real capability, in the real dispatch scope**, so what reaches the client is
+what the model's own call would have produced and every guard has been applied. What differs is only
+who decided to ask.
+
+**It is on this board only because it was not.** It merged in #59 having never had a row, which is
+the failure recorded in the note above the fold and the reason F12 t-3 exists. There is no
+`ryw-*.md` for it either; this section is the record.
+
+_Owner:_ John · _Status:_ **shipped** · _Class:_ record
+
+### P24 · An audit nobody came back to is nobody's to notice
+
+Two of the three audits ever started were abandoned mid-flight, and nothing in the product noticed.
+Rashmir's clients screen shows them as `stalled`; the leader hears nothing.
+
+**This is a question for Rashmir, not a defect to fix, and the distinction is the whole item.**
+`nudges/select.ts` refuses to nudge anyone mid-audit, deliberately, with Brief §2 and I16 written
+into the file header: _"a leader with an audit open does not need reminding to start one; they need
+to be left alone to finish it."_ An email saying "you left an audit open" is precisely what that rule
+forbids. Building it would be overturning a stated client constraint on the strength of a cohort of
+three.
+
+**What to ask her, and when.** After F16 ships, because F16 is the in-product answer: `/programme`
+already resumes exactly where a leader stopped, and abandon finally gives them a way to close one
+they do not want. The question then becomes the narrow one — _given they can always come back and can
+now let go, is a single gentle message still wanted?_ — rather than the broad one. If yes, the
+narrowest honest shape is one message per audit, never a sequence, opt-out in one click, and worded
+as an invitation rather than a reminder.
+
+**What not to do meanwhile:** do not treat the admin's `stalled` badge as a licence to build the
+email. F18 t-2 gives her a way to write to that person herself, which is a human deciding rather than
+a scheduler deciding, and is the version I16 is comfortable with.
+
+_Owner:_ Rashmir · _Status:_ waiting: Rashmir · _Class:_ client
 
 ### P16 · A provider key for CI, or a nightly smoke run
 
@@ -581,6 +673,19 @@ Three options, none obviously right, which is why it is a decision rather than a
    and proves less than the real thing: the whole point of that smoke is that a _real_ model response
    never reaches the database.
 
+> **The denominator moves to two when F14 lands, and it is worth deciding once rather than twice.**
+> The analyst is a second real model call, and the thing no key-less test can reach is the same thing
+> in both cases: `parseAnalystReading`'s refusals are unit-tested against stubs, which proves the
+> parser rejects what it should and proves **nothing about whether a real model, given the real
+> brief, ever returns something it accepts**. An analyst that is refused on every live call would
+> pass the entire suite and produce a summary with two empty sections for ever. So F14 adds
+> `smoke:reclaim-analyst`, manual and key-needing, for exactly the reason `smoke:reclaim-calendar`
+> is. Two scripts, one decision, unchanged options.
+>
+> Note what does **not** join them: `smoke:reclaim-report` renders the PDF from a hand-written
+> reading and never calls the analyst, so it needs no key and gates in CI from the day it lands. That
+> split is deliberate — the expensive proof and the cheap one should not share a script.
+
 _Owner:_ — · _Status:_ ready ▲ · _Class:_ gate
 
 ### P15 · The parked epics
@@ -589,6 +694,77 @@ Unchanged from [[plan#Parked phases (future epics)]]: the V2 time-tracking modul
 payments and subscriptions, live calendar OAuth, the knowledge base, and the life wheel. Payments is
 the one three separate feature plans point at — F9 built the quarterly _cadence_, which Brief §8 calls
 "the shape of the future paid offer", but not the offer.
+
+---
+
+## The next epic — F12 to F18
+
+**Where these came from.** An execution-path audit on 2026-07-29 traced the app end to end and read
+the live database, then the owner asked four questions of it. Both halves are recorded here because
+the answers changed the shape of the work.
+
+**What the audit found is one sentence repeated seven times: the reasoning is ahead of the wiring.**
+Almost every gap is a mechanism that exists, is documented, and has no trigger.
+`RUN_STATUS.abandoned` is declared in `runs/service.ts` and written nowhere in the repository — the
+two abandoned rows in the dev database were set by hand in psql, which is the finding. The coach's
+calendar briefing exists and no moment fires it. `reflectionSlugForPhase` permits the phase-6
+reflection and the screen still asks it with a textarea. `reclaim_action_options` is captured by the
+coach and read by nothing. None of these is a half-built feature, which is why the v1 close-out audit
+did not see them: each one is finished, and unreachable.
+
+**And the fact that frames all of it: nobody has ever completed an audit.** Three runs, deepest
+`phase-2-energy`, none complete. Phases 3 to 6, the summary, the share, the history, the trends, the
+nudge and the whole admin back half have never run against a real person.
+
+**The owner's four questions, and what research settled.**
+
+| Asked                                                                | Answer                                                                                                                                                                                                                                                                                        |
+| -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Is a **summary agent** specified anywhere?                           | **No** — the sources assume one conversational model. But §10 asks the summary to carry _"The key gaps identified"_ and _"The phased pathway forward"_, and `buildSummary` is deterministic and produces neither. So the instinct is right and the gap is **spec-mandated, not new scope**.   |
+| A downloadable **PDF**, emailed to the leader                        | Nothing PDF-related exists; `window.print()` is the whole of "downloadable". `~/code/conquest` is on identical `next@16.2.10` / `react@19.2.7` and already draws react-pdf bar charts the shape of `ReclaimChart`. Mirror it rather than invent it.                                           |
+| Is there a **calendar analysis** agent feeding the prompt?           | **Half.** `categorise.ts` is a real LLM extraction step. But `phase-context.ts` touches calendar at four lines, and `buildChartData` picks composite _or_ estimate and never both — so the coach **structurally cannot** name the perception-versus-reality gap `Prompt_Text.md:233` demands. |
+| Should the leader **consent** before Rashmir reads the conversation? | Yes — and there is a back door to close first. `buildClientExport` hands over `conversationId`, and core ships a conversation viewer, so an admin can read any transcript today.                                                                                                              |
+
+**Decisions taken 2026-07-29** (owner): `@react-pdf/renderer` on the ConQuest pattern · a
+**deterministic** calendar reading rather than a second model call, because `ideal-week.ts` already
+established that the arithmetic happens in code and the model is given the result · a **login-gated**
+report link, no new bearer token · `transcriptConsent` as a **column** on the existing
+`ReclaimReportShare`, which is what avoids the five-place join a new leaf table requires.
+
+### Board
+
+| #   | Feature                  | Owner | Status        | Depends on | Tasks | What it closes                                                              |
+| --- | ------------------------ | ----- | ------------- | ---------- | ----- | --------------------------------------------------------------------------- |
+| F12 | `ryw-hygiene`            | John  | in flight     | —          | 3     | P21, P23's cause; a board that can fail CI                                  |
+| F13 | `ryw-calendar-reading`   | John  | ready ▲       | F12        | 3     | The calendar reaches the coach framed; the unframed head-dump leak closes   |
+| F14 | `ryw-analyst`            | John  | ready ▲       | F13 t-1    | 3     | §10's two missing bullets, as options and never as verdicts                 |
+| F15 | `ryw-report`             | John  | blocked → F14 | F14 t-3    | 3     | The PDF, and the one email a finished audit should send                     |
+| F16 | `ryw-audit-lifecycle`    | John  | ready ▲       | F12        | 3     | The abandon dead end, an unrecoverable failed turn, phase 6's last textarea |
+| F17 | `ryw-transcript-consent` | John  | ready ▲       | F12        | 2     | Consent before Rashmir reads a conversation, and the export's back door     |
+| F18 | `ryw-admin-care`         | John  | blocked → F16 | F16 t-1    | 2     | Rashmir can preview her own words, and act on a leader who stopped          |
+
+**Two hard orderings, both of which cost a rewrite if ignored.** F13 t-1 before F14 t-2, or the
+analyst re-implements I-composite's arithmetic — the thing I-composite's own note warns against. F14
+t-3 before F15 t-1, or the PDF is laid out against a seven-field `AuditSummary` and re-laid out
+against a ten-field one.
+
+**One trap worth naming above the feature docs**, because it is the sharpest thing in the epic:
+`AuditSummary` is served with **no session** behind a public share token, and `summary.test.ts`
+asserts it is safe. The moment model prose joins that object, that promise depends on a model. F14's
+brief is therefore its own module whose slug list is asserted disjoint from every `sensitive` slot
+definition, and that assertion ships in the same pull request as the field it guards, not the one
+after.
+
+**What is deliberately not in the epic.** A stalled-audit email — see **P24**; that is Rashmir's
+decision and F16 changes the question. And a new email _kind_: `EmailPropsMap` is closed and
+core-owned (sunrise#468), so F15 uses the direct-`sendEmail` workaround `quarterly-nudge` already
+established. F15's completion email is also **not P13** — P13 parks a follow-up _sequence_, and one
+transactional message about the artifact a leader has just made is not a sequence. Recorded here so
+the next reader does not read it as P13 unparked without a decision.
+
+**And the thing worth more than any of it.** After F16 ships, take one leader through a complete,
+supervised, end-to-end audit. Half of this product has never executed, and no amount of building
+substitutes for finding that out.
 
 ---
 
@@ -643,6 +819,21 @@ The one systemic near-miss is worth naming, since it is the reason P8's missing 
 matters: **`getSlotHistory` was built in F1 and had no consumer for nine features**, and in that gap a
 plausible-looking read shipped a bug that silently emptied public share links. The lesson is in
 [[planning-retro]] §B. Anything built early and consumed later is an open item until it is consumed.
+
+> **And the second audit, on 2026-07-29, found that the near-miss was the whole pattern.** Everything
+> above stayed true — still no half-built feature, still no `TODO` markers, still every ask filed —
+> and the execution-path audit still opened seven features. The reason the first audit could not see
+> them is that **it asked whether every feature was finished, and never asked whether a leader could
+> reach it.** `RUN_STATUS.abandoned` is finished. The coach's calendar briefing is finished. The
+> phase-6 reflection permission is finished. Each is unreachable, and "unreachable" is invisible to
+> every question the close-out audit asked.
+>
+> P18 recorded the first instance of this and read it as a one-off — the coach bound to a surface no
+> phase rendered. It was not a one-off. The generalisation, which belongs in [[planning-retro]]: **a
+> completeness audit measures the code against the plan, and both can agree while the product is
+> unreachable. The only audit that catches this walks the app as a user.** The dev database is part of
+> that walk — three runs, none complete, two abandoned by hand, is a fact no amount of reading the
+> source would have produced.
 
 ---
 
