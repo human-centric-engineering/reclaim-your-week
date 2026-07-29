@@ -48,6 +48,7 @@ const FINISHED = {
   status: 'complete',
   startedAt: new Date('2026-01-04T09:00:00Z'),
   completedAt: new Date('2026-01-06T17:30:00Z'),
+  abandonedAt: null,
   hasConversation: true,
   progress: null,
 };
@@ -58,6 +59,7 @@ const OPEN = {
   status: 'in_progress',
   startedAt: new Date('2026-07-02T08:00:00Z'),
   completedAt: null,
+  abandonedAt: null,
   hasConversation: false,
   progress: { phaseKey: 'phase-2-energy', phaseLabel: 'Energy', phaseIndex: 2 },
 };
@@ -119,6 +121,7 @@ describe('POST reclaim runs (create)', () => {
     quarter: '2026 Q3',
     startedAt: new Date('2026-07-28T09:00:00Z'),
     completedAt: null,
+    abandonedAt: null,
     conversationId: null,
     coachOpenings: [] as string[],
     phaseMarks: {},
@@ -198,6 +201,7 @@ describe('GET one reclaim run', () => {
       status: 'complete',
       startedAt: new Date('2026-01-04T09:00:00Z'),
       completedAt: new Date('2026-01-06T17:30:00Z'),
+      abandonedAt: null,
       conversationId: 'conv-1',
       coachOpenings: ['phase-1-chart-reveal'],
       phaseMarks: { 'phase-1-current': 'm2' },

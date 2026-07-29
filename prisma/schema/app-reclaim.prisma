@@ -104,6 +104,17 @@ model ReclaimAuditRun {
 
   startedAt   DateTime  @default(now())
   completedAt DateTime?
+  /// When the leader let this audit go and started again (F16).
+  ///
+  /// **Its own column, never `completedAt`.** Three readers treat that field as "this audit
+  /// finished" — `listRuns`, the nudge tick's `completedAt ?? startedAt`, and the quarterly
+  /// completion timeline — so recording an abandonment there would put abandoned runs into the
+  /// nudge cohort and into the trend that measures whether the programme works.
+  ///
+  /// The row is kept rather than deleted. The phases and the transcript are still the leader's and
+  /// still reachable from their history, erasure cascades either way, and "how many started and did
+  /// not finish" is a question the operator's measures have to be able to answer.
+  abandonedAt DateTime?
   updatedAt   DateTime  @updatedAt
 
   @@index([userId])

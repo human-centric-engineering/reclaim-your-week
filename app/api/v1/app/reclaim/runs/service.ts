@@ -100,6 +100,30 @@ export async function transitionRun(
 }
 
 /**
+ * Close the leader's module-surface conversation (I15).
+ *
+ * **Extracted in F16 because there are now two ways an audit ends**, and only one of them used to do
+ * this. A run that stops — completed or let go — must not leave its transcript active, or the next
+ * audit resumes it and the coach opens audit 2 having read audit 1's phase 4. That is the whole of
+ * I15, and it is the easiest thing to forget when adding a second ending, which is why
+ * `tests/unit/invariants/conversation-close.test.ts` now asserts both paths call this.
+ *
+ * Scoped to the surface conversation rather than to the run: `AiConversation` carries no run id, and
+ * a leader has at most one active module-surface conversation at a time by construction.
+ */
+async function closeSurfaceConversation(userId: string): Promise<void> {
+  await prisma.aiConversation.updateMany({
+    where: {
+      userId,
+      contextType: MODULE_SURFACE_CONTEXT_TYPE,
+      contextId: RECLAIM_MODULE_SLUG,
+      isActive: true,
+    },
+    data: { isActive: false },
+  });
+}
+
+/**
  * Complete the run (I15): mark the row complete and set `isActive:false` on the module surface
  * conversation, so a repeat audit opens a fresh transcript rather than resuming this one. Idempotent.
  */
@@ -132,15 +156,7 @@ export async function completeRun(userId: string, runId: string): Promise<Reclai
   emitReclaimAccessEvent('reclaim.audit_completed', { userId, runId });
 
   // I15: close the surface conversation so audit 2 does not resume audit 1's transcript.
-  await prisma.aiConversation.updateMany({
-    where: {
-      userId,
-      contextType: MODULE_SURFACE_CONTEXT_TYPE,
-      contextId: RECLAIM_MODULE_SLUG,
-      isActive: true,
-    },
-    data: { isActive: false },
-  });
+  await closeSurfaceConversation(userId);
 
   // F14: §10's last two sections. Best-effort, and wrapped exactly as the referral unlock above is —
   // a leader who has just pressed "finish my audit" must not be held at a spinner because a model
@@ -152,6 +168,55 @@ export async function completeRun(userId: string, runId: string): Promise<Reclai
   // that had just been generated. That is the one ordering they would actually notice.
   await sendCompletionEmail(userId, runId);
 
+  return updated;
+}
+
+/**
+ * Let an audit go, so the leader can start another (F16 t-1).
+ *
+ * **`RUN_STATUS.abandoned` was declared here and written nowhere.** `createRun` refuses a second
+ * in-progress run with "complete or abandon the current audit before starting another", which was
+ * advice the product could not take: there was no route, no control and no job that set it. The two
+ * abandoned rows in the development database were written by hand in psql, which is how the gap was
+ * found. Combined with I14 (the free tier is one *complete* audit), a leader who began an audit for
+ * the wrong period was locked into it permanently.
+ *
+ * What this does, and each line is a decision:
+ *
+ *  - **Sets `abandonedAt`, never `completedAt`.** Three readers treat that field as "this audit
+ *    finished" — `listRuns`, the nudge tick, and the quarterly completion timeline — so writing an
+ *    abandonment into it would put this run into the nudge cohort and into the trend that measures
+ *    whether the programme works.
+ *  - **Closes the surface conversation** (I15). Missing this re-opens the invariant by a new door:
+ *    the next audit would resume the abandoned one's transcript.
+ *  - **Touches the entitlement not at all.** `consumeAudit` fires in `completeRun`, so an abandoned
+ *    run has consumed nothing. Abandoning must neither consume an audit nor refund one, and the
+ *    partial unique index on `(userId) WHERE status='in_progress'` releases on the status change, so
+ *    `createRun` succeeds immediately afterwards.
+ *  - **Leaves the journey rows alone.** `UserJourney` is keyed on `contextKey = runId`, so this
+ *    run's journey is already distinct from the next one's, and `JourneyEvent` is an audit trail.
+ *    The correct state is "this journey stopped where it stopped".
+ *
+ * Idempotent on an already-abandoned run. Refuses a completed one: you cannot let go of something
+ * you finished, and a leader asking to would be asking for something else.
+ */
+export async function abandonRun(userId: string, runId: string): Promise<ReclaimAuditRun> {
+  const run = await loadOwnedRun(runId, userId);
+  if (run.status === RUN_STATUS.abandoned) return run;
+  if (run.status === RUN_STATUS.complete) {
+    throw new ValidationError('That audit is already finished', {
+      run: ['A finished audit cannot be let go. It stays in your history.'],
+    });
+  }
+
+  const updated = await prisma.reclaimAuditRun.update({
+    where: { id: runId },
+    data: { status: RUN_STATUS.abandoned, abandonedAt: new Date() },
+  });
+
+  await closeSurfaceConversation(userId);
+
+  logger.info('Reclaim: audit let go', { runId, userId });
   return updated;
 }
 
@@ -659,6 +724,8 @@ export interface RunListItem {
   status: string;
   startedAt: Date;
   completedAt: Date | null;
+  /** When the leader set this one aside (F16). `null` for every other status. */
+  abandonedAt: Date | null;
   /** Whether there is a transcript to read back, or only the answers a form recorded. */
   hasConversation: boolean;
   /**
@@ -701,6 +768,9 @@ export async function listRuns(userId: string): Promise<RunListItem[]> {
         status: run.status,
         startedAt: run.startedAt,
         completedAt: run.completedAt,
+        // F16: so the history row can say "set aside" rather than falling through to "begun", which
+        // is what a run with no completion time used to mean and no longer does.
+        abandonedAt: run.abandonedAt,
         hasConversation: run.conversationId !== null,
         progress,
       };

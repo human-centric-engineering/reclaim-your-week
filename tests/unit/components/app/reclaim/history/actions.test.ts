@@ -43,6 +43,7 @@ const RUN_ITEM = {
   status: RUN_COMPLETE,
   startedAt: '2026-01-04T09:00:00.000Z',
   completedAt: '2026-01-06T17:30:00.000Z',
+  abandonedAt: null,
   hasConversation: true,
   progress: null,
 };

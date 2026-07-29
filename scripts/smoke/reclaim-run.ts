@@ -21,6 +21,7 @@ import { buildSummary } from '@/lib/app/programme/summary';
 import { recordConsent } from '@/lib/app/programme/access/consent';
 import { readReclaimAccessConfig } from '@/lib/app/programme/config';
 import {
+  abandonRun,
   createRun,
   transitionRun,
   completeRun,
@@ -216,6 +217,43 @@ async function main(): Promise<void> {
       fail(`the shared summary for run 1 hollowed out: firstName is ${runOneSummary.firstName}`);
     }
     console.log('[8] run 1 still reads (and still summarises) after run 2 superseded its answers');
+
+    // ── 9. Letting an audit go releases the door, immediately (F16) ──
+    //
+    // The partial unique index `(userId) WHERE status='in_progress'` is what makes "one open audit"
+    // true, and whether a status change releases it is a fact about Postgres rather than about the
+    // service. A mocked Prisma would assert the shape of the update and prove nothing: the failure
+    // this catches is a leader letting an audit go and then being refused a new one anyway, which
+    // leaves them exactly as stuck as before with an extra click.
+    const before = await prisma.reclaimGrant.findFirst({ where: { userId: uid } });
+    const letGo = await abandonRun(uid, run2.id);
+    if (letGo.status !== 'abandoned') fail('abandonRun did not change the status');
+    if (letGo.abandonedAt === null) fail('a set-aside audit carries no abandonedAt');
+    if (letGo.completedAt !== null) {
+      fail('abandoning wrote completedAt, which puts the run in the nudge cohort and the trend');
+    }
+
+    // I14: neither consumed nor refunded. Byte-identical either side.
+    const after = await prisma.reclaimGrant.findFirst({ where: { userId: uid } });
+    if (
+      before?.auditsUsed !== after?.auditsUsed ||
+      before?.auditsGranted !== after?.auditsGranted
+    ) {
+      fail('letting an audit go moved the entitlement');
+    }
+
+    // I15: the transcript is closed, so audit 3 does not resume audit 2's.
+    const stillActive = await prisma.aiConversation.count({
+      where: { userId: uid, contextType: MODULE_SURFACE_CONTEXT_TYPE, isActive: true },
+    });
+    if (stillActive !== 0) fail('a set-aside audit left its conversation active (I15)');
+
+    // The door is open again, straight away.
+    const run3 = await createRun(uid, '2026 Q1');
+    if (run3.id === run2.id) fail('createRun returned the run that was just set aside');
+    console.log(
+      '[9] a set-aside audit releases the door, keeps the grant, and closes its transcript'
+    );
   } finally {
     // Erase the throwaway user — cascades the runs, journey, slot values, and conversation.
     await eraseUser({
@@ -228,7 +266,7 @@ async function main(): Promise<void> {
   }
 
   console.log(
-    '\n✓ smoke:reclaim-run passed — create, answer, reflection gate, complete, repeat, run-scoped reads'
+    '\n✓ smoke:reclaim-run passed — create, answer, reflection gate, complete, repeat, run-scoped reads, let go'
   );
 }
 
