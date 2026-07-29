@@ -64,7 +64,7 @@ file described itself inaccurately.
 | P18 | The audit is seven forms; it was meant to be a conversation | John    | **shipped**      | feature   | [[ryw-conversational]]      |
 | P19 | The conversation shipped laid out as a document             | John    | **shipped**      | feature   | [[ryw-chat-ux]]             |
 | P20 | A finished audit left the product the moment it finished    | John    | **shipped**      | feature   | —                           |
-| P21 | Two key-less smokes never joined the gate                   | John    | ready ▲          | gate      | P3's rule, re-broken        |
+| P21 | Two key-less smokes never joined the gate                   | John    | **shipped**      | gate      | F12 t-2; found it red       |
 | P22 | The captured panel read as one grey column, guesses and all | John    | **shipped**      | feature   | P19's surface               |
 | P23 | The coach asked closed questions into an empty box          | John    | **shipped**      | record    | shipped in #59, unrecorded  |
 | P24 | An audit nobody came back to is nobody's to notice          | Rashmir | waiting: Rashmir | client    | ask after F16 ships         |
@@ -73,20 +73,20 @@ file described itself inaccurately.
 untrue, or where a claim the product makes to users was not gated by anything. Every other item was
 honest about its own state; those three were not.
 
-**Everything the team owns is now shipped, bar one gate item.** P1–P3, P5–P11 and P4's build landed
+**Everything the team owns on this board is now shipped.** P1–P3, P5–P11 and P4's build landed
 across two branches on 2026-07-26; **P18** landed on 2026-07-27, and **P19** — the surface half of the
 same epic, opened the same day the first real leader used it — merged on 2026-07-27 (#56), with its
 frame and phase-review halves following in #57 (2026-07-28) and #58 (2026-07-29). **P20** joined on
 2026-07-28, from the same source as P19: someone asked where their finished audits were, and the
-answer was that there was nowhere for them to be; it merged in #58. **P21** is new and is ours —
-reconciling this board on 2026-07-29 found P3's rule quietly re-broken. **P22** and **P23** both
-merged in #59 on 2026-07-29, and both came from the same place P19 and P20 did: someone used the
-surface and said what was wrong with it.
+answer was that there was nowhere for them to be; it merged in #58. **P22** and **P23** both merged
+in #59 on 2026-07-29, and both came from the same place P19 and P20 did: someone used the surface and
+said what was wrong with it. **P21** was found by reconciling this board on 2026-07-29 and closed as
+the epic's first task — and closing it found the smoke it gates had been red since #59, which is the
+item making its own argument.
 
-What remains is the items nobody here can close alone — **P12** (the eight things Rashmir owes),
-**P16** (a cost decision about a provider key in CI), **P24** (a question only she can answer), and
-the three parked scope items, plus **P4's copy sign-off** — and **P21**, which is a two-line gate fix
-and is the first task of the epic below.
+What remains is only the items nobody here can close alone — **P12** (the eight things Rashmir owes),
+**P16** (a cost decision about a provider key in CI), **P24** (a question only she can answer), the
+three parked scope items, and **P4's copy sign-off**.
 
 **The board did not stop at P22, and this is where it stops being a board of loose ends.** An
 execution-path audit on 2026-07-29 walked the whole app and read the live database. It found no
@@ -536,7 +536,18 @@ describes where it actually runs.
 is on this board at all: it is the rule from P3 that broke quietly, and five features are about to
 land on top of it.
 
-_Owner:_ John · _Status:_ ready ▲ · _Class:_ gate
+> **And wiring it up found it already red.** `smoke:reclaim-coach` had been failing since #59, which
+> changed the coach's briefing from "phase 1 of 6" to "section 1 of 6" while the assertion kept
+> saying phase. Underneath that sat a worse one: its I12 check saved the reflection _before_ claiming
+> the reveal, so the run landed in a different branch of `phase-context.ts` than the one the
+> assertion named, and it keyed on a string that appears in two branches. **It would have passed with
+> I12's pacing deleted.** Both are fixed, and the beat is now walked in the leader's own order with a
+> discriminator unique to each state. Full account in [[ryw-hygiene]].
+>
+> This is the argument for the whole item, made by the item: an ungated check does not stay neutral,
+> it becomes false — and it can become false in a way that reads as passing.
+
+_Owner:_ John · _Status:_ **shipped** · _Class:_ gate
 
 ### P22 · The captured panel read as one grey column, guesses and all
 

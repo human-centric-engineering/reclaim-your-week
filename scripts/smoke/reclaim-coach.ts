@@ -9,7 +9,14 @@
  *
  * **No provider key needed.** Nothing here calls a model: the opening turn's *claim* is asserted
  * rather than its generation, which is the half that has to be exactly once. So unlike
- * `smoke:reclaim-calendar` this can run in CI, and it is in `leaf:checks`.
+ * `smoke:reclaim-calendar` this runs in CI, in the `smoke` job, beside the other five leaf smokes.
+ *
+ * **It is not in `leaf:checks`, and this comment used to say it was.** `leaf:checks` is
+ * `leaf:content-diff && leaf:invariants` — content and unit-level invariants, no database and no
+ * smokes. The claim was false from the day it was written and the script ran in no gate at all for
+ * two features ([[post-v1]] P21, fixed as F12 t-2). Worth leaving the correction visible: a script
+ * that names its own gate is asserting something nothing checks, so if this line and
+ * `.github/workflows/ci.yml` ever disagree again, the workflow is the truth.
  *
  * A throwaway user, erased at the end.
  *
@@ -115,10 +122,23 @@ async function main(): Promise<void> {
         valueJson: 4,
       });
     }
-    await saveRunAnswer(uid, run.id, { slotSlug: 'reclaim_reflection_p1', value: 'A lot of it.' });
     if (chartRevealed(await readCoachOpenings(uid, run.id))) {
       fail('the reveal is recorded before the leader has seen anything');
     }
+
+    // I12 state one: every area has a figure, and the leader has not looked yet. The picture must
+    // stay unspoken. Asserted here rather than later because the ledger only moves forwards — once
+    // the moment is claimed this state cannot be recreated on the same run.
+    const beforeReveal = await buildCoachPhaseContext(uid);
+    if (!beforeReveal.includes('not asked to see this yet')) {
+      fail(
+        'a leader who has not looked yet is not protected from the coach describing the picture'
+      );
+    }
+    if (beforeReveal.includes('picture is on their screen now')) {
+      fail('the coach is told the picture is up before the leader has asked to see it (I12)');
+    }
+
     // The route refuses here; the smoke asserts the fact the route reads, which is what has to be
     // true in the database rather than in a mock.
     await claimCoachOpening(uid, run.id, CHART_REVEAL_MOMENT);
@@ -128,16 +148,46 @@ async function main(): Promise<void> {
     console.log('[8] the reveal is a recorded fact, and the gate reads it');
 
     // ── 9. The coach's phase context is assembled from real reads ──
+    //
+    // "section", not "phase". The leader's screen calls these sections and the briefing says the
+    // word aloud, so `phase-context.ts` switched the spoken count in #59 while the code, the slugs
+    // and the run state kept saying phase. The assertion here still read "phase 1 of 6", and
+    // **nothing noticed** because this script ran in no gate — the entire argument of post-v1 P21,
+    // and it was found by wiring the smoke into CI rather than by anyone running it.
     const block = await buildCoachPhaseContext(uid);
-    if (!block.includes('phase 1 of 6')) fail('the coach is not told which phase it is in');
+    if (!block.includes('section 1 of 6')) fail('the coach is not told which section it is in');
     if (!block.includes('Do not restate'))
       fail('the coach is not told the card has already spoken');
-    if (!block.includes('what stands out to you here')) {
-      fail('the reveal instruction is missing, so the coach would interpret in the same beat');
+    console.log('[9] the coach is told where it is, and what the card already said');
+
+    // ── 10. I12, walked in the leader's own order ──
+    //
+    // This is the pacing contract the invariants table credits this smoke with, and it was being
+    // half-proved. The old step 9 saved `reclaim_reflection_p1` *before* claiming the reveal — the
+    // reverse of what a leader does — and then asserted the pause instruction that appears only when
+    // the reveal has happened and the reflection has not. The block has three branches and the run
+    // was landing in the third, so the assertion could never have failed for the reason it named.
+    //
+    //   before the reveal — say nothing about the picture   (asserted above, while it was true)
+    //   after the reveal  — ask what stands out, and stop
+    //   after they answer — now your own reading belongs
+    //
+    // Each branch is identified by a string unique to it. The obvious discriminator — "what stands
+    // out to you here" — appears **twice** in `phase-context.ts`: once in the reveal beat and once
+    // in the generic phase-closing reflection instruction that every phase carries. Asserting on it
+    // is why the old check passed in a state it was not testing, so it is deliberately not used.
+    if (!block.includes('picture is on their screen now')) {
+      fail('the pause is missing, so the coach would interpret in the same beat (I12)');
     }
-    console.log(
-      '[9] the coach is told where it is, what the card said, and how to hold the reveal'
-    );
+    await saveRunAnswer(uid, run.id, { slotSlug: 'reclaim_reflection_p1', value: 'A lot of it.' });
+    const afterReflection = await buildCoachPhaseContext(uid);
+    if (!afterReflection.includes('your own reading belongs')) {
+      fail('the coach is never released into its own reading, so the beat never ends');
+    }
+    if (afterReflection.includes('picture is on their screen now')) {
+      fail('the coach is still held in the pause after the leader has answered it');
+    }
+    console.log('[10] I12 holds in all three states: hold, ask, then interpret');
   } finally {
     await eraseUser({
       userId: uid,

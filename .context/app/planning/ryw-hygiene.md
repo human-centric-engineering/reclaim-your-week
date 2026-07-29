@@ -70,11 +70,43 @@ gates a document. So the smallest honest repair is a third member of that pair.
 | t-N | What                                                                                                                                                                                  | Files                                                                                       | Status  | PR  |
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ------- | --- |
 | t-1 | **Docs-only.** Reconcile the board (P22 → shipped, open P23 + P24, the two-board split, the F12–F18 epic section) and correct [[invariants]]'s guard block into its three real gates. | `.context/app/planning/post-v1.md`, `.context/app/invariants.md`, this file                 | done    | —   |
-| t-2 | **P21.** Wire `smoke:reclaim-coach` and `smoke:reclaim-join` into CI's `smoke` job; fix the false header claim at `scripts/smoke/reclaim-coach.ts:12`.                                | `.github/workflows/ci.yml`, `scripts/smoke/reclaim-coach.ts`                                | ready ▲ | —   |
+| t-2 | **P21.** Wire `smoke:reclaim-coach` and `smoke:reclaim-join` into CI's `smoke` job; fix the false header claim at `scripts/smoke/reclaim-coach.ts:12`.                                | `.github/workflows/ci.yml`, `scripts/smoke/reclaim-coach.ts`                                | done    | —   |
 | t-3 | **`leaf:board-check`.** The gate. Added to `leaf:checks` beside `leaf:content-diff` and `leaf:invariants`.                                                                            | `scripts/planning/board-check.ts`, `package.json`, `tests/unit/scripts/board-check.test.ts` | ready ▲ | —   |
 
 **Done when** (each task): `/pre-pr` green; t-1 skips `/security-review` and `/code-review` as
 docs-only; t-2 and t-3 take the full gate loop.
+
+## What t-2 found: the smoke was already red
+
+**`smoke:reclaim-coach` failed on the first run under CI's invocation, and had been failing since
+#59.** It is the cleanest possible vindication of P21, so it is recorded rather than quietly fixed.
+
+Two separate rots, both from the same cause — an assertion nothing executes is a comment:
+
+1. **The wording moved and the assertion did not.** #59 changed the coach's briefing from "phase 1 of
+   6" to "**section** 1 of 6", deliberately: the leader's screen says section, the briefing says the
+   word aloud, and the code, slugs and run state keep saying phase. `phase-context.ts` states that
+   rule in a comment beside the count. The smoke still asserted `phase 1 of 6`, so it went red the
+   day the wording landed and nobody knew.
+
+2. **A stronger fault underneath: the I12 assertion could never have failed for the reason it
+   named.** The smoke saved `reclaim_reflection_p1` **before** claiming the reveal — the reverse of
+   what a leader does — then asserted the pause instruction that appears only when the reveal has
+   happened and the reflection has not. `phase-context.ts` has three branches for that beat and the
+   run was landing in the third. The assertion also keyed on `"what stands out to you here"`, which
+   occurs **twice** in that file: once in the reveal beat and once in the phase-closing reflection
+   instruction every phase carries. So it matched the wrong branch and would have passed even with
+   I12's pacing removed.
+
+The rewrite walks the beat in the leader's own order and asserts each state while it is true —
+before the reveal (say nothing about the picture), after it (ask, and stop), after they answer (now
+your reading belongs) — keying on a string unique to each branch. The invariants table credits this
+smoke with I12; it now earns that.
+
+**The lesson generalises past this script.** A smoke in no gate does not stay neutral, it silently
+becomes false, and the second fault shows it can be false in a way that no amount of re-reading
+catches: it passed for the wrong reason. That is the same shape as P23's finding one tier up — a
+side effect asked of a model is a hit rate — applied to a check asked of a habit.
 
 ## t-3 in detail
 
