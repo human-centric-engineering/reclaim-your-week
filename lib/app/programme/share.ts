@@ -87,9 +87,14 @@ export async function createShare(
       // the leader's current answer, including "no".
       update: { transcriptConsent },
     });
-  } else {
+  } else if (input.withCoach === false) {
     // Unticking "share with Rashmir" withdraws the transcript with it. The row itself stays, as it
     // always has: nothing here deletes a share, and that is a separate decision from this one.
+    //
+    // **`=== false`, not "falsy".** The client always sends the checkbox state, so an explicit
+    // `false` is the leader unticking it. `undefined` means the field was not part of this request
+    // at all — a caller saving only a public link, say — and taking that as a withdrawal would both
+    // revoke a consent nobody touched and put a write on every save that never mentions it.
     await prisma.reclaimReportShare.updateMany({
       where: { userId, auditRunId: runId, transcriptConsent: true },
       data: { transcriptConsent: false },
