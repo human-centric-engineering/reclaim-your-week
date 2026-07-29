@@ -311,6 +311,24 @@ export const reclaimConfigSchema = z.object({
    * a private beta "the average across nonprofit CEOs" can quietly be one identifiable person.
    */
   aggregateMinimumCohort: z.number().int().min(2).max(100).default(5),
+
+  /**
+   * **How much of a phase has to be covered before the way onward is offered**, as a percentage of
+   * the readings that apply to this leader.
+   *
+   * Not all of it, and the shortfall is the point: a phase whose every applicable reading had to
+   * land would be held open by one question a leader would rather not answer, and the coach cannot
+   * record a decline. Below it, the button is not there and the coach keeps asking; at or above it,
+   * the button appears beside a line saying plainly what is still open, so moving on is an informed
+   * choice rather than a way of escaping the conversation.
+   *
+   * Operator-editable because it is a judgement about how much of a phase counts as having happened,
+   * and that is Rashmir's call on her cohort rather than a constant an engineer redeploys. The floor
+   * is 50 rather than 0 for the same reason `abandonedAfterDays` has one: a threshold low enough to
+   * pass on two readings out of fifteen is the old `capturedCount > 0` gate under a new name, and it
+   * offers a leader the exit while the coach is still on its third question.
+   */
+  phaseCoveredPercent: z.number().int().min(50).max(100).default(90),
 });
 
 /** The parsed shape of `reclaimConfigSchema` — the coach-editable config the app reads. */

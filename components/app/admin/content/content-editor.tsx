@@ -205,14 +205,22 @@ export function ContentEditor() {
           <h2 className="text-lg font-medium">Audit rules</h2>
           <FieldHelp title="What these change">
             <p>
-              Two thresholds rather than wording. <strong>Stalled</strong> is how long an audit can
-              sit untouched before the client list flags it — an audit is meant to be left and
-              returned to, so this is deliberately generous.
+              Thresholds rather than wording. <strong>Stalled</strong> is how long an audit can sit
+              untouched before the client list flags it — an audit is meant to be left and returned
+              to, so this is deliberately generous.
             </p>
             <p>
               <strong>Smallest group</strong> is the anonymity floor on the shared-results page: any
               figure covering fewer leaders than this is withheld rather than shown, so an average
               can never point at one person.
+            </p>
+            <p>
+              <strong>How much of a phase</strong> is the point at which a leader is offered the
+              next one, as a percentage of the questions that apply to them. Below it the coach
+              keeps asking and there is no button; at or above it the button appears alongside a
+              line saying what is still open, so they can carry on or move on knowingly. Raising it
+              to 100 means every applicable question must be answered, which can hold a phase open
+              on one a leader would rather not answer.
             </p>
           </FieldHelp>
         </div>

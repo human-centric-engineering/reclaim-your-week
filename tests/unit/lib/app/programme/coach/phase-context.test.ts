@@ -325,9 +325,12 @@ describe('buildCoachPhaseContext', () => {
 
     expect(block).toContain('reclaim_reflection_p2');
     expect(block).toContain('what stands out to you here?');
-    // The two rules that replaced the blanket refusal: it is theirs to say, and it is theirs to leave.
+    // The two rules that replaced the blanket refusal: it is theirs to say, and it is theirs to
+    // leave. The second is now stated as a prohibition rather than as a hand-off, because "leave the
+    // move to them" was read as "tell them they may move", and the coach cannot see whether the
+    // screen is offering it.
     expect(block).toContain('Never infer it');
-    expect(block).toContain('leave the move to the next phase to them');
+    expect(block).toContain('do not invite them to move on');
   });
 
   it('stops asking for a reflection this run already holds', async () => {
@@ -447,11 +450,24 @@ describe('buildCoachPhaseContext — who speaks first, and how a turn ends', () 
     expect(block).toContain('waiting to be greeted');
   });
 
-  it('asks for something to answer at the end of every turn, not only the first', async () => {
+  it('asks for a question at the end of every turn, not only the first', async () => {
+    // "Something to answer or to do" was wide enough to be satisfied by "if there is anything else
+    // you would like to add, feel free", which is the turn that left a leader with two readings
+    // outstanding and nothing to answer. It is a question now, and a named one.
     const block = await buildCoachPhaseContext('u1');
 
-    expect(block).toContain('End every turn with something for the leader to answer or to do');
+    expect(block).toContain('End every turn with a question');
+    expect(block).toContain('about a named reading from the list');
     expect(block).toContain('Never end on an');
+  });
+
+  it('refuses the open invitation and the announcement that a phase is done', async () => {
+    const block = await buildCoachPhaseContext('u1');
+
+    expect(block).toContain('anything else they');
+    expect(block).toContain('ask for it by name');
+    expect(block).toContain('do not tell them the phase is finished');
+    expect(block).toContain('their screen offers it at the moment it becomes true');
   });
 
   it('says that a sentence about recording is not a recording', async () => {
@@ -809,8 +825,11 @@ describe('buildCoachPhaseContext — the branches out of phase 1', () => {
     expect(block).toContain('Judge the pattern, never the person');
     // A figure can still be corrected after the pause.
     expect(block).toContain('record it as above');
-    // The way out of the phase.
-    expect(block).toContain('they can move on to the next phase');
+    // And the way out of the phase is not the coach's to announce. It used to end this beat by
+    // telling the leader they could move on whenever they were ready, on a turn where the screen may
+    // still have been showing what was left to cover.
+    expect(block).toContain('Do not tell them they can move on');
+    expect(block).not.toContain('The button');
   });
 
   it('gives phase 1 the bands it needs to say anything about a weekly total', async () => {
@@ -1514,12 +1533,13 @@ describe('buildCoachPhaseContext — the texture of an area, not only its hours'
     expect(block).not.toContain('an unfilled list is not a reason to hold this back');
   });
 
-  it('offers what was never asked before the phase is called done', async () => {
+  it('turns what was never asked into the next question rather than a closing summary', async () => {
     readRunAnswers.mockResolvedValue({});
 
     const block = await buildCoachPhaseContext('u1');
 
-    expect(block).toContain('Before you say this phase is done');
+    expect(block).toContain('there is always a next question, and it comes from this list');
+    expect(block).toContain('Your job is the next question');
   });
 
   /**
@@ -1569,12 +1589,13 @@ describe('buildCoachPhaseContext — the texture of an area, not only its hours'
   });
 
   /**
-   * After the reflection the coach gives its reading and points at the way onward. That beat used to
-   * wave the unfilled readings through ("not worth holding them here for"), which is where the eight
-   * missing ones were finally lost. It now names the specific gap: an area with a figure and nothing
-   * else has not been explored.
+   * After the reflection the coach gives its reading and then goes back for what the phase never
+   * asked. That beat used to wave the unfilled readings through ("not worth holding them here for"),
+   * which is where the eight missing ones were finally lost, and it then pointed at the button. It
+   * now names the specific gap (an area with a figure and nothing else has not been explored) and
+   * leaves the way onward to the screen that can actually see whether it is there.
    */
-  it('comes back for an area that has a figure and nothing else, before pointing at the way onward', async () => {
+  it('comes back for an area that has a figure and nothing else, and leaves the way onward alone', async () => {
     readRunAnswers.mockResolvedValue({
       ...(() => {
         const answers: Record<string, unknown> = {};
@@ -1600,7 +1621,7 @@ describe('buildCoachPhaseContext — the texture of an area, not only its hours'
 
     expect(block).toContain('look at what this phase never asked');
     expect(block).toContain('an area has a figure and nothing else');
-    expect(block).toContain('they can move on to the next phase');
+    expect(block).toContain('Do not tell them they can move on');
     expect(block).not.toContain('is not worth holding them here');
   });
 });

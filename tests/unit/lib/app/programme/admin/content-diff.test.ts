@@ -131,8 +131,27 @@ describe('applyContentEdits', () => {
     const view = buildContentView(defaults());
     const keys = view.rules.map((r) => r.key);
 
-    expect(keys).toEqual(['abandonedAfterDays', 'aggregateMinimumCohort']);
+    expect(keys).toEqual(['abandonedAfterDays', 'aggregateMinimumCohort', 'phaseCoveredPercent']);
     expect(view.prose.map((f) => f.key)).toContain('consultationEmail');
+  });
+
+  it('carries the coverage threshold with the bounds the conversation is built around', () => {
+    // The number that decides when a leader is offered the next phase. Bounded on the form as well as
+    // in the schema, and the floor matters: a threshold low enough to pass on two readings out of
+    // fifteen offers the way out while the coach is still on its third question, which is the gate
+    // this replaced.
+    const rule = buildContentView(defaults()).rules.find((r) => r.key === 'phaseCoveredPercent');
+
+    expect(rule).toMatchObject({ value: '90', min: 50, max: 100 });
+  });
+
+  it('writes a new coverage threshold, and drops one that is not a number', () => {
+    const config = defaults();
+
+    expect(applyContentEdits(config, { phaseCoveredPercent: '75' }).phaseCoveredPercent).toBe(75);
+    expect(applyContentEdits(config, { phaseCoveredPercent: 'most' }).phaseCoveredPercent).toBe(
+      config.phaseCoveredPercent
+    );
   });
 
   it('ignores an out-of-range index rather than throwing', () => {

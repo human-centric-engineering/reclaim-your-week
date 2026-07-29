@@ -93,12 +93,18 @@ function openMomentFor(
 }
 
 /**
- * How much of a phase has to be covered before the way onward is offered.
+ * How much of a phase has to be covered before the way onward is offered, when the operator's own
+ * number has not arrived.
  *
  * Not all of it, and the shortfall is the point. A phase whose every applicable reading must land
  * would be held open by one question a leader would rather not answer, and there is no way for them
  * to say so: the coach cannot record a decline. Leaving room for roughly one in ten means the common
  * case — a leader who has genuinely been through the phase and left one thing — is not a hostage.
+ *
+ * The live value is `Module.config.phaseCoveredPercent`, edited on the content screen and served
+ * through `GET /api/v1/app/reclaim/config`. This is the fallback for the moment before it lands and
+ * for a read that failed, and it is deliberately the same number the config defaults to: a leader
+ * whose config fetch missed should meet the shipped behaviour, not a stricter or looser one.
  */
 const PHASE_COVERED = 0.9;
 
@@ -130,6 +136,14 @@ export interface PhaseConversationProps {
   coachOpenings: string[];
   /** Where each phase's part of the run's one conversation begins, so this phase draws only its own. */
   phaseMarks?: PhaseMarks;
+  /**
+   * The operator's coverage threshold as a percentage; omitted falls back to `PHASE_COVERED`.
+   *
+   * A percentage rather than a fraction because that is what an operator types into the content
+   * screen, and converting it once here is cheaper than remembering which of the two a given caller
+   * holds.
+   */
+  coveredPercent?: number;
   /** Re-read the run state after the phase advances, or after a moment fires. */
   onAdvanced: () => void;
   /** Switch this phase to its form panel. */
@@ -145,6 +159,7 @@ export function PhaseConversation({
   conversationId,
   coachOpenings,
   phaseMarks,
+  coveredPercent,
   onAdvanced,
   onSwitchToForm,
 }: PhaseConversationProps) {
@@ -212,11 +227,16 @@ export function PhaseConversation({
   // why it lives here rather than in the transition route.
   //
   // **The risk it introduces, named rather than hidden.** A threshold can strand a leader who will
-  // not answer something. Three things keep that from being a trap: inapplicable readings are
-  // excluded rather than waited for, the threshold leaves room for one or two unanswered, and the
-  // form panel is one click away and writes the same slots. If a leader still gets stuck, the fix is
-  // to let them record a decline, not to lower this back to one.
-  const covered = applicable.length > 0 && settled >= Math.ceil(applicable.length * PHASE_COVERED);
+  // not answer something. Four things keep that from being a trap: inapplicable readings are
+  // excluded rather than waited for, the threshold leaves room for one or two unanswered, what is
+  // still open is said beside the button rather than left to be guessed at, and the form panel is one
+  // click away and writes the same slots. If a leader still gets stuck, the fix is to let them record
+  // a decline, not to lower this back to one.
+  // The operator's number, or the shipped one. Clamped rather than trusted: this arrives over HTTP,
+  // and a nought would offer the way out of an empty phase while a figure above one would hold every
+  // phase open for ever.
+  const threshold = Math.min(1, Math.max(0.5, (coveredPercent ?? PHASE_COVERED * 100) / 100));
+  const covered = applicable.length > 0 && settled >= Math.ceil(applicable.length * threshold);
   const canAdvance = covered && reflected && (revealState === null || revealed);
 
   /** Why the move is not offered yet, in one sentence, because a dimmed button explains nothing. */
@@ -230,6 +250,21 @@ export function PhaseConversation({
           : !reflected
             ? 'The coach will ask what stands out to you before this phase closes.'
             : null;
+
+  /**
+   * What sits beside the button when the phase is covered but not finished.
+   *
+   * The threshold leaves room for one or two unanswered readings on purpose, so "you may move on"
+   * and "everything here has been asked" are different states, and the button alone cannot tell them
+   * apart. Saying so is what makes taking it a choice: a leader who reads this and carries on knows
+   * what they are carrying on for, and one who presses it knows what they are leaving. The coach
+   * never says either of these things, because moving on is theirs to decide and this is where the
+   * product says so (I6).
+   */
+  const stillOpen =
+    canAdvance && outstanding > 0
+      ? 'We have answered most of the questions in this part, so you may move on whenever you wish. The conversation can also carry on here for a few more rounds, if you would like to clarify anything or add to what you have said.'
+      : null;
 
   const advance = async () => {
     setBusy(true);
@@ -386,14 +421,21 @@ export function PhaseConversation({
         footer={
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             {canAdvance ? (
-              <button
-                type="button"
-                onClick={() => void advance()}
-                disabled={busy}
-                className="bg-primary text-primary-foreground rounded-full px-6 py-2 text-sm font-medium disabled:opacity-40"
-              >
-                {busy ? 'Saving…' : 'Continue to the next phase'}
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => void advance()}
+                  disabled={busy}
+                  className="bg-primary text-primary-foreground rounded-full px-6 py-2 text-sm font-medium disabled:opacity-40"
+                >
+                  {busy ? 'Saving…' : 'Continue to the next phase'}
+                </button>
+                {stillOpen !== null && (
+                  <p className="text-muted-foreground max-w-md text-xs leading-relaxed">
+                    {stillOpen}
+                  </p>
+                )}
+              </>
             ) : (
               <p className="text-muted-foreground text-xs leading-relaxed">{waitingOn}</p>
             )}

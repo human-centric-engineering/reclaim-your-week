@@ -74,7 +74,8 @@ export interface ContentView {
   prose: ContentField[];
   /**
    * The operator's own numbers, which are not Rashmir's content but are the only other thing she
-   * needs to change without a deploy: the stall rule and the anonymity floor.
+   * needs to change without a deploy: the stall rule, the anonymity floor, and how much of a phase
+   * has to have happened before a leader is offered the next one.
    *
    * They live here because the client list's help text sends her to this screen for them, and a
    * screen that tells you where to change something and then does not offer it is worse than one
@@ -227,6 +228,17 @@ export function buildContentView(stored: ReclaimConfig): ContentView {
       min: 2,
       max: 100,
     },
+    {
+      ...field(
+        'phaseCoveredPercent',
+        'How much of a phase must be covered before a leader is offered the next one (%)',
+        String(stored.phaseCoveredPercent),
+        String(defaults.phaseCoveredPercent),
+        'authored'
+      ),
+      min: 50,
+      max: 100,
+    },
   ];
 
   const all = [
@@ -302,15 +314,20 @@ export function applyContentEdits(
     else if (key === 'deepWorkNote') next.deepWorkNote = value;
     else if (key === 'footnote') next.footnote = value;
     else if (key === 'consultationEmail') next.consultationEmail = value;
-    // The two numeric rules arrive as strings from a text input. A non-numeric value is DROPPED
-    // rather than coerced: `Number('')` is 0 and `Number('abc')` is NaN, and either silently written
-    // into the stall rule would make every audit read as stalled, or none. The schema would reject
-    // both, but failing here means the rest of a legitimate save is not lost to a stray keystroke.
-    else if (key === 'abandonedAfterDays' || key === 'aggregateMinimumCohort') {
+    // The numeric rules arrive as strings from a text input. A non-numeric value is DROPPED rather
+    // than coerced: `Number('')` is 0 and `Number('abc')` is NaN, and either silently written into
+    // the stall rule would make every audit read as stalled, or none. The schema would reject both,
+    // but failing here means the rest of a legitimate save is not lost to a stray keystroke.
+    else if (
+      key === 'abandonedAfterDays' ||
+      key === 'aggregateMinimumCohort' ||
+      key === 'phaseCoveredPercent'
+    ) {
       const parsed = Number.parseInt(value, 10);
       if (Number.isInteger(parsed)) {
         if (key === 'abandonedAfterDays') next.abandonedAfterDays = parsed;
-        else next.aggregateMinimumCohort = parsed;
+        else if (key === 'aggregateMinimumCohort') next.aggregateMinimumCohort = parsed;
+        else next.phaseCoveredPercent = parsed;
       }
     }
     // Anything else: deliberately dropped.

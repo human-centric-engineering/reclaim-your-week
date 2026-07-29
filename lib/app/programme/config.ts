@@ -40,6 +40,14 @@ export interface ReclaimUiConfig {
    */
   phaseSignposts: PhaseSignpost[];
   calendarExportSteps: ReclaimCalendarExport[];
+  /**
+   * How much of a phase has to be covered before the move onward is offered, as a percentage.
+   *
+   * Served rather than compiled in because it is the operator's judgement about how much of a phase
+   * counts as having happened. The conversation falls back to the schema default if this read fails,
+   * so a config the browser could not fetch never strands a leader behind a threshold of 100.
+   */
+  phaseCoveredPercent: number;
 }
 
 /** One service's export walkthrough, shown on the upload screen. */
@@ -175,6 +183,7 @@ export async function readReclaimUiConfig(userId: string): Promise<ReclaimUiConf
     strategyMirror: await resolveStrategyMirror(config, userId),
     phaseSignposts: config.phaseSignposts,
     calendarExportSteps: config.calendarExportSteps,
+    phaseCoveredPercent: config.phaseCoveredPercent,
   };
 }
 

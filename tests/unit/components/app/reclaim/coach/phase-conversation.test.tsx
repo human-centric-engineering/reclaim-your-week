@@ -309,6 +309,67 @@ describe('PhaseConversation — when the way onward is offered', () => {
     ).toBeInTheDocument();
   });
 
+  it('says what is still open beside the button, rather than offering a bare way out', async () => {
+    // The state the leader was left in: two readings outstanding, the coach saying "if there is
+    // anything else you would like to add, feel free, otherwise you can move on", and no button
+    // anywhere. Above the threshold the button is there, and the line beside it says what taking it
+    // leaves behind, so moving on is a choice rather than an escape.
+    readAnswers.mockResolvedValue(allOf(SETUP.slice(0, 14)));
+    render(<PhaseConversation {...setup} />);
+
+    expect(
+      await screen.findByRole('button', { name: /Continue to the next phase/ })
+    ).toBeInTheDocument();
+    expect(await screen.findByText(/you may move on whenever you wish/i)).toBeInTheDocument();
+    expect(await screen.findByText(/carry on here for a few more rounds/i)).toBeInTheDocument();
+  });
+
+  it('says nothing about what is left when nothing is', async () => {
+    readAnswers.mockResolvedValue(allOf(SETUP));
+    render(<PhaseConversation {...setup} />);
+
+    await screen.findByRole('button', { name: /Continue to the next phase/ });
+    expect(screen.queryByText(/you may move on whenever you wish/i)).not.toBeInTheDocument();
+  });
+
+  it('takes the threshold from the operator rather than from a number compiled in', async () => {
+    // Eleven of fifteen is 73 per cent: covered at 70, not covered at the shipped 90. The same
+    // fixture either way, so this can only be reading the config.
+    readAnswers.mockResolvedValue(allOf(SETUP.slice(0, 11)));
+    const { unmount } = render(<PhaseConversation {...setup} coveredPercent={70} />);
+
+    expect(
+      await screen.findByRole('button', { name: /Continue to the next phase/ })
+    ).toBeInTheDocument();
+    unmount();
+
+    render(<PhaseConversation {...setup} />);
+    await waitFor(() => expect(readAnswers).toHaveBeenCalledTimes(2));
+    expect(
+      screen.queryByRole('button', { name: /Continue to the next phase/ })
+    ).not.toBeInTheDocument();
+  });
+
+  it('will not let a threshold out of range strand a leader or wave them through', async () => {
+    // It arrives over HTTP. A nought would offer the way out of a phase nobody had started; anything
+    // above one would hold every phase open for ever.
+    readAnswers.mockResolvedValue(allOf(SETUP.slice(0, 5)));
+    const { unmount } = render(<PhaseConversation {...setup} coveredPercent={0} />);
+    await waitFor(() => expect(readAnswers).toHaveBeenCalled());
+
+    expect(
+      screen.queryByRole('button', { name: /Continue to the next phase/ })
+    ).not.toBeInTheDocument();
+    unmount();
+
+    readAnswers.mockResolvedValue(allOf(SETUP));
+    render(<PhaseConversation {...setup} coveredPercent={400} />);
+
+    expect(
+      await screen.findByRole('button', { name: /Continue to the next phase/ })
+    ).toBeInTheDocument();
+  });
+
   it('does not count the coach’s own guesses towards a phase being covered', async () => {
     // A phase whose coverage is made of low-confidence inferences is a phase where the coach filled
     // the audit in on the leader's behalf, which is the one thing the panel exists to prevent.

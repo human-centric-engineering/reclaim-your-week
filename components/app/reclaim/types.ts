@@ -46,6 +46,9 @@ export const uiConfigSchema = z.object({
       })
     )
     .default([]),
+  // How much of a phase has to be covered before the move onward is offered. Defaulted so a response
+  // from before this shipped still parses, at the same number that used to be compiled in.
+  phaseCoveredPercent: z.number().default(90),
 });
 
 export type PhaseStatus = z.infer<typeof phaseStatusSchema>;

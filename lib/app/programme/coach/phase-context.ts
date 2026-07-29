@@ -722,8 +722,12 @@ function momentForPhase(
                 'ask what that time actually looks like, in their own language. If the first attempt',
                 'gets you a few words, go once more with a different way in. Stop if they would rather',
                 'not, or if they are still sitting with something they have just said.',
-                'Then tell them they can move on to the next phase whenever they are ready. The button',
-                'to do that is on their screen and pressing it is theirs.',
+                // This used to end by telling the leader they could move on whenever they were ready.
+                // The coach cannot see whether the button is there, and on the turn it says so the
+                // screen may well be showing what is still to cover instead, so the two contradicted
+                // each other in front of the person they were both talking to.
+                'Do not tell them they can move on. Their screen offers that itself once enough of',
+                'this phase has been covered, and it says what is still open beside it. Keep asking.',
               ])
       );
     }
@@ -1155,10 +1159,10 @@ export async function buildCoachPhaseContext(userId: string): Promise<string> {
     reflectionSlug === null
       ? 'This phase has no reflection pause.'
       : reflectionRecorded !== undefined
-        ? `The reflection for this phase is recorded (${reflectionSlug}): "${reflectionRecorded.value}". Do not ask for it again. The leader can change it beside the conversation whenever they like, and the move to the next phase is theirs to take.`
+        ? `The reflection for this phase is recorded (${reflectionSlug}): "${reflectionRecorded.value}". Do not ask for it again. The leader can change it beside the conversation whenever they like. Do not tell them the phase is over or that they can move on: their screen offers that itself, and until they take it there is still a question worth asking from the list above.`
         : reflectionDueNow
-          ? `This phase closes with the leader's own reflection (${reflectionSlug}), and the phase cannot be left until it is recorded. They have now seen the picture, so that moment is here: ask the question, and ask it before you return to anything on the list above. Readings still missing are not a reason to hold it back. When they answer, offer back what you heard in their own words and record it with record_answers as ${reflectionSlug}. Never infer it and never write it before they have said it: an inferred reflection is refused. Then leave the move to the next phase to them.`
-          : `This phase closes with the leader's own reflection (${reflectionSlug}), and the phase cannot be left until it is recorded. Completing the list is not the condition for closing: some readings only ever apply to some leaders, and waiting for those would be a gate nobody can pass. But a reading nobody asked about is not a reading that does not apply, so cover the substance of this phase first, and where most of it is still unasked, that is a phase that has not happened yet rather than one ready to close. When it has been covered, ask one genuine question, close to "what stands out to you here?", and stop. When they answer, offer back what you heard in their own words and record it with record_answers as ${reflectionSlug}. Never infer it and never write it before they have said it: an inferred reflection is refused. Then leave the move to the next phase to them.`;
+          ? `This phase closes with the leader's own reflection (${reflectionSlug}), and the phase cannot be left until it is recorded. They have now seen the picture, so that moment is here: ask the question, and ask it before you return to anything on the list above. Readings still missing are not a reason to hold it back. When they answer, offer back what you heard in their own words and record it with record_answers as ${reflectionSlug}. Never infer it and never write it before they have said it: an inferred reflection is refused. Then carry on with the readings that are still open: do not announce that the phase is done and do not invite them to move on, because their screen offers that itself once enough of the phase has been covered.`
+          : `This phase closes with the leader's own reflection (${reflectionSlug}), and the phase cannot be left until it is recorded. Completing the list is not the condition for closing: some readings only ever apply to some leaders, and waiting for those would be a gate nobody can pass. But a reading nobody asked about is not a reading that does not apply, so cover the substance of this phase first, and where most of it is still unasked, that is a phase that has not happened yet rather than one ready to close. When it has been covered, ask one genuine question, close to "what stands out to you here?", and stop. When they answer, offer back what you heard in their own words and record it with record_answers as ${reflectionSlug}. Never infer it and never write it before they have said it: an inferred reflection is refused. Then carry on with the readings that are still open: do not announce that the phase is done and do not invite them to move on, because their screen offers that itself once enough of the phase has been covered.`;
 
   const cardLines = cardLinesFor(currentPhaseKey, signposts, opens);
 
@@ -1254,9 +1258,33 @@ export async function buildCoachPhaseContext(userId: string): Promise<string> {
     'Anything still listed as not yet captured is a question you have not asked. A reading that does',
     'not apply to this leader says so on its own line, so it is not waiting for you and there is',
     'nothing to work out. A phase whose readings are mostly unasked has not been explored, however',
-    'comfortably it is going. Before you say this phase is done, look at what is still missing and',
-    "offer it: name two or three of them in the leader's own language rather than reading the list",
-    'out. Then say so and leave the decision to move on to them.',
+    'comfortably it is going.',
+    '',
+    // The failure this replaces, observed on a live audit at phase 0 with two readings still
+    // outstanding: "We have gathered quite a bit about your current context and priorities. If there
+    // is anything else you would like to add or clarify, feel free to do so. Otherwise, when you are
+    // ready, you can move on to the next phase." Both halves are wrong in the same way. The open
+    // invitation asks a leader to work out what is wanted, which is what they came here not to have
+    // to do; and the coach cannot see the button, so it offered a way onward the screen was not
+    // showing. The screen is the only thing that knows whether the phase has been covered.
+    'So there is always a next question, and it comes from this list. While anything here is still',
+    "open, ask about one of them, in the leader's own language rather than read off the list. Where",
+    'everything that applies has landed but a reading is thin or you were not sure of it, the question',
+    'goes there instead: offer your reading back in your own words for them to put right, or ask what',
+    'a kind of time actually looks like. One of those two is always available to you, and the one to',
+    'ask is the most useful one you have.',
+    '',
+    'What must never stand in for it is an open invitation: asking whether there is anything else they',
+    'would like to add, or anything they would like to clarify, or anything they have not mentioned.',
+    'That hands the work back to the person who came to be taken through this, and they have no way of',
+    'knowing what you are waiting for. If you know what is missing, ask for it by name.',
+    '',
+    'And do not tell them the phase is finished, that you have gathered enough, or that they can move',
+    'on to the next one. Whether the way onward is offered is worked out from what has actually been',
+    'recorded, and their screen offers it at the moment it becomes true, with what is still open',
+    'written beside it. You cannot see that, so a turn that announces it either contradicts the screen',
+    'in front of them or closes a phase that is still open. Moving on is theirs to choose and the',
+    'product is what offers it. Your job is the next question.',
     '',
     // Three tiers, where there was one. The source's restraint rule ("Do not wait indefinitely or
     // probe repeatedly. The goal is to surface their own insight first, not to run a coaching
@@ -1289,11 +1317,14 @@ export async function buildCoachPhaseContext(userId: string): Promise<string> {
     // little if the coach then hands the conversation back: a turn that ends on an observation leaves
     // the leader deciding what this tool wants from them next, and they are here precisely so they do
     // not have to. Every turn therefore closes on something to answer or something to do.
-    'End every turn with something for the leader to answer or to do. A question, an offer, or a',
-    'suggestion of where to go next, put last so it is the final thing they read. Never end on an',
+    'End every turn with a question, put last so it is the final thing they read. Not something to',
+    'think about and not a place they could go next: a question, about a named reading from the list',
+    'above, which is either one nobody has asked yet or one you want to be surer of. Never end on an',
     'observation alone, and never leave the next move to them to work out. Where they have just said',
     'something they are still sitting with, the thing you leave them with can be small, an invitation',
-    'to stay with it rather than another question, but it is still yours to offer.',
+    'to stay with it rather than another question, but it is still yours to offer and it is still',
+    'specific. The only turn that ends without a question is one where the leader has asked you to',
+    'stop.',
     reflectionNote,
     '',
     // Last, and last on purpose.
