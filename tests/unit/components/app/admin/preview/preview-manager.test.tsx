@@ -247,6 +247,21 @@ describe('PreviewManager — creating an account', () => {
 });
 
 describe('PreviewManager — adopting an existing account', () => {
+  it('explains what the label is for on BOTH forms, not just the create one', async () => {
+    // The two "What it is for" fields feed the same badge column, so they carry the same non-obvious
+    // consequence: this text is the only thing on Clients and Shared results that says why the
+    // account exists. Explaining it on one form and not the other is the inconsistency this pins.
+    render(<PreviewManager />);
+
+    for (const id of ['#preview-label', '#adopt-label']) {
+      const field = document.querySelector(id)?.closest('div');
+      expect(
+        within(field as HTMLElement).getByRole('button', { name: /more information/i }),
+        `${id} has no FieldHelp`
+      ).toBeInTheDocument();
+    }
+  });
+
   it('cannot be submitted with an email but no label, or the reverse', async () => {
     const user = userEvent.setup();
     render(<PreviewManager />);

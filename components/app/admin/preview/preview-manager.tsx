@@ -328,9 +328,20 @@ export function PreviewManager() {
             />
           </div>
           <div className="space-y-1.5">
-            <label htmlFor="adopt-label" className="text-sm font-medium">
-              What it is for
-            </label>
+            <span className="flex items-center gap-1.5 text-sm font-medium">
+              <label htmlFor="adopt-label">What it is for</label>
+              <FieldHelp title="Why this needs a name">
+                <p>
+                  The same as on a test account you create here: this is what shows on the badge
+                  next to the account on Clients and Shared results, and it is the only thing on
+                  those screens that says why the account exists.
+                </p>
+                <p className="mt-2">
+                  For an account you walked an invitation link with, something like “walked the
+                  invitation link, 30 July” is enough.
+                </p>
+              </FieldHelp>
+            </span>
             <input
               id="adopt-label"
               value={adoptLabel}

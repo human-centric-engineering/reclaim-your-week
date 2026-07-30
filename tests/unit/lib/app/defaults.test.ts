@@ -89,6 +89,29 @@ describe('lib/app/ bootstrap defaults are no-ops', () => {
     expect((ours[0]?.match as RegExp).test('/api/v1/app/reclaim/invites')).toBe(false);
   });
 
+  it('spends the F19 preview budget on writes only, so the screen cannot exhaust its own cap', () => {
+    // A rule matches on path and carries no method, so without the `skip` the list read would spend
+    // the same ten-an-hour budget as provisioning. That is not marginal: the screen re-reads the list
+    // after every mutation, so each action costs two and the cap is gone in four — and it is the
+    // REFRESH that 429s, so the operator is told the accounts "could not be loaded" about a mutation
+    // that actually succeeded. `applyRateLimit` continues down the policy when `skip` fires, so a
+    // skipped GET lands on the catch-all rather than escaping rate limiting altogether.
+    registerAppRateLimits();
+
+    const effective = getEffectiveRateLimitPolicy();
+    const rule = effective
+      .filter((r) => !RATE_LIMIT_POLICY.includes(r))
+      .find((r) => r.tier === 'reclaim-preview');
+
+    const at = (method: string) =>
+      new Request('http://localhost/api/v1/app/reclaim/admin/preview', { method });
+
+    expect(rule?.skip?.(at('GET'))).toBe(true);
+    // Everything that provisions an account, drives one, or erases one still pays.
+    expect(rule?.skip?.(at('POST'))).toBe(false);
+    expect(rule?.skip?.(at('DELETE'))).toBe(false);
+  });
+
   it('initAppCapabilities is a no-op by default', () => {
     // The real default does nothing and returns void; forks add
     // registerAppCapability() calls. (Behavioural reach into the dispatcher is

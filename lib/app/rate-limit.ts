@@ -50,6 +50,17 @@ const reclaimJoinLimiter = createRateLimiter({
  * hour is far above what an operator doing this by hand ever needs and far below anything that could
  * make a mess worth cleaning up.
  *
+ * **Writes only — and the `skip` below is what makes the number above true.** A rule matches on path
+ * and carries no method, so without it the screen's own list read would spend the same budget. That
+ * is not a marginal cost: `preview-manager.tsx` re-reads the list after **every** mutation, so each
+ * action costs two requests and the ten would be gone in four. Worse, it is the refresh that fails
+ * rather than the action, so the operator is told "The test accounts could not be loaded" about a
+ * mutation that in fact succeeded.
+ *
+ * Reads therefore fall through to the catch-all (100/min, session-keyed), which is the right cap for
+ * them: a `GET` here is one indexed query and sends nothing. `applyRateLimit` continues down the
+ * policy when `skip` fires, so this is a fall-through and not an exemption.
+ *
  * Keyed on the session user rather than IP: two operators in one office should not share a budget.
  */
 const reclaimPreviewLimiter = createRateLimiter({
@@ -71,5 +82,8 @@ export function registerAppRateLimits(): void {
     match: /^\/api\/v1\/app\/reclaim\/admin\/preview/,
     tier: 'reclaim-preview',
     key: 'session-user',
+    // Reads fall through to the catch-all; the tight cap is for what provisions accounts and sends
+    // mail. See the note above — without this the screen exhausts its own budget in four actions.
+    skip: (request) => request.method === 'GET',
   });
 }
