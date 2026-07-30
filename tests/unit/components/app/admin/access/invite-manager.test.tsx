@@ -10,6 +10,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
 const { listInvites, issueInvite, revokeInvite, grantAnotherAudit } = vi.hoisted(() => ({
   listInvites: vi.fn(),
@@ -108,5 +109,94 @@ describe('InviteManager — the email column', () => {
     // opposite of the truth.
     expect(await screen.findByText(/could not be loaded/i)).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByText(/no invitations yet/i)).not.toBeInTheDocument());
+  });
+});
+
+/**
+ * The link reveal — what makes an invitation deliverable when its email is not.
+ *
+ * The status column already tells her a send failed; until this existed there was nothing she could
+ * do about it, because the plaintext token lived for the length of one function call and only its
+ * hash was kept. These pin the two states that matter and the sentence that stops her looking for the
+ * link again tomorrow.
+ */
+describe('InviteManager — the invitation link', () => {
+  const LINK = 'https://ryw.test/accept-invite?token=abc123&email=priya%40example.org';
+
+  /** Fill the form and press a button, as an operator issuing an invitation. */
+  async function issueVia(label: RegExp) {
+    const user = userEvent.setup();
+    render(<InviteManager />);
+    await user.type(screen.getByLabelText(/first name/i), 'Priya');
+    await user.type(screen.getByLabelText(/^email$/i), 'priya@example.org');
+    await user.click(screen.getByRole('button', { name: label }));
+    return user;
+  }
+
+  it('shows the link, and says it cannot be shown again', async () => {
+    issueInvite.mockResolvedValue({ message: 'Invitation sent.', invitationUrl: LINK });
+
+    await issueVia(/send invitation/i);
+
+    expect(await screen.findByText(LINK)).toBeInTheDocument();
+    // The sentence is the point: only a fingerprint is stored, so an operator who dismisses this and
+    // comes back looking for it will not find it. Saying so is what makes "re-send" discoverable.
+    expect(screen.getByText(/shown once/i)).toBeInTheDocument();
+    expect(screen.getByText(/cannot be shown again/i)).toBeInTheDocument();
+  });
+
+  it('shows no link when an invitation already stood', async () => {
+    // Nothing was minted on this path, so there is no plaintext in existence. A reveal here would
+    // have to invent one.
+    issueInvite.mockResolvedValue({
+      message: 'An invitation is already pending for this address. Re-send it to issue a new link.',
+      invitationUrl: null,
+    });
+
+    await issueVia(/send invitation/i);
+
+    expect(await screen.findByText(/already pending/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /copy link/i })).not.toBeInTheDocument();
+  });
+
+  it('copies the link to the clipboard', async () => {
+    issueInvite.mockResolvedValue({ message: 'Invitation sent.', invitationUrl: LINK });
+    // happy-dom ships a real clipboard, so spy on `writeText` rather than reassigning
+    // `navigator.clipboard`, which is getter-only.
+    const writeText = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined);
+
+    const user = await issueVia(/send invitation/i);
+    await user.click(await screen.findByRole('button', { name: /copy link/i }));
+
+    expect(writeText).toHaveBeenCalledWith(LINK);
+    expect(await screen.findByRole('button', { name: /copied/i })).toBeInTheDocument();
+  });
+
+  it('tells the operator to copy by hand when the clipboard refuses', async () => {
+    // Clipboard writes fail on an insecure origin and under some permission policies. Silently doing
+    // nothing would look like the button is broken, with the link sitting right there on screen.
+    issueInvite.mockResolvedValue({ message: 'Invitation sent.', invitationUrl: LINK });
+    vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(new Error('denied'));
+
+    const user = await issueVia(/send invitation/i);
+    await user.click(await screen.findByRole('button', { name: /copy link/i }));
+
+    expect(await screen.findByText(/copy it by hand/i)).toBeInTheDocument();
+  });
+
+  it('drops the link when the invitation is withdrawn', async () => {
+    // Withdrawing deletes the token, so the link on screen now refuses everyone. Leaving a copy
+    // button there hands over an address that fails, which is worse than having none.
+    issueInvite.mockResolvedValue({ message: 'Invitation sent.', invitationUrl: LINK });
+    revokeInvite.mockResolvedValue(undefined);
+
+    const user = await issueVia(/send invitation/i);
+    expect(await screen.findByText(LINK)).toBeInTheDocument();
+
+    await user.click(
+      (await rowFor('priya@example.org')).getByRole('button', { name: /withdraw/i })
+    );
+
+    await waitFor(() => expect(screen.queryByText(LINK)).not.toBeInTheDocument());
   });
 });

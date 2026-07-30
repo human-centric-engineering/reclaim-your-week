@@ -4,6 +4,13 @@
  * GET  /api/v1/app/reclaim/invites   → every invite, enriched (one query, no per-row fetches)
  * POST /api/v1/app/reclaim/invites   → issue (or re-issue with `?resend=true`) a tiered invite
  *
+ * `POST` returns the `/accept-invite` link alongside the row, so an operator can deliver an
+ * invitation by hand when the email cannot — the only route that does. The sibling `refer` route,
+ * which any participant may call, deliberately does not: a link is a token for creating an account at
+ * a given address, and handing one to whoever typed the address would let a participant stake a claim
+ * on somebody else's email. Here the caller is already `withAdminAuth`, and could issue the
+ * invitation to any address regardless.
+ *
  * A leaf surface **beside** Sunrise's generic `/api/v1/users/invite`, not a replacement for it: this
  * one carries the access **tier**, which is what the entitlement gate reads (I14). Core's route keeps
  * working untouched for ordinary user administration (I10).
@@ -67,6 +74,8 @@ export const POST = withAdminAuth(async (request, session) => {
     resend,
   });
 
+  // No `invitationUrl` in the log line, deliberately — see the note on the same omission in
+  // `issueInvite`. The link goes to the operator in the response body and nowhere else.
   log.info('Reclaim invite issued', {
     inviteId: result.invite.id,
     tier: result.invite.tier,
@@ -84,6 +93,10 @@ export const POST = withAdminAuth(async (request, session) => {
         expiresAt: result.expiresAt.toISOString(),
       },
       emailStatus: result.emailStatus,
+      // The link the email carries, so an operator can hand it over when the email cannot. Present
+      // only on the paths that minted a token: `null` when an invitation already stood, because the
+      // stored value is a hash and no link can be reconstructed from it.
+      invitationUrl: result.invitationUrl,
       message:
         result.emailStatus === 'pending'
           ? 'An invitation is already pending for this address. Re-send it to issue a new link.'

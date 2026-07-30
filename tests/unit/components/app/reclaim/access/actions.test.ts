@@ -71,12 +71,21 @@ describe('listInvites', () => {
 });
 
 describe('issueInvite', () => {
-  it('posts the tier and returns the server’s own message', async () => {
-    fetchMock.mockResolvedValue(ok({ emailStatus: 'sent', message: 'Invitation sent.' }));
+  it('posts the tier and returns the server’s own message and link', async () => {
+    fetchMock.mockResolvedValue(
+      ok({
+        emailStatus: 'sent',
+        message: 'Invitation sent.',
+        invitationUrl: 'https://ryw.test/accept-invite?token=abc&email=p%40example.org',
+      })
+    );
 
     expect(
       await issueInvite({ name: 'Priya', email: 'p@example.org', tier: 'client', resend: false })
-    ).toBe('Invitation sent.');
+    ).toEqual({
+      message: 'Invitation sent.',
+      invitationUrl: 'https://ryw.test/accept-invite?token=abc&email=p%40example.org',
+    });
     const [url, init] = fetchMock.mock.calls[0] as [string, { body: string }];
     expect(url).toBe('/api/v1/app/reclaim/invites');
     expect(JSON.parse(init.body)).toEqual({
@@ -86,8 +95,34 @@ describe('issueInvite', () => {
     });
   });
 
-  it('asks for a re-send explicitly rather than by accident', async () => {
+  // The `pending` path mints nothing, so the server has no plaintext to send and says `null`. The
+  // action must pass that through rather than coerce it, or the caller renders a link to nowhere.
+  it('carries a null link through when an invitation already stood', async () => {
+    fetchMock.mockResolvedValue(
+      ok({
+        emailStatus: 'pending',
+        message: 'An invitation is already pending',
+        invitationUrl: null,
+      })
+    );
+
+    expect(
+      await issueInvite({ name: 'Priya', email: 'p@example.org', tier: 'standard', resend: false })
+    ).toEqual({ message: 'An invitation is already pending', invitationUrl: null });
+  });
+
+  it('rejects a response with no link field rather than reporting undefined', async () => {
     fetchMock.mockResolvedValue(ok({ emailStatus: 'sent', message: 'Invitation sent.' }));
+
+    await expect(
+      issueInvite({ name: 'Priya', email: 'p@example.org', tier: 'standard', resend: false })
+    ).rejects.toThrow(/Unexpected response/);
+  });
+
+  it('asks for a re-send explicitly rather than by accident', async () => {
+    fetchMock.mockResolvedValue(
+      ok({ emailStatus: 'sent', message: 'Invitation sent.', invitationUrl: 'https://ryw.test/x' })
+    );
 
     await issueInvite({ name: 'Priya', email: 'p@example.org', tier: 'standard', resend: true });
 

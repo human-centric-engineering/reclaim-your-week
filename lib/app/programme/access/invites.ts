@@ -21,7 +21,7 @@ import { createHash } from 'crypto';
 import { prisma } from '@/lib/db/client';
 import { logger } from '@/lib/logging';
 import { BRAND } from '@/lib/brand';
-import { env } from '@/lib/env';
+import { appUrl } from '@/lib/app/programme/urls';
 import { sendEmail } from '@/lib/email/send';
 import { resolveEmailTemplate } from '@/lib/email/registry';
 import {
@@ -93,6 +93,23 @@ export interface IssueInviteResult {
   /** `sent | failed | disabled` from `sendEmail`, or `pending` when an invite already stood. */
   emailStatus: 'sent' | 'failed' | 'disabled' | 'pending';
   expiresAt: Date;
+  /**
+   * The `/accept-invite` link this invitation carries — the same URL the email contains — returned
+   * to the caller **once**, at issue.
+   *
+   * **Why return it at all.** The email is only the delivery; the link is the invitation. When the
+   * delivery fails, or no mail provider is configured (every local install), the invitation stands
+   * and there was previously no way to reach it — the plaintext was built here, handed to the
+   * template, and dropped. An operator holding a perfectly good invitation with no way to give it to
+   * anyone is the failure this closes.
+   *
+   * **`null` on the `pending` path**, and that is not a shortcut: no token is minted when an
+   * invitation already stands, and the stored one is a SHA-256 hash. There is no plaintext to
+   * recover, so a link genuinely cannot be produced — re-send is the only way to get one.
+   *
+   * Never logged. Callers show it once and do not persist it.
+   */
+  invitationUrl: string | null;
 }
 
 /**
@@ -109,7 +126,13 @@ export async function issueInvite(input: IssueInviteInput): Promise<IssueInviteR
   const existingInvite = await findLiveInviteForEmail(email);
 
   if (existingToken !== null && existingInvite !== null && input.resend !== true) {
-    return { invite: existingInvite, emailStatus: 'pending', expiresAt: existingToken.expiresAt };
+    return {
+      invite: existingInvite,
+      emailStatus: 'pending',
+      expiresAt: existingToken.expiresAt,
+      // No token was minted, and the stored one is a hash — there is no link to hand back.
+      invitationUrl: null,
+    };
   }
 
   const token =
@@ -148,8 +171,7 @@ export async function issueInvite(input: IssueInviteInput): Promise<IssueInviteR
         });
 
   const expiresAt = new Date(Date.now() + INVITE_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
-  const appUrl = env.NEXT_PUBLIC_APP_URL ?? process.env.BETTER_AUTH_URL ?? 'http://localhost:3000';
-  const invitationUrl = `${appUrl}/accept-invite?token=${token}&email=${encodeURIComponent(email)}`;
+  const invitationUrl = `${appUrl()}/accept-invite?token=${token}&email=${encodeURIComponent(email)}`;
 
   const emailResult = await sendEmail({
     to: email,
@@ -179,6 +201,8 @@ export async function issueInvite(input: IssueInviteInput): Promise<IssueInviteR
     data: { emailStatus: emailResult.status },
   });
 
+  // Deliberately no `invitationUrl` here, and no `token`. The link is a single-use credential for
+  // somebody's account; a log line is the one place a secret outlives the request that needed it.
   logger.info('Reclaim: invite issued', {
     inviteId: invite.id,
     tier: invite.tier,
@@ -187,7 +211,7 @@ export async function issueInvite(input: IssueInviteInput): Promise<IssueInviteR
     emailStatus: emailResult.status,
   });
 
-  return { invite: recorded, emailStatus: emailResult.status, expiresAt };
+  return { invite: recorded, emailStatus: emailResult.status, expiresAt, invitationUrl };
 }
 
 /**

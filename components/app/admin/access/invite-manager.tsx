@@ -63,6 +63,10 @@ export function InviteManager() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The link just issued. Held in state and never re-fetched, because the server keeps only its hash:
+  // once this is cleared it is gone, and re-sending is the only way to produce another.
+  const [issuedUrl, setIssuedUrl] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -84,9 +88,11 @@ export function InviteManager() {
     setBusy(true);
     setError(null);
     setNotice(null);
+    setIssuedUrl(null);
     try {
-      const message = await issueInvite({ name, email, tier, resend });
+      const { message, invitationUrl } = await issueInvite({ name, email, tier, resend });
       setNotice(message);
+      setIssuedUrl(invitationUrl);
       // Keep the fields when nothing was actually sent, so the operator can hit re-send without
       // retyping the address they just entered.
       if (!message.startsWith('An invitation is already pending')) {
@@ -101,10 +107,24 @@ export function InviteManager() {
     }
   };
 
+  const copyLink = async () => {
+    if (issuedUrl === null) return;
+    try {
+      await navigator.clipboard.writeText(issuedUrl);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setError('The link could not be copied. Select the address and copy it by hand.');
+    }
+  };
+
   const revoke = async (id: string) => {
     setBusy(true);
     setError(null);
     setNotice(null);
+    // Withdrawing deletes the token, so any link still on screen is dead. Clear it rather than leave
+    // a copy button that hands over an address which now refuses everyone.
+    setIssuedUrl(null);
     try {
       await revokeInvite(id);
       setNotice('Invitation withdrawn.');
@@ -142,7 +162,8 @@ export function InviteManager() {
         <p className="text-muted-foreground mt-1 text-sm">
           Reclaim Your Week is invite-only: an account with no invitation cannot start an audit. Use{' '}
           <strong>Give another audit</strong> for someone who already has an account and has used
-          the one their invitation included.
+          the one their invitation included. Issuing or re-sending shows you the link itself, so you
+          can pass it on by hand if the email does not arrive.
         </p>
       </header>
 
@@ -238,6 +259,49 @@ export function InviteManager() {
           {notice !== null && <p className="text-muted-foreground text-sm">{notice}</p>}
           {error !== null && <p className="text-destructive text-sm">{error}</p>}
         </div>
+
+        {/*
+          The link the email carries, shown once.
+
+          Here for two jobs. It lets her deliver an invitation by hand when the email did not arrive —
+          the "failed" and "not configured" cases the status column already makes visible, which until
+          now she could see and do nothing about. And it is how anyone tests the product without an
+          inbox: invite yourself at a plus-address, open this link, and you are walking the same first
+          minutes a leader walks.
+
+          Shown once and not recoverable, because the server stores only the hash. The wording has to
+          say so, or the reasonable assumption is that it can be looked up again later.
+        */}
+        {issuedUrl !== null && (
+          <div className="bg-muted/40 mt-5 rounded-md border p-4">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h3 className="text-sm font-medium">The invitation link</h3>
+              <button
+                type="button"
+                onClick={() => setIssuedUrl(null)}
+                className="text-muted-foreground hover:text-foreground text-xs underline"
+              >
+                Hide
+              </button>
+            </div>
+            <p className="text-muted-foreground mt-1 text-xs">
+              Shown once. We store only a fingerprint of it, so it cannot be shown again — to get
+              another, re-send with a new link. It expires in seven days and works a single time.
+            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <code className="bg-background min-w-0 flex-1 truncate rounded border px-2 py-1.5 text-xs">
+                {issuedUrl}
+              </code>
+              <button
+                type="button"
+                onClick={() => void copyLink()}
+                className="border-input rounded-md border px-3 py-1.5 text-xs font-medium"
+              >
+                {copied ? 'Copied' : 'Copy link'}
+              </button>
+            </div>
+          </div>
+        )}
       </section>
 
       <section>
