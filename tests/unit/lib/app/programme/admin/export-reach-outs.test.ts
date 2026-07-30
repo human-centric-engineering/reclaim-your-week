@@ -18,6 +18,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
+  previewFindUnique: vi.fn(),
+  previewFindMany: vi.fn(),
   userFindUnique: vi.fn(),
   runFindMany: vi.fn(),
   grantFindMany: vi.fn(),
@@ -47,6 +49,11 @@ vi.mock('@/lib/db/client', () => ({
     reclaimNudge: { findUnique: mocks.nudgeFindUnique },
     reclaimInviteLink: { findMany: mocks.inviteLinkFindMany },
     reclaimReachOut: { findMany: mocks.reachOutFindMany },
+    // F19: whether this account is a test account, and which ones it created.
+    reclaimPreviewAccount: {
+      findUnique: mocks.previewFindUnique,
+      findMany: mocks.previewFindMany,
+    },
   },
 }));
 
@@ -58,6 +65,10 @@ const USER_ID = 'clxxxxxxxxxxxxxxxxxxxxxxxx';
 
 beforeEach(() => {
   for (const mock of Object.values(mocks)) mock.mockReset();
+
+  // F19: not a test account, and has created none.
+  mocks.previewFindUnique.mockResolvedValue(null);
+  mocks.previewFindMany.mockResolvedValue([]);
 
   mocks.userFindUnique.mockResolvedValue({
     id: USER_ID,

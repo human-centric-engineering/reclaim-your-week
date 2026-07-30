@@ -9,7 +9,8 @@
  * `registerAppDriftProbes()` after the framework probes, per the reserved-seam contract.
  *
  * Two kinds of object:
- *   - the **eight hand-written `user` FKs** — each probed with its `ON DELETE` action, so the GDPR
+ *   - the **hand-written `user` FKs** (every entry in `RECLAIM_USER_FKS` below — do not restate the
+ *     count here, it has been wrong twice) — each probed with its `ON DELETE` action, so the GDPR
  *     policy (which lives only in the migration SQL, invisible to the schema-level `onDelete` lint
  *     guard for a plain-scalar FK) is what CI actually reviews. CASCADE = personal data;
  *     SET NULL = retained config/audit (`consent`, `invite`);
@@ -82,6 +83,20 @@ const RECLAIM_USER_FKS: ReadonlyArray<{ table: string; constraint: string; onDel
   {
     table: 'app_reclaim_invite_link',
     constraint: 'app_reclaim_invite_link_createdByUserId_fkey',
+    onDelete: 'SET NULL',
+  },
+  // F19: a test account an operator made. CASCADE on the account, which is what keeps the registry
+  // honest — the exclusion queries read this table for user ids, so a row surviving its user would
+  // name a ghost, and a recycled id could inherit someone else's preview flag. SET NULL on the
+  // operator, like the group links she mints: erasing her must not delete a test account still in use.
+  {
+    table: 'app_reclaim_preview_account',
+    constraint: 'app_reclaim_preview_account_userId_fkey',
+    onDelete: 'CASCADE',
+  },
+  {
+    table: 'app_reclaim_preview_account',
+    constraint: 'app_reclaim_preview_account_createdByUserId_fkey',
     onDelete: 'SET NULL',
   },
 ];

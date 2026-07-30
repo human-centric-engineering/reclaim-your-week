@@ -62,6 +62,7 @@ vi.mock('@/lib/utils/invitation-token', () => ({
 vi.mock('@/lib/email/send', () => ({ sendEmail: sendEmailMock }));
 vi.mock('@/lib/email/registry', () => ({ resolveEmailTemplate: resolveTemplate }));
 
+import { logger } from '@/lib/logging';
 import {
   issueInvite,
   revokeInvite,
@@ -143,6 +144,65 @@ describe('issueInvite', () => {
     expect(props.invitationUrl).toContain(`token=${PLAINTEXT}`);
     expect(props.invitationUrl).toContain('/accept-invite');
     expect(sendEmailMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns the same link it put in the email, so it can be delivered by hand', async () => {
+    // The email is only the delivery; the link is the invitation. Returning it is what lets an
+    // operator rescue a send that failed, and what lets anyone reach `/accept-invite` on an install
+    // with no mail provider — where `sendEmail` reports `disabled` and nothing ever arrives.
+    const result = await issueInvite({
+      email: 'leader@example.org',
+      tier: 'standard',
+      inviteeName: 'Priya',
+      inviterName: 'Rashmir',
+    });
+
+    const emailed = (resolveTemplate.mock.calls[0]?.[1] as { invitationUrl: string }).invitationUrl;
+    expect(result.invitationUrl).toBe(emailed);
+    // The token in the link is the plaintext whose hash is on the row — the pairing that makes the
+    // link actually work. Asserted here as well as against Sunrise, because a link carrying a token
+    // that hashes to something else would look right and refuse everyone.
+    const token = new URL(result.invitationUrl ?? '').searchParams.get('token');
+    expect(token).toBe(PLAINTEXT);
+    expect(hashInviteToken(token ?? '')).toBe(
+      (inviteCreate.mock.calls[0]?.[0] as { data: { token: string } }).data.token
+    );
+  });
+
+  it('returns no link when an invitation already stood', async () => {
+    // Nothing is minted on this path and only a hash is stored, so there is no plaintext in
+    // existence. Returning anything here would mean inventing a link that cannot work.
+    getValid.mockResolvedValue({ expiresAt: new Date('2026-07-08T00:00:00Z') });
+    inviteFindFirst.mockResolvedValue(invite());
+
+    const result = await issueInvite({
+      email: 'leader@example.org',
+      tier: 'standard',
+      inviteeName: 'Priya',
+      inviterName: 'Rashmir',
+    });
+
+    expect(result.invitationUrl).toBeNull();
+  });
+
+  it('never writes the token or the link to a log', async () => {
+    // A log line is the one place a single-use credential outlives the request that needed it, and
+    // logs travel further than the response body ever does.
+    const info = vi.spyOn(logger, 'info');
+    const warn = vi.spyOn(logger, 'warn');
+
+    await issueInvite({
+      email: 'leader@example.org',
+      tier: 'standard',
+      inviteeName: 'Priya',
+      inviterName: 'Rashmir',
+    });
+
+    const logged = JSON.stringify([...info.mock.calls, ...warn.mock.calls]);
+    expect(logged).not.toContain(PLAINTEXT);
+    expect(logged).not.toContain('/accept-invite');
+    // The invite id is what a log line is for — proving the assertion above is not vacuous.
+    expect(logged).toContain('inv1');
   });
 
   it('does not duplicate a pending invitation when resend is not requested', async () => {

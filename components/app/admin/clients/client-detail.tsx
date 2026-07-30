@@ -14,6 +14,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { getClient, type ClientDetailView } from '@/components/app/admin/actions';
 import { ReachOutComposer } from '@/components/app/admin/clients/reach-out-composer';
+import { PreviewBadge } from '@/components/app/admin/preview/preview-badge';
 
 function formatDate(iso: string | null): string {
   if (iso === null) return '—';
@@ -65,7 +66,10 @@ export function ClientDetail({ userId }: { userId: string }) {
         <Link href="/admin/programme/clients" className="text-sm underline">
           ← All clients
         </Link>
-        <h1 className="text-2xl font-semibold">{client.name ?? client.email}</h1>
+        <div className="flex flex-wrap items-center gap-2">
+          <h1 className="text-2xl font-semibold">{client.name ?? client.email}</h1>
+          <PreviewBadge isPreview={client.isPreview} />
+        </div>
         <p className="text-muted-foreground text-sm">
           {client.email} · joined {formatDate(client.joinedAt)}
           {client.referredByName !== null && ` · referred by ${client.referredByName}`}

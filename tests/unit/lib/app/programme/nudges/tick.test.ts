@@ -10,6 +10,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
+  previewFindMany: vi.fn(),
   runFindMany: vi.fn(),
   userFindMany: vi.fn(),
   nudgeFindMany: vi.fn(),
@@ -23,6 +24,8 @@ vi.mock('@/lib/db/client', () => ({
   prisma: {
     reclaimAuditRun: { findMany: mocks.runFindMany },
     user: { findMany: mocks.userFindMany },
+    // F19: test accounts are excluded from the cohort. Empty by default.
+    reclaimPreviewAccount: { findMany: mocks.previewFindMany },
     reclaimNudge: {
       findMany: mocks.nudgeFindMany,
       create: mocks.nudgeCreate,
@@ -62,6 +65,8 @@ beforeEach(() => {
   mocks.nudgeFindUnique.mockResolvedValue(null);
   mocks.nudgeUpdateMany.mockResolvedValue({ count: 1 });
   mocks.sendEmail.mockResolvedValue({ success: true, status: 'sent' });
+  // F19: nobody is a test account unless a test says so.
+  mocks.previewFindMany.mockResolvedValue([]);
 });
 
 describe('runNudgeTick', () => {

@@ -15,19 +15,20 @@ load-bearing in aggregate.
 > `vitest run tests/unit/invariants` — so **the directory is the wiring**. A new file dropped in
 > there gates automatically; a guard placed anywhere else does not, however invariant-shaped it looks.
 >
-> | Guard                                            | Invariant   | Landed      |
-> | ------------------------------------------------ | ----------- | ----------- |
-> | `npm run leaf:content-diff`                      | I11 hop 1   | pre-F2      |
-> | `npm run leaf:board-check`                       | — (P21/P23) | F12 t-3     |
-> | `tests/unit/invariants/voice.test.ts`            | I1, I2      | F2 t-4      |
-> | `tests/unit/invariants/slot-sensitivity.test.ts` | I5          | F2 t-4      |
-> | `tests/unit/invariants/agent-caps.test.ts`       | I6          | F2 t-4      |
-> | `tests/unit/invariants/write-path.test.ts`       | I3          | F4 t-2      |
-> | `tests/unit/invariants/calendar-privacy.test.ts` | I4          | F5          |
-> | `tests/unit/invariants/admin-support.test.ts`    | D4 (F10)    | F10 t-1     |
-> | `tests/unit/invariants/product-voice.test.ts`    | I1, I2      | open item 8 |
-> | `tests/unit/invariants/chart-beat.test.ts`       | I12         | conv. 5     |
-> | `tests/unit/invariants/reachability.test.ts`     | —           | conv. 7     |
+> | Guard                                             | Invariant   | Landed      |
+> | ------------------------------------------------- | ----------- | ----------- |
+> | `npm run leaf:content-diff`                       | I11 hop 1   | pre-F2      |
+> | `npm run leaf:board-check`                        | — (P21/P23) | F12 t-3     |
+> | `tests/unit/invariants/voice.test.ts`             | I1, I2      | F2 t-4      |
+> | `tests/unit/invariants/slot-sensitivity.test.ts`  | I5          | F2 t-4      |
+> | `tests/unit/invariants/agent-caps.test.ts`        | I6          | F2 t-4      |
+> | `tests/unit/invariants/write-path.test.ts`        | I3          | F4 t-2      |
+> | `tests/unit/invariants/calendar-privacy.test.ts`  | I4          | F5          |
+> | `tests/unit/invariants/admin-support.test.ts`     | D4 (F10)    | F10 t-1     |
+> | `tests/unit/invariants/product-voice.test.ts`     | I1, I2      | open item 8 |
+> | `tests/unit/invariants/chart-beat.test.ts`        | I12         | conv. 5     |
+> | `tests/unit/invariants/reachability.test.ts`      | —           | conv. 7     |
+> | `tests/unit/invariants/preview-exclusion.test.ts` | — (F19)     | F19 t-2     |
 >
 > **2 · The main test suite — every PR, but not via `leaf:checks`.**
 > `tests/unit/app/programme/content.test.ts` (I11 hop 2, F2 t-3) lives outside
@@ -35,10 +36,12 @@ load-bearing in aggregate.
 > distinction matters to anyone reasoning about which gate protects what: I11's second hop is as
 > gated as the first, by a different job.
 >
-> **3 · CI's `smoke` job — every PR, real Postgres.** All six that need no provider key:
-> `smoke:reclaim-run`, `smoke:reclaim-erasure`, `smoke:reclaim-access`, `smoke:reclaim` (a fake
-> provider), and — since F12 t-2 — `smoke:reclaim-coach` (I12's pacing, the moment ledger) and
-> `smoke:reclaim-join` (the seat cap under concurrency).
+> **3 · CI's `smoke` job — every PR, real Postgres.** Every leaf smoke that needs no provider key —
+> do not restate the count, it was "all six" through two additions: `smoke:reclaim-run`,
+> `smoke:reclaim-erasure`, `smoke:reclaim-access`, `smoke:reclaim` (a fake provider); since F12 t-2
+> `smoke:reclaim-coach` (I12's pacing, the moment ledger) and `smoke:reclaim-join` (the seat cap under
+> concurrency); since F15 `smoke:reclaim-report` (the PDF from a real run); and since F19
+> `smoke:reclaim-preview` (a test account walks the real engine, and the published figures do not move).
 >
 > **Not gated anywhere.** The two that need a real model key, and only those:
 > `smoke:reclaim-calendar` (I4 end to end) and `smoke:reclaim-analyst` (whether a real model can get

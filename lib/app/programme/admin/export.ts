@@ -37,6 +37,7 @@ export const EXPORTED_SOURCES = [
   'app_reclaim_nudge',
   'app_reclaim_invite_link',
   'app_reclaim_reach_out',
+  'app_reclaim_preview_account',
   'framework_slot_value',
 ] as const;
 
@@ -67,6 +68,23 @@ export interface ClientExport {
    * but an admin is a data subject too, and "which doors did I open" is a fact about them.
    */
   inviteLinks: unknown[];
+  /**
+   * Whether this account is registered as a test account, and who registered it (F19).
+   *
+   * `null` for everybody except the handful of accounts somebody made to walk the product. Included
+   * because the completeness rule this file is built on is the right one: the row is a record the
+   * controller holds *about this account*, and it has a consequence — an account registered here is
+   * left out of the published figures and never sent a quarterly reminder. A subject entitled to know
+   * what is held about them is entitled to know that.
+   *
+   * Also carries the mirror fact: preview accounts **this** subject created. An admin is a data
+   * subject too, and it is the same argument as `inviteLinks` — "which accounts did I make" is a fact
+   * about her.
+   */
+  previewAccount: {
+    registered: unknown;
+    created: unknown[];
+  };
   /** Every current slot value — the audit answers, including the sensitive prose. */
   answers: Array<{
     slotSlug: string;
@@ -97,6 +115,8 @@ export async function buildClientExport(userId: string): Promise<ClientExport | 
     nudge,
     inviteLinks,
     reachOuts,
+    previewRegistered,
+    previewCreated,
     heads,
   ] = await Promise.all([
     // Every field of the run **except `conversationId`** (F17).
@@ -176,6 +196,18 @@ export async function buildClientExport(userId: string): Promise<ClientExport | 
         createdAt: true,
       },
     }),
+    // F19: is this account itself registered as a test account, and which ones did it create.
+    // Both directions, for the reason `invites` is exported both ways — the subject's right reaches
+    // what is recorded about them, whichever end of the relationship they are.
+    prisma.reclaimPreviewAccount.findUnique({
+      where: { userId },
+      select: { label: true, createdByUserId: true, createdAt: true },
+    }),
+    prisma.reclaimPreviewAccount.findMany({
+      where: { createdByUserId: userId },
+      select: { userId: true, label: true, createdAt: true },
+      orderBy: { createdAt: 'asc' },
+    }),
     // Heads, not history: the subject's data as it stands. Superseded versions are an artefact of
     // how the store works rather than something the leader ever said twice on purpose.
     getSlotHeads(userId),
@@ -198,6 +230,7 @@ export async function buildClientExport(userId: string): Promise<ClientExport | 
     nudge,
     inviteLinks,
     reachOuts,
+    previewAccount: { registered: previewRegistered, created: previewCreated },
     answers: heads.map((h) => ({
       slotSlug: h.slotSlug,
       value: h.value,

@@ -142,6 +142,11 @@ const COACH_VOICED = [
   // model's history for the whole run, so it is read every turn by the thing whose voice this guard
   // protects — the strongest case in this list for a file no leader ever sees.
   'lib/app/programme/coach/opening.ts',
+  // F19. The canned analyst reading a fabricated preview audit carries. It renders in the summary and
+  // in the PDF, in the analyst's own section, so somebody walking a test account reads it exactly where
+  // a leader reads the real thing — and the point of walking a test account is to judge how the screen
+  // reads. Prose that failed I2 here would be prose nobody could tell apart from a real reading.
+  'lib/app/programme/preview/fixtures.ts',
   // The three emails the app authors. `welcome.tsx` is here because its absence had a cost; the other
   // two were already clean, which is luck rather than enforcement, and this is what ends the luck.
   'components/app/emails/invitation.tsx',

@@ -475,3 +475,42 @@ model ReclaimReachOut {
   @@index([auditRunId])
   @@map("app_reclaim_reach_out")
 }
+
+/// A test participant, created by an operator to walk the product (F19).
+///
+/// **The row IS the fact "this account is not a client."** Nothing else distinguishes one, and that is
+/// deliberate: a preview account signs in, consents, and runs the audit through the same routes a
+/// leader does, which is the whole point of having them. `User.accountType` cannot carry the fact —
+/// `SERVICE` is a non-login principal, and `prisma/schema/auth.prisma` is Sunrise's under I10 — so it
+/// lives here, and the exclusion downstream is an id-set read rather than a `where` fragment.
+///
+/// **What the fact is for.** Preview accounts must not move the published figures. A fabricated audit
+/// entering `readAggregate`'s cohort can push it past `aggregateMinimumCohort` and get invented hours
+/// published as the k-anonymised number; a fabricated completed run enters the quarterly nudge cohort
+/// and a real email is dispatched. Both are read-time exclusions keyed on this table, guarded by
+/// `tests/unit/invariants/preview-exclusion.test.ts`.
+///
+/// The operator screens (`listClients`, `listSharedResults`) deliberately still **show** these
+/// accounts, badged. Hiding them would mean an operator could not find the test accounts she made in
+/// order to remove them.
+///
+/// Personal data → CASCADE on `userId`: erasing the account must take the registry row with it, or the
+/// exclusion list names a user id that no longer exists. The operator → SET NULL, matching
+/// `app_reclaim_invite_link.createdByUserId`, because an admin account is erasable too and erasing her
+/// must not delete a live test account she happened to create.
+model ReclaimPreviewAccount {
+  id     String @id @default(cuid())
+  userId String @unique // FK to User.id — ON DELETE CASCADE (personal data)
+
+  /// What this account is for, in the operator's words ("Rashmir's walkthrough, Aug 12"). Shown on the
+  /// badge wherever the account appears, so a row nobody remembers creating still explains itself.
+  label String
+
+  /// Who created it. FK to User.id — ON DELETE SET NULL (the account outlives its creator).
+  createdByUserId String?
+
+  createdAt DateTime @default(now())
+
+  @@index([createdByUserId])
+  @@map("app_reclaim_preview_account")
+}

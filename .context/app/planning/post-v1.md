@@ -792,6 +792,7 @@ report link, no new bearer token · `transcriptConsent` as a **column** on the e
 | F16 | `ryw-audit-lifecycle`    | John  | **shipped** | F12        | 3     | The abandon dead end, an unrecoverable failed turn, phase 6's last textarea |
 | F17 | `ryw-transcript-consent` | John  | **shipped** | F12        | 2     | Consent before Rashmir reads a conversation, and the export's back door     |
 | F18 | `ryw-admin-care`         | John  | **shipped** | F16 t-1    | 2     | Rashmir can preview her own words, and act on a leader who stopped          |
+| F19 | `ryw-preview`            | John  | **shipped** | F8, F11    | 3     | Seeing the product without an inbox, and without moving the figures         |
 
 **Two hard orderings, both of which cost a rewrite if ignored.** F13 t-1 before F14 t-2, or the
 analyst re-implements I-composite's arithmetic — the thing I-composite's own note warns against. F14

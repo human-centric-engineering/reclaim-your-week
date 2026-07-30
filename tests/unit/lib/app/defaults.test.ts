@@ -28,11 +28,19 @@ import { emailOverrides } from '@/lib/app/emails';
 import { initApp } from '@/lib/app/bootstrap';
 import { initAppKnowledgeAccessContributors } from '@/lib/app/knowledge-access-contributors';
 import appEslintConfig from '@/lib/app/eslint.config.mjs';
-import { getEffectiveRateLimitPolicy, RATE_LIMIT_POLICY } from '@/lib/security/rate-limit-policy';
+import {
+  getEffectiveRateLimitPolicy,
+  RATE_LIMIT_POLICY,
+  __resetAppRateLimitRules,
+} from '@/lib/security/rate-limit-policy';
 import { getRegisteredNavSections, __resetNavRegistryForTests } from '@/lib/admin-nav/registry';
 
 afterEach(() => {
   __resetNavRegistryForTests();
+  // Both rate-limit tests in this file call the real `registerAppRateLimits()`, and
+  // `registerRateLimitRule` dedupes by object reference, not by content — a fresh call from a second
+  // test appends a second, referentially distinct copy of each rule rather than being a no-op.
+  __resetAppRateLimitRules();
 });
 
 describe('lib/app/ bootstrap defaults are no-ops', () => {
@@ -56,6 +64,52 @@ describe('lib/app/ bootstrap defaults are no-ops', () => {
     expect(ours[0]?.match).toBeInstanceOf(RegExp);
     expect((ours[0]?.match as RegExp).test('/api/v1/app/reclaim/join/abc')).toBe(true);
     expect((ours[0]?.match as RegExp).test('/api/v1/app/reclaim/invites')).toBe(false);
+  });
+
+  it('registerAppRateLimits also registers the F19 preview-account cap, session-keyed', () => {
+    // F19: the preview-account surface provisions real accounts and sends real email, so it is
+    // tightened below the inherited 100/min section cap rather than left on it — a stuck button
+    // should not be free to create a hundred accounts a minute. Its own test, since it is a second,
+    // independent rule registered by the same call the test above already exercises.
+    registerAppRateLimits();
+
+    const effective = getEffectiveRateLimitPolicy();
+    const appRules = effective.filter((rule) => !RATE_LIMIT_POLICY.includes(rule));
+    const ours = appRules.filter((rule) => rule.tier === 'reclaim-preview');
+
+    expect(ours).toHaveLength(1);
+    // Session-keyed, not IP: two operators in one office must not share a budget.
+    expect(ours[0]?.key).toBe('session-user');
+    expect(ours[0]?.match).toBeInstanceOf(RegExp);
+    expect((ours[0]?.match as RegExp).test('/api/v1/app/reclaim/admin/preview')).toBe(true);
+    expect(
+      (ours[0]?.match as RegExp).test('/api/v1/app/reclaim/admin/preview/abc/fast-forward')
+    ).toBe(true);
+    // Must not accidentally widen to the ordinary invites surface, which stays on its own limiter.
+    expect((ours[0]?.match as RegExp).test('/api/v1/app/reclaim/invites')).toBe(false);
+  });
+
+  it('spends the F19 preview budget on writes only, so the screen cannot exhaust its own cap', () => {
+    // A rule matches on path and carries no method, so without the `skip` the list read would spend
+    // the same ten-an-hour budget as provisioning. That is not marginal: the screen re-reads the list
+    // after every mutation, so each action costs two and the cap is gone in four — and it is the
+    // REFRESH that 429s, so the operator is told the accounts "could not be loaded" about a mutation
+    // that actually succeeded. `applyRateLimit` continues down the policy when `skip` fires, so a
+    // skipped GET lands on the catch-all rather than escaping rate limiting altogether.
+    registerAppRateLimits();
+
+    const effective = getEffectiveRateLimitPolicy();
+    const rule = effective
+      .filter((r) => !RATE_LIMIT_POLICY.includes(r))
+      .find((r) => r.tier === 'reclaim-preview');
+
+    const at = (method: string) =>
+      new Request('http://localhost/api/v1/app/reclaim/admin/preview', { method });
+
+    expect(rule?.skip?.(at('GET'))).toBe(true);
+    // Everything that provisions an account, drives one, or erases one still pays.
+    expect(rule?.skip?.(at('POST'))).toBe(false);
+    expect(rule?.skip?.(at('DELETE'))).toBe(false);
   });
 
   it('initAppCapabilities is a no-op by default', () => {

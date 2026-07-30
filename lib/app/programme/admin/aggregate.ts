@@ -27,6 +27,7 @@ import { prisma } from '@/lib/db/client';
 import { getSlotHeads } from '@/lib/framework/data-slots/values';
 import { RECLAIM_BUCKETS, bucketToken } from '@/lib/app/programme/content';
 import { readReclaimAdminConfig } from '@/lib/app/programme/config';
+import { previewUserIds, excludeIds } from '@/lib/app/programme/preview/accounts';
 
 export interface AggregateBucket {
   bucketSlug: string;
@@ -204,8 +205,15 @@ function aggregateSlots(): string[] {
 export async function readAggregate(): Promise<AggregateView> {
   const { aggregateMinimumCohort } = await readReclaimAdminConfig();
 
+  // Test accounts are excluded here and nowhere else in this file, because `consenting` is what every
+  // query below is scoped to — the population is defined once.
+  //
+  // This is the most damaging place a preview account could reach (F19). The figure this function
+  // produces is k-anonymity-suppressed below `aggregateMinimumCohort`, so a single fabricated audit can
+  // push a cohort of four over a threshold of five and publish invented hours as though they were a
+  // real cohort's — a number that reads as evidence and is not.
   const consents = await prisma.reclaimConsent.findMany({
-    where: { userId: { not: null } },
+    where: { userId: { not: null, ...excludeIds(await previewUserIds()) } },
     select: { userId: true },
     distinct: ['userId'],
   });

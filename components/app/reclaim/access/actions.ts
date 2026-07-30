@@ -65,6 +65,18 @@ export type ClaimResult = z.infer<typeof claimResultSchema>;
 export type InviteLinkRow = z.infer<typeof inviteLinkRowSchema>;
 export type InviteLinkConfig = z.infer<typeof inviteLinkListSchema>['config'];
 const issueResultSchema = z.object({ emailStatus: z.string(), message: z.string() });
+
+/**
+ * The admin issue response, which carries the `/accept-invite` link as well.
+ *
+ * A separate schema from `issueResultSchema` rather than one with an optional field, because the
+ * difference is a rule and not a shape: the admin route returns the link, and the referral route —
+ * callable by any participant — must never do so. A single permissive schema would let the link
+ * appear on the referral path the day someone adds it there, and nothing would object.
+ */
+const adminIssueResultSchema = issueResultSchema.extend({
+  invitationUrl: z.string().nullable(),
+});
 const grantResultSchema = z.object({ granted: z.boolean(), message: z.string() });
 const consentStateSchema = z.object({
   accepted: z.boolean(),
@@ -88,20 +100,33 @@ export async function listInvites(): Promise<InviteRow[]> {
   return parseEnvelope(await res.json(), inviteListSchema).invites;
 }
 
-/** Issue (or re-issue) a tiered invite. Returns the server's own message for the operator. */
+export interface IssuedInvite {
+  /** The server's own sentence for the operator. */
+  message: string;
+  /** The `/accept-invite` link, or `null` when an invitation already stood (nothing was minted). */
+  invitationUrl: string | null;
+}
+
+/**
+ * Issue (or re-issue) a tiered invite. Returns the server's own message **and** the link.
+ *
+ * The link is shown once and never stored: only its hash exists server-side, so a screen that lost it
+ * cannot ask for it again — re-sending is the only way to get another. Callers must say so.
+ */
 export async function issueInvite(input: {
   name: string;
   email: string;
   tier: string;
   resend: boolean;
-}): Promise<string> {
+}): Promise<IssuedInvite> {
   const res = await fetch(`/api/v1/app/reclaim/invites${input.resend ? '?resend=true' : ''}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name: input.name, email: input.email, tier: input.tier }),
   });
   if (!res.ok) throw new Error(await failureMessage(res, 'The invitation could not be issued.'));
-  return parseEnvelope(await res.json(), issueResultSchema).message;
+  const result = parseEnvelope(await res.json(), adminIssueResultSchema);
+  return { message: result.message, invitationUrl: result.invitationUrl };
 }
 
 /** Withdraw an unredeemed invite. */

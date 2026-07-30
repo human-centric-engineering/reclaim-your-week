@@ -17,6 +17,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { FieldHelp } from '@/components/ui/field-help';
 import { listClients, type ClientListView, type ClientRow } from '@/components/app/admin/actions';
+import { PreviewBadge } from '@/components/app/admin/preview/preview-badge';
 
 const STATUS_LABEL: Record<ClientRow['status'], string> = {
   never_started: 'Signed up',
@@ -187,6 +188,14 @@ export function ClientsTable() {
                   >
                     {client.name ?? client.email}
                   </Link>
+                  {/* F19: shown, not hidden — she cannot clean up accounts she cannot see. The count
+                      above therefore includes them, which is why each one has to say so here. */}
+                  {client.isPreview && (
+                    <>
+                      {' '}
+                      <PreviewBadge isPreview />
+                    </>
+                  )}
                   <div className="text-muted-foreground text-xs">{client.email}</div>
                 </td>
                 <td className="py-2 pr-4">

@@ -36,6 +36,38 @@ const reclaimJoinLimiter = createRateLimiter({
   maxRequests: 40,
 });
 
+/**
+ * The preview-account surface (F19) — `/api/v1/app/reclaim/admin/preview/**`.
+ *
+ * **Tightened rather than loosened, and against the section cap rather than a threat.** These routes
+ * are `withAdminAuth`, so this is not about an attacker. It is about what one endpoint does per call:
+ * provisioning creates a real account and sends a real welcome email, and a completed fast-forward
+ * writes roughly forty slot versions, walks six journey transitions, and sends a completion email.
+ *
+ * Leaf paths fall through to the catch-all rule, which is the loosest in the table: 100 a minute. A
+ * stuck button, a double-click on a slow connection, or a retry loop in a browser extension would
+ * therefore be free to create a hundred accounts in a minute, each with a mailbox behind it. Ten an
+ * hour is far above what an operator doing this by hand ever needs and far below anything that could
+ * make a mess worth cleaning up.
+ *
+ * **Writes only — and the `skip` below is what makes the number above true.** A rule matches on path
+ * and carries no method, so without it the screen's own list read would spend the same budget. That
+ * is not a marginal cost: `preview-manager.tsx` re-reads the list after **every** mutation, so each
+ * action costs two requests and the ten would be gone in four. Worse, it is the refresh that fails
+ * rather than the action, so the operator is told "The test accounts could not be loaded" about a
+ * mutation that in fact succeeded.
+ *
+ * Reads therefore fall through to the catch-all (100/min, session-keyed), which is the right cap for
+ * them: a `GET` here is one indexed query and sends nothing. `applyRateLimit` continues down the
+ * policy when `skip` fires, so this is a fall-through and not an exemption.
+ *
+ * Keyed on the session user rather than IP: two operators in one office should not share a budget.
+ */
+const reclaimPreviewLimiter = createRateLimiter({
+  interval: 60 * 60 * 1000,
+  maxRequests: 10,
+});
+
 export function registerAppRateLimits(): void {
   registerRateLimitTier('reclaim-join', reclaimJoinLimiter);
   registerRateLimitRule({
@@ -43,5 +75,15 @@ export function registerAppRateLimits(): void {
     tier: 'reclaim-join',
     // Keyed on IP because there is no session — the claimant has no account yet, by definition.
     key: 'ip',
+  });
+
+  registerRateLimitTier('reclaim-preview', reclaimPreviewLimiter);
+  registerRateLimitRule({
+    match: /^\/api\/v1\/app\/reclaim\/admin\/preview/,
+    tier: 'reclaim-preview',
+    key: 'session-user',
+    // Reads fall through to the catch-all; the tight cap is for what provisions accounts and sends
+    // mail. See the note above — without this the screen exhausts its own budget in four actions.
+    skip: (request) => request.method === 'GET',
   });
 }

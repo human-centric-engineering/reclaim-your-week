@@ -12,7 +12,7 @@
  * registration is read during the sidebar's render, so it cannot be async (see
  * `lib/admin-nav/registry.ts`).
  */
-import { KeyRound, LayoutDashboard, Users, Inbox, FileText } from 'lucide-react';
+import { KeyRound, LayoutDashboard, Users, Inbox, FileText, FlaskConical } from 'lucide-react';
 import { registerNavSection } from '@/lib/admin-nav/registry';
 
 export function initLeafAdminNav(): void {
@@ -62,6 +62,15 @@ export function initLeafAdminNav(): void {
         label: 'Access',
         icon: KeyRound,
         description: 'Tiered invitations — issue, re-send, withdraw',
+      },
+      {
+        // Last in the section because it is the one thing here that is not about a real leader. It
+        // sits after Access deliberately: the two are a pair, and the invitation link on that screen
+        // is the other half of how somebody walks the product.
+        href: '/admin/programme/preview',
+        label: 'Preview',
+        icon: FlaskConical,
+        description: 'Test accounts that walk the product without changing the figures',
       },
     ],
   });

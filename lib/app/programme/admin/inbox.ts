@@ -12,6 +12,7 @@
  */
 
 import { prisma } from '@/lib/db/client';
+import { previewUserIdSet } from '@/lib/app/programme/preview/accounts';
 
 export interface SharedResult {
   userId: string;
@@ -33,6 +34,16 @@ export interface SharedResult {
    * choice somebody made.
    */
   transcriptConsent: boolean;
+  /**
+   * Whether this came from a test account (F19).
+   *
+   * **Badged, not hidden.** A fabricated share must not read as a leader waiting for a reply — but
+   * removing it would mean an operator could not see the test accounts she made in order to remove
+   * them, and a share that vanished from this list while sitting in the clients table would be its own
+   * small mystery. So it stays, labelled, and the counting screens (`readAggregate`, `readMeasures`)
+   * are where the exclusion lives instead.
+   */
+  isPreview: boolean;
 }
 
 /** Everything shared with the coach, newest first. Four batched queries; nothing per-row. */
@@ -43,7 +54,7 @@ export async function listSharedResults(): Promise<SharedResult[]> {
   const userIds = [...new Set(shares.map((s) => s.userId))];
   const runIds = [...new Set(shares.map((s) => s.auditRunId))];
 
-  const [users, runs, feedback] = await Promise.all([
+  const [users, runs, feedback, previewIds] = await Promise.all([
     prisma.user.findMany({
       where: { id: { in: userIds } },
       select: { id: true, name: true, email: true },
@@ -53,6 +64,7 @@ export async function listSharedResults(): Promise<SharedResult[]> {
       select: { id: true, quarter: true },
     }),
     prisma.reclaimFeedback.findMany({ where: { auditRunId: { in: runIds } } }),
+    previewUserIdSet(),
   ]);
 
   const userById = new Map(users.map((u) => [u.id, u]));
@@ -79,6 +91,7 @@ export async function listSharedResults(): Promise<SharedResult[]> {
         quarter: quarterByRun.get(share.auditRunId) ?? null,
         feedback: fb === undefined ? null : { text: fb.text, quoteConsent: fb.quoteConsent },
         transcriptConsent: share.transcriptConsent,
+        isPreview: previewIds.has(share.userId),
       } satisfies SharedResult,
     ];
   });
