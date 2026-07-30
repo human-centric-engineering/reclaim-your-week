@@ -163,7 +163,7 @@ export function readCalendarReading(
     if (bucket.conditional && !fundraisingRelevant) continue;
 
     const token = bucketToken(bucket.slug);
-    const title = bucketLabels[bucket.slug] ?? bucket.title;
+    const title = bucketLabels[token] ?? bucket.title;
     const stored = diverged.get(token);
 
     if (stored !== undefined) {

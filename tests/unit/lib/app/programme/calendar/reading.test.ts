@@ -181,6 +181,24 @@ describe('readCalendarReading', () => {
   });
 
   it('uses the leader’s own label for an area they renamed', () => {
+    // Keyed by TOKEN (`deep_work`), not by the canonical slug (`deep-work`) — `readBucketLabels`'s
+    // own docstring says so, and this test previously used the slug form, which happened to match a
+    // bug in the lookup (`bucketLabels[bucket.slug]` instead of `bucketLabels[token]`) rather than
+    // catching it: every label was silently ignored in production while this test stayed green.
+    const reading = readCalendarReading(
+      build({
+        current: { deep_work: 4 },
+        composite: { deep_work: 10 },
+        variance: [{ token: 'deep_work', estimate: 4, composite: 10, delta: 6 }],
+      }),
+      { deep_work: 'Heads-down time' }
+    );
+    expect(reading.higher[0].title).toBe('Heads-down time');
+  });
+
+  it('falls back to the shipped title for a label keyed by the canonical slug rather than the token', () => {
+    // The exact shape of the regression above: a caller that mistakenly built its label map with
+    // hyphenated slugs must not silently "half work" by matching nothing and falling through.
     const reading = readCalendarReading(
       build({
         current: { deep_work: 4 },
@@ -189,7 +207,7 @@ describe('readCalendarReading', () => {
       }),
       { 'deep-work': 'Heads-down time' }
     );
-    expect(reading.higher[0].title).toBe('Heads-down time');
+    expect(reading.higher[0].title).not.toBe('Heads-down time');
   });
 
   it('drops a malformed variance entry rather than guessing at it', () => {

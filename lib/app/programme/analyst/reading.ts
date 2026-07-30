@@ -186,6 +186,13 @@ export function parseAnalystReading(
     parsedGaps.push({ token, observation: text });
   }
 
+  // One area, one gap. Both render surfaces key their list on the token (`summary-view.tsx`,
+  // `summary-pdf-document.tsx`), the same reason the pathway is checked for a repeated horizon below
+  // — a duplicate here is not a second observation, it is the same area named twice.
+  if (new Set(parsedGaps.map((g) => g.token)).size !== parsedGaps.length) {
+    return refuse('a gap repeats an area already named');
+  }
+
   const parsedPathway: AnalystStep[] = [];
   for (const entry of pathway) {
     if (entry === null || typeof entry !== 'object') return refuse('a step is not an object');

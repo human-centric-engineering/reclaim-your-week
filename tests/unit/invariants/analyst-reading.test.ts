@@ -199,6 +199,17 @@ describe('parseAnalystReading refuses, and refuses whole', () => {
       }),
     ],
     [
+      // Both render surfaces (`summary-view.tsx`, `summary-pdf-document.tsx`) key their gap list on
+      // the token, the same reason a repeated horizon is refused above — one area, one gap.
+      'a gap that names the same area twice',
+      reading({
+        gaps: [
+          { token: 'deep_work', observation: 'Deep work sits at four hours.' },
+          { token: 'deep_work', observation: 'A second thing, still about deep work.' },
+        ],
+      }),
+    ],
+    [
       'too few gaps to be a reading',
       reading({ gaps: [{ token: 'deep_work', observation: 'Thin.' }] }),
     ],
