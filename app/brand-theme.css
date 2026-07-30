@@ -100,7 +100,15 @@
   --color-ring: #0d4f68;
 }
 
-[data-surface='consumer'].dark {
+/* Two selectors, one palette, because the same surface is reached two ways (constraint 4 of
+ * .context/ui/surface-theming.md). The compound form is the surface on `<html>`, where `.dark` and
+ * `data-surface` sit on the same element. The descendant form is a PINNED subtree — the admin
+ * content preview (F18 t-1) sets `data-surface="consumer"` on a panel inside `/admin`, so in dark
+ * mode `.dark` is on `<html>` above it and the compound selector cannot match. Without this the
+ * panel would take the light consumer tokens from the block above and render white-on-white inside
+ * a dark page, which is exactly the failure that constraint names. */
+[data-surface='consumer'].dark,
+.dark [data-surface='consumer'] {
   --color-background: #112c36; /* darkest teal — warm near-black canvas */
   --color-foreground: #e6f2f6; /* soft near-white (tint) */
   --color-card: #163741; /* barely lifted off the canvas (tint) */

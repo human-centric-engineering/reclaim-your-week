@@ -68,6 +68,7 @@ file described itself inaccurately.
 | P22 | The captured panel read as one grey column, guesses and all | John    | **shipped**      | feature   | P19's surface               |
 | P23 | The coach asked closed questions into an empty box          | John    | **shipped**      | record    | shipped in #59, unrecorded  |
 | P24 | An audit nobody came back to is nobody's to notice          | Rashmir | waiting: Rashmir | client    | ask after F16 ships         |
+| P25 | Her reworded areas reach the coach and reach no screen      | John    | ready ▲          | feature   | found by F18 t-1            |
 
 **Doing P1–P3 first was deliberate.** They are the three where the repository told a reader something
 untrue, or where a claim the product makes to users was not gated by anything. Every other item was
@@ -84,9 +85,10 @@ said what was wrong with it. **P21** was found by reconciling this board on 2026
 the epic's first task — and closing it found the smoke it gates had been red since #59, which is the
 item making its own argument.
 
-What remains is only the items nobody here can close alone — **P12** (the eight things Rashmir owes),
-**P16** (a cost decision about a provider key in CI), **P24** (a question only she can answer), the
-three parked scope items, and **P4's copy sign-off**.
+What remains is **P25**, which F18 t-1 opened on 2026-07-30 and is ours, plus the items nobody here
+can close alone — **P12** (the eight things Rashmir owes), **P16** (a cost decision about a provider
+key in CI), **P24** (a question only she can answer), the three parked scope items, and **P4's copy
+sign-off**.
 
 **The board did not stop at P22, and this is where it stops being a board of loose ends.** An
 execution-path audit on 2026-07-29 walked the whole app and read the live database. It found no
@@ -666,6 +668,30 @@ a scheduler deciding, and is the version I16 is comfortable with.
 
 _Owner:_ Rashmir · _Status:_ waiting: Rashmir · _Class:_ client
 
+### P25 · Her reworded areas reach the coach and reach no screen
+
+**Found by building F18 t-1**, which is the point of a preview: it put her stored wording next to the
+places it lands, and one of those places turned out to be empty.
+
+`Module.config.buckets` has exactly one reader. `readReclaimCoachContent` (`config.ts:145`) briefs the
+model with it. Every surface a leader reads imports the **code constants** `RECLAIM_BUCKETS` instead —
+both phase-1 panels, `chart/series.ts`, the summary rows, `trends.ts`, the calendar analysis and the
+analyst's brief. So Rashmir renaming an area changes what the coach is told and changes nothing a
+leader sees, and F10 t-4's own done-when is true only of the conversation.
+
+**Half of it is correct behaviour, which is why this needs a decision rather than a patch.** The
+descriptions are confidential by instruction — `phase-context.ts:131` tells the coach to use them to
+recognise what it hears and never to quote them — so "briefing only" is the right destination for a
+description. A **title** is different: a leader reads it on every chart, in the summary table and in
+the PDF, and an operator who renames "Delivery and operations" expects to see it there.
+
+**What it costs to close.** Threading the stored config through eight leader-facing modules, four of
+which are pure functions over the constants today, plus an I7 question nobody has answered: an
+operator's title and a leader's own relabel (`app_reclaim_bucket_label`) both want the same slot on
+screen, and the leader's has to win. That is a feature, not a fix, and it is sized like F13.
+
+_Owner:_ John · _Status:_ ready ▲ · _Class:_ feature
+
 ### P16 · A provider key for CI, or a nightly smoke run
 
 **One** smoke cannot run in CI without a real model key: `smoke:reclaim-calendar` (the LLM
@@ -754,7 +780,7 @@ report link, no new bearer token · `transcriptConsent` as a **column** on the e
 | F15 | `ryw-report`             | John  | **shipped** | F14 t-3    | 3     | The PDF, and the one email a finished audit should send                     |
 | F16 | `ryw-audit-lifecycle`    | John  | **shipped** | F12        | 3     | The abandon dead end, an unrecoverable failed turn, phase 6's last textarea |
 | F17 | `ryw-transcript-consent` | John  | **shipped** | F12        | 2     | Consent before Rashmir reads a conversation, and the export's back door     |
-| F18 | `ryw-admin-care`         | John  | ready ▲     | F16 t-1    | 2     | Rashmir can preview her own words, and act on a leader who stopped          |
+| F18 | `ryw-admin-care`         | John  | in flight   | F16 t-1    | 2     | Rashmir can preview her own words, and act on a leader who stopped          |
 
 **Two hard orderings, both of which cost a rewrite if ignored.** F13 t-1 before F14 t-2, or the
 analyst re-implements I-composite's arithmetic — the thing I-composite's own note warns against. F14
