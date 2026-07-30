@@ -76,7 +76,7 @@ a prompt; it does not go near the parser, the categoriser or the persistence bou
 ### Closing the head-dump leak is a classification, not a workaround
 
 `loadModuleContext` injects every populated slot head whose `visibility !== 'hidden'`
-(`lib/framework/modules/context.ts:49`). **No `reclaim_*` slot sets `visibility` at all**, so all 105
+(`lib/framework/modules/context.ts:49`). **No `reclaim_*` slot sets `visibility` at all**, so all 106
 default to `open` and every calendar figure lands in the prompt as a bare `slug: value` line, with no
 framing, no I4 context, and no indication of which run it belongs to.
 
