@@ -19,6 +19,8 @@ import {
   readInbox,
   readContent,
   saveContent,
+  readReachOut,
+  sendReachOut,
 } from '@/components/app/admin/actions';
 
 const fetchMock = vi.fn();
@@ -252,5 +254,115 @@ describe('content', () => {
     await expect(
       saveContent({ values: { 'buckets.0.title': '' }, changeSummary: 'Oops.', baseVersion: 7 })
     ).rejects.toThrow('Bucket title must not be empty.');
+  });
+});
+
+describe('readReachOut', () => {
+  const draft = {
+    subject: 'Your time audit is still open',
+    body: 'Hello Ada,\n\nRashmir',
+    auditRunId: 'run-1',
+    phaseLabel: 'Energy',
+    alreadyWrittenForThisRun: false,
+    optedOutOfNudges: false,
+  };
+
+  it('parses the draft and the sent history', async () => {
+    fetchMock.mockResolvedValue(
+      ok({
+        draft,
+        sent: [
+          {
+            id: 'm1',
+            auditRunId: 'run-1',
+            subject: 'Earlier note',
+            body: 'Hello,',
+            status: 'sent',
+            sentAt: '2026-07-01T00:00:00.000Z',
+            sentByName: 'Rashmir',
+          },
+        ],
+      })
+    );
+
+    const view = await readReachOut('u1');
+    expect(view.draft.subject).toBe(draft.subject);
+    expect(view.sent[0]?.status).toBe('sent');
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/app/reclaim/admin/clients/u1/reach-out');
+  });
+
+  it('URL-encodes the user id, matching every other admin client route', async () => {
+    fetchMock.mockResolvedValue(ok({ draft, sent: [] }));
+
+    await readReachOut('u/1');
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/app/reclaim/admin/clients/u%2F1/reach-out');
+  });
+
+  it('surfaces the server’s message on a refusal', async () => {
+    fetchMock.mockResolvedValue(fail('No programme record for that account'));
+    await expect(readReachOut('ghost')).rejects.toThrow('No programme record for that account');
+  });
+});
+
+describe('sendReachOut', () => {
+  it('posts exactly what was typed, not a re-derived draft', async () => {
+    fetchMock.mockResolvedValue(
+      ok({
+        record: {
+          id: 'm2',
+          auditRunId: 'run-1',
+          subject: 'A different subject',
+          body: 'Words she actually wrote.',
+          status: 'sent',
+          sentAt: '2026-07-30T00:00:00.000Z',
+          sentByName: 'Rashmir',
+        },
+        delivered: true,
+      })
+    );
+
+    const result = await sendReachOut('u1', {
+      subject: 'A different subject',
+      body: 'Words she actually wrote.',
+      auditRunId: 'run-1',
+    });
+
+    expect(result.delivered).toBe(true);
+    const [url, init] = fetchMock.mock.calls[0] as [string, { method: string; body: string }];
+    expect(url).toBe('/api/v1/app/reclaim/admin/clients/u1/reach-out');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body)).toEqual({
+      subject: 'A different subject',
+      body: 'Words she actually wrote.',
+      auditRunId: 'run-1',
+    });
+  });
+
+  it('reports a delivery failure without throwing — the record still saved', async () => {
+    fetchMock.mockResolvedValue(
+      ok({
+        record: {
+          id: 'm3',
+          auditRunId: null,
+          subject: 'Subject',
+          body: 'Body',
+          status: 'failed',
+          sentAt: '2026-07-30T00:00:00.000Z',
+          sentByName: 'Rashmir',
+        },
+        delivered: false,
+      })
+    );
+
+    const result = await sendReachOut('u1', { subject: 'Subject', body: 'Body', auditRunId: null });
+    expect(result.delivered).toBe(false);
+    expect(result.record.status).toBe('failed');
+  });
+
+  it('surfaces the server’s message when the send itself is refused', async () => {
+    fetchMock.mockResolvedValue(fail('A subject cannot contain a line break'));
+    await expect(
+      sendReachOut('u1', { subject: 'Bad\nSubject', body: 'Body', auditRunId: null })
+    ).rejects.toThrow('A subject cannot contain a line break');
   });
 });

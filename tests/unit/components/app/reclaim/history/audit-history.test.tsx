@@ -10,6 +10,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
 /*
  * The bar's two corner controls stand in as nothing here. Both reach for a provider this suite has no
@@ -19,10 +20,11 @@ import { render, screen } from '@testing-library/react';
 vi.mock('@/components/app/reclaim/theme-switch', () => ({ ThemeSwitch: () => null }));
 vi.mock('@/components/app/reclaim/account-menu', () => ({ AccountMenu: () => null }));
 
-const { readRuns } = vi.hoisted(() => ({ readRuns: vi.fn() }));
+const { readRuns, abandonRun } = vi.hoisted(() => ({ readRuns: vi.fn(), abandonRun: vi.fn() }));
 vi.mock('@/components/app/reclaim/history/actions', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/components/app/reclaim/history/actions')>()),
   readRuns,
+  abandonRun,
 }));
 
 import { AuditHistory } from '@/components/app/reclaim/history/audit-history';
@@ -89,5 +91,72 @@ describe('AuditHistory', () => {
     render(<AuditHistory />);
 
     expect(await screen.findByText(/could not load your audits/)).toBeInTheDocument();
+  });
+});
+
+describe('AuditHistory — letting an open audit go (F16 t-1)', () => {
+  beforeEach(() => {
+    abandonRun.mockReset();
+  });
+
+  it('asks once before letting go, and does nothing on the first click', async () => {
+    readRuns.mockResolvedValue([OPEN]);
+    const user = userEvent.setup();
+    render(<AuditHistory />);
+
+    await user.click(
+      await screen.findByRole('button', { name: /start again from the beginning/i })
+    );
+
+    expect(screen.getByText(/Everything you have said stays here/)).toBeInTheDocument();
+    expect(abandonRun).not.toHaveBeenCalled();
+  });
+
+  it('backs out of the confirmation without abandoning anything', async () => {
+    readRuns.mockResolvedValue([OPEN]);
+    const user = userEvent.setup();
+    render(<AuditHistory />);
+
+    await user.click(
+      await screen.findByRole('button', { name: /start again from the beginning/i })
+    );
+    await user.click(screen.getByRole('button', { name: /keep this one/i }));
+
+    expect(screen.queryByText(/Everything you have said stays here/)).not.toBeInTheDocument();
+    expect(abandonRun).not.toHaveBeenCalled();
+  });
+
+  it('abandons the run and reloads the list on confirmation', async () => {
+    readRuns.mockResolvedValueOnce([OPEN]).mockResolvedValueOnce([]);
+    abandonRun.mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    render(<AuditHistory />);
+
+    await user.click(
+      await screen.findByRole('button', { name: /start again from the beginning/i })
+    );
+    await user.click(screen.getByRole('button', { name: /yes, start again/i }));
+
+    expect(abandonRun).toHaveBeenCalledWith('run-open');
+    // The list is re-read rather than trusted to update itself — the leader now sees whatever the
+    // server actually holds, which for a run that just started over is "nothing open".
+    await screen.findByRole('link', { name: /begin an audit/i });
+  });
+
+  it('surfaces a refusal and leaves the confirmation open to try again', async () => {
+    readRuns.mockResolvedValue([OPEN]);
+    abandonRun.mockRejectedValue(new Error('That audit is already finished'));
+    const user = userEvent.setup();
+    render(<AuditHistory />);
+
+    await user.click(
+      await screen.findByRole('button', { name: /start again from the beginning/i })
+    );
+    await user.click(screen.getByRole('button', { name: /yes, start again/i }));
+
+    expect(await screen.findByText(/That audit is already finished/)).toBeInTheDocument();
+    // The confirmation stays up — a failed attempt should not silently drop the leader back to the
+    // unconfirmed state, which would read as though nothing had been asked at all.
+    expect(screen.getByRole('button', { name: /yes, start again/i })).toBeInTheDocument();
   });
 });

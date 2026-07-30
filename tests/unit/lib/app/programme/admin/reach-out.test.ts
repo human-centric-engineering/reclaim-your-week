@@ -47,6 +47,7 @@ import {
   buildReachOutDraft,
   sendReachOut,
   listReachOuts,
+  lastReachedOutByUser,
 } from '@/lib/app/programme/admin/reach-out';
 
 const ADMIN = 'admin-1';
@@ -273,5 +274,38 @@ describe('listReachOuts — reading the record back', () => {
 
     expect(sent[0]?.sentByName).toBe('Rashmir');
     expect(sent[1]?.sentByName).toBeNull();
+  });
+
+  it('returns nothing for a leader nobody has written to, with no sender lookup', async () => {
+    mocks.reachOutFindMany.mockResolvedValue([]);
+
+    const sent = await listReachOuts(ADMIN, 'ada');
+
+    expect(sent).toEqual([]);
+    expect(mocks.userFindMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('lastReachedOutByUser — the list column', () => {
+  it('returns an empty map for an empty cohort, with no query', async () => {
+    const out = await lastReachedOutByUser([]);
+
+    expect(out).toEqual(new Map());
+    expect(mocks.reachOutGroupBy).not.toHaveBeenCalled();
+  });
+
+  it('maps each leader to their most recent SENT message only', async () => {
+    mocks.reachOutGroupBy.mockResolvedValue([
+      { userId: 'ada', _max: { createdAt: new Date('2026-07-29T00:00:00Z') } },
+      // A leader whose only rows are failed sends has never actually been reached — the query
+      // already filters `status: 'sent'`, and this proves the aggregation handles the case where
+      // that leaves nothing to take a max of.
+      { userId: 'ben', _max: { createdAt: null } },
+    ]);
+
+    const out = await lastReachedOutByUser(['ada', 'ben']);
+
+    expect(out.get('ada')).toEqual(new Date('2026-07-29T00:00:00Z'));
+    expect(out.has('ben')).toBe(false);
   });
 });
