@@ -2,12 +2,13 @@
 name: ryw-admin-care
 feature: F18 · ryw-admin-care
 epic: RYW post-v1
-status: in flight
+status: shipped
 owner: John
 depends_on: F16 t-1 (abandon, so "stalled" has a verb behind it) · F12 (the board and its gate)
 spec: ../invariants.md (I11 the third hop, I16 the tool does not decide, I2 coach-voiced copy, I10 leaf-only, D4 cross-user reads) · Brief §2 (confidentiality, gentle rather than frequent) · post-v1.md P24
 parent: post-v1.md
 opened: 2026-07-30
+shipped: 2026-07-30 (both tasks on the epic branch)
 ---
 
 # ryw-admin-care — she can see what her words become, and reach the person who stopped

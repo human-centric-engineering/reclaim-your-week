@@ -30,6 +30,14 @@ export interface FeatureDoc {
   featureSlug: string | null;
   /** Whether `status:` begins with "shipped". `null` when the doc carries no `status:` key. */
   shipped: boolean | null;
+  /**
+   * The doc's own `| t-N | … |` task rows: how many there are, and how many read as finished.
+   *
+   * Counted rather than listed, because the only question asked of them is whether **all** of them are
+   * done while the feature says it is not shipped. See the `all_tasks_done` rule in `checkBoard` for
+   * why that one comparison is worth making when per-task gating deliberately is not.
+   */
+  tasks: { total: number; done: number };
 }
 
 /** One `| F12 | ... |` row on a board table. */
@@ -74,6 +82,8 @@ export type Finding =
     }
   /** The row names a different slug than the doc's own frontmatter. */
   | { kind: 'slug'; feature: string; file: string; docSlug: string; board: string; rowSlug: string }
+  /** Every task row reads as done and the feature still does not say shipped — F12's own shape. */
+  | { kind: 'all_tasks_done'; feature: string; file: string; tasks: number }
   /** A record doc (no `feature:` key) that no board file mentions. */
   | { kind: 'orphan_record'; file: string; name: string };
 
@@ -99,6 +109,38 @@ export function isShipped(status: string): boolean {
 /** Whether a status string means somebody has picked the feature up. See `BoardRow.claimed`. */
 export function isClaimed(status: string): boolean {
   return /^(shipped|in flight|done)\b/i.test(plain(status));
+}
+
+/**
+ * Count a feature doc's task rows, and how many of them read as finished.
+ *
+ * A task row is `| t-1 | … |`; the header (`| t-N | What | … |`) is not one. "Finished" is a status
+ * cell reading `done` or `shipped`, matched by shape like every other cell in this file, because the
+ * task tables in this repository do not agree on column order either.
+ */
+function countTasks(text: string): { total: number; done: number } {
+  let total = 0;
+  let done = 0;
+
+  for (const raw of text.split(/\r?\n/)) {
+    if (!raw.trimStart().startsWith('|')) continue;
+    const cells = raw
+      .trim()
+      .replace(/^\|/, '')
+      .replace(/\|$/, '')
+      .split('|')
+      .map((cell) => plain(cell));
+    if (cells.length < 3) continue;
+    if (!/^t-\d+$/.test(cells[0] ?? '')) continue;
+
+    total += 1;
+    const statusCell = cells
+      .slice(1)
+      .find((c) => STATUS_WORDS.some((w) => c.toLowerCase().startsWith(w)));
+    if (statusCell !== undefined && /^(done|shipped)\b/i.test(statusCell)) done += 1;
+  }
+
+  return { total, done };
 }
 
 /**
@@ -136,6 +178,7 @@ export function parseFeatureDoc(file: string, text: string): FeatureDoc {
     featureId,
     featureSlug,
     shipped: status === null ? null : isShipped(status),
+    tasks: countTasks(text),
   };
 }
 
@@ -200,10 +243,12 @@ export interface BoardInput {
  * shape, and it is the one a "did you update the board?" habit never catches, because in P23's case
  * the work had no doc either — so there was nothing to remind anybody.
  *
- * **What this deliberately does not check: task-row statuses inside a feature doc.** They change
- * several times per feature and are read by whoever is building it, not by someone deciding what is
- * left. Gating them would make the check noisy enough to be worked around, which is how a gate stops
- * being one.
+ * **What this deliberately does not check: an individual task row's status.** They change several
+ * times per feature and are read by whoever is building it, not by someone deciding what is left.
+ * Gating them would make the check noisy enough to be worked around, which is how a gate stops being
+ * one. **One aggregate of them is checked**, added 2026-07-30: all tasks done while the feature says
+ * it is not shipped. That fires once per feature, at the moment the doc contradicts itself, and it is
+ * the state F12 sat in for five features with everything else green.
  *
  * It also cannot prove the board is *right* — a feature whose doc and row both say `shipped` while
  * the code is half-built passes. That is the correct scope: consistency is mechanically checkable
@@ -228,6 +273,20 @@ export function checkBoard({ docs, rows, boardText }: BoardInput): Finding[] {
       continue;
     }
     documented.add(doc.featureId);
+
+    // Every task done and the feature not shipped. This is F12's own shape, found on 2026-07-30:
+    // `ryw-hygiene.md` sat at `in flight` with all three tasks `done` for five features, and the
+    // check was green throughout because the doc and its row **agreed** — the only thing the status
+    // rule compares. A gate that cannot see a document contradicting itself is missing the fifth
+    // instance of the failure it was built for.
+    if (doc.shipped === false && doc.tasks.total > 0 && doc.tasks.done === doc.tasks.total) {
+      findings.push({
+        kind: 'all_tasks_done',
+        feature: doc.featureId,
+        file: doc.file,
+        tasks: doc.tasks.total,
+      });
+    }
 
     const matches = byFeature.get(doc.featureId) ?? [];
     if (matches.length === 0) {
@@ -303,6 +362,8 @@ export function describe(finding: Finding): string {
       return `${finding.feature}: ${finding.file} says ${finding.docShipped ? 'shipped' : 'not shipped'} but ${finding.board}:${finding.line} says ${finding.rowShipped ? 'shipped' : 'not shipped'}. Reconcile the board as the first act of a branch, not the last act of the old one.`;
     case 'slug':
       return `${finding.feature}: ${finding.file} calls itself ${finding.docSlug}, ${finding.board} calls it ${finding.rowSlug}.`;
+    case 'all_tasks_done':
+      return `${finding.feature} (${finding.file}) marks all ${finding.tasks} of its tasks done and its status is not "shipped". Close the feature out (status, the board row, the work log) or say in the doc which task is not actually finished.`;
     case 'orphan_record':
       return `${finding.file} names no feature and no board mentions "${finding.name}". A record doc nobody links to is a plan nobody will find.`;
   }

@@ -565,13 +565,19 @@ single page. But most of that copy is **ours**, not hers.
 
 That matters because `content-diff.ts` marks every field as "matches the source document" or
 "edited — differs from source", and the second would be a false statement about copy that has no
-source document. **So the signposts are deliberately not in the leaf content editor yet.** They are
-editable through the framework's own module config form (as raw JSON, per daybreak#161), and adding
-them to `/admin/programme/content` requires `ContentField` to carry a
-`sourceKind: 'rashmir' | 'authored'` first, so the marker can say "matches the shipped wording"
-instead. Attributing our orientation copy to Rashmir on her own editing screen is the inverse of what
-this invariant protects, and shipping the editor row before the distinction exists would do exactly
-that. Tracked in [[planning/ryw-conversational]] stage 3.
+source document. Attributing our orientation copy to Rashmir on her own editing screen is the inverse
+of what this invariant protects.
+
+**The condition this section set has since been met, and the paragraph is updated rather than left
+reading as a refusal.** It said the signposts were "deliberately not in the leaf content editor yet",
+and that adding them required `ContentField` to carry a `sourceKind: 'rashmir' | 'authored'` first.
+That field exists: `authored` fields compare against the shipped wording and are marked "as shipped"
+or "edited", `rashmir` fields against a source document, and phase 0's second beat — her process
+outline — is derived from the defaults rather than pinned to an index, so inserting a beat before hers
+cannot re-point the marker at one of ours. The signposts are on the screen, correctly attributed.
+**Since F18 t-1 the same screen also shows where each field lands**, which is the other half of the
+same honesty: a field the coach is briefed with is not a field a leader reads, and the editor now says
+which is which.
 
 **One field inside the signposts is hers**: phase 0's opening is
 `[RECLAIM_WARM_OPEN, RECLAIM_PROCESS_OUTLINE]`, and `opening` is an **array of paragraphs** precisely

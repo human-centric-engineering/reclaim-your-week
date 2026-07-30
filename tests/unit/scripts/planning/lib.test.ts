@@ -31,6 +31,8 @@ function doc(over: Partial<FeatureDoc> = {}): FeatureDoc {
     featureId: 'F20',
     featureSlug: 'ryw-thing',
     shipped: false,
+    // No task rows by default, so the all-tasks-done rule is silent unless a test asks for it.
+    tasks: { total: 0, done: 0 },
     ...over,
   };
 }
@@ -113,6 +115,28 @@ describe('parseFeatureDoc', () => {
       '---\nname: ryw-chat-ux\nparent: post-v1.md\n---\n'
     );
     expect(parsed.shipped).toBeNull();
+  });
+
+  it('counts task rows and ignores the header of the table they are in', () => {
+    const parsed = parseFeatureDoc(
+      'ryw-thing.md',
+      [
+        '---',
+        'feature: F20 · ryw-thing',
+        'status: in flight',
+        '---',
+        '',
+        '| t-N | What | Status | PR |',
+        '| --- | ---- | ------ | -- |',
+        '| t-1 | A thing | done | — |',
+        '| t-2 | Another | in flight | — |',
+        '',
+        '| F20 | ryw-thing | John | shipped | — |',
+      ].join('\n')
+    );
+
+    // Two task rows: the `t-N` header is not one, and the board-style `F20` row is not either.
+    expect(parsed.tasks).toEqual({ total: 2, done: 1 });
   });
 });
 
@@ -206,6 +230,43 @@ describe('checkBoard', () => {
     expect(
       checkBoard({
         docs: [doc({ shipped: null })],
+        rows: [row({ shipped: true })],
+        boardText: noText,
+      })
+    ).toEqual([]);
+  });
+
+  it('catches a feature whose every task is done while it still says in flight', () => {
+    // F12's own shape, found on 2026-07-30: `ryw-hygiene.md` sat at `in flight` with all three tasks
+    // `done` for five features, and this check was green because the doc and its row agreed — which
+    // is the only thing the status rule compares.
+    const findings = checkBoard({
+      docs: [doc({ tasks: { total: 3, done: 3 } })],
+      rows: [row()],
+      boardText: noText,
+    });
+
+    expect(findings).toEqual([
+      { kind: 'all_tasks_done', feature: 'F20', file: 'ryw-thing.md', tasks: 3 },
+    ]);
+    expect(explain(findings[0])).toContain('all 3 of its tasks done');
+  });
+
+  it('stays quiet part way through a feature, and once it has shipped', () => {
+    // The noisy version of this rule is the one that gates each task row. Two of three done is the
+    // normal state of a feature being built and must never fail a branch.
+    expect(
+      checkBoard({
+        docs: [doc({ tasks: { total: 3, done: 2 } })],
+        rows: [row()],
+        boardText: noText,
+      })
+    ).toEqual([]);
+
+    // And a shipped feature is allowed to carry a task that was deferred rather than done.
+    expect(
+      checkBoard({
+        docs: [doc({ shipped: true, tasks: { total: 3, done: 2 } })],
         rows: [row({ shipped: true })],
         boardText: noText,
       })

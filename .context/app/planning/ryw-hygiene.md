@@ -2,7 +2,7 @@
 name: ryw-hygiene
 feature: F12 · ryw-hygiene
 epic: RYW post-v1
-status: in flight
+status: shipped
 owner: John
 depends_on: —
 spec: ../invariants.md (the guard table) · ./post-v1.md (P21, P23, the two-board split) · ../../../.github/workflows/ci.yml (the smoke job)
@@ -154,7 +154,20 @@ added by t-1 for features nobody has claimed yet. That was the check being wrong
 honestly absent — or pushed planned work off the board entirely, which is the failure this script
 exists to catch. Only `in flight`, `shipped` and `done` rows owe a plan.
 
-## Invariants this feature touches
+### The rule F18 added, and the instance that asked for it (2026-07-30)
+
+**This feature was the fifth instance of the failure it exists to prevent.** F12 sat at `in flight`
+with all three of its tasks marked `done` through the whole of F13 to F17, and `leaf:board-check` was
+green the entire time — correctly, because the doc's frontmatter and its board row **agreed**, which is
+the only thing the status rule compares. The gate could see a board contradicting a plan doc and not a
+plan doc contradicting itself.
+
+So a fourth rule: **all task rows done while the status is not `shipped`** is a disagreement
+(`all_tasks_done`). It fires once per feature, at the moment the doc stops being true about itself,
+which is why it does not reopen the decision above it — individual task statuses are still not gated,
+because those change several times a feature and gating them is what makes a check noisy enough to be
+worked around. Added by F18's close-out rather than filed as an item, on this file's own argument that
+a note about a missing control is not a control.
 
 - **I10** — leaf-only. `.context/app/**`, `scripts/planning/**`, `package.json`'s `leaf:*` scripts,
   and the leaf smoke steps in `ci.yml`. No core or framework file edited, no framework table touched.
