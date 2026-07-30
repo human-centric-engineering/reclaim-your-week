@@ -44,16 +44,30 @@ beforeEach(() => {
   mintInviteLink.mockResolvedValue(row({ id: 'link2', label: 'New one' }));
 });
 
+/**
+ * Open the create form.
+ *
+ * It lives behind a button now: the tab is a ledger with a toolbar, and a form kept permanently open
+ * above a growing table pushes the thing she came to read off the screen.
+ */
+async function openForm(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByRole('button', { name: /create link/i }));
+}
+
 describe('LinkManager', () => {
   it('prefills the form from the server’s own defaults', async () => {
+    const user = userEvent.setup();
     render(<LinkManager />);
+    await openForm(user);
 
     await waitFor(() => expect(screen.getByLabelText(/how many people/i)).toHaveValue(10));
     expect(screen.getByLabelText(/open for/i)).toHaveValue(7);
   });
 
   it('names the unit in the expiry label, not only in its popover', async () => {
+    const user = userEvent.setup();
     render(<LinkManager />);
+    await openForm(user);
 
     // A bare "7" beside "Open for" is ambiguous, and the popover holding the unit takes a click to
     // open. Reading days as weeks is a link left open twelve times longer than intended.
@@ -61,7 +75,9 @@ describe('LinkManager', () => {
   });
 
   it('caps the seat input at the configured ceiling', async () => {
+    const user = userEvent.setup();
     render(<LinkManager />);
+    await openForm(user);
 
     // The server refuses above this too — the attribute is the courtesy, not the enforcement.
     await waitFor(() =>
@@ -87,6 +103,7 @@ describe('LinkManager', () => {
   it('will not create a link without a label', async () => {
     const user = userEvent.setup();
     render(<LinkManager />);
+    await openForm(user);
 
     await waitFor(() => expect(screen.getByLabelText(/how many people/i)).toHaveValue(10));
     expect(screen.getByRole('button', { name: /create link/i })).toBeDisabled();
@@ -98,6 +115,7 @@ describe('LinkManager', () => {
   it('creates a link with the numbers as numbers, not strings', async () => {
     const user = userEvent.setup();
     render(<LinkManager />);
+    await openForm(user);
 
     await waitFor(() => expect(screen.getByLabelText(/how many people/i)).toHaveValue(10));
     await user.type(screen.getByLabelText(/what it is for/i), 'Leadership offsite');
@@ -118,11 +136,13 @@ describe('LinkManager', () => {
       new Error('A link can be for at most 50 people. Issue a second link if you need more.')
     );
     render(<LinkManager />);
+    await openForm(user);
 
     await waitFor(() => expect(screen.getByLabelText(/how many people/i)).toHaveValue(10));
     await user.type(screen.getByLabelText(/what it is for/i), 'Too big');
     await user.click(screen.getByRole('button', { name: /create link/i }));
 
+    // The form stays open on a refusal: the number she has to change is in it.
     expect(await screen.findByText(/at most 50 people/i)).toBeInTheDocument();
   });
 
@@ -161,6 +181,34 @@ describe('LinkManager', () => {
     await waitFor(() =>
       expect(screen.getAllByRole('button', { name: /withdraw/i })).toHaveLength(1)
     );
+  });
+
+  it('closes the code again without withdrawing the link', async () => {
+    // The code is a dialog rather than an expanded row: it is the one thing here that gets shown to
+    // a room, and opening it used to push every row below it off the screen.
+    const user = userEvent.setup();
+    render(<LinkManager />);
+
+    await user.click(await screen.findByRole('button', { name: /show code/i }));
+    expect(screen.getByAltText(/qr code for leadership offsite/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /^close$/i }));
+
+    await waitFor(() =>
+      expect(screen.queryByAltText(/qr code for leadership offsite/i)).not.toBeInTheDocument()
+    );
+    expect(revokeInviteLink).not.toHaveBeenCalled();
+  });
+
+  it('reports the ledger’s size for the tab strip', async () => {
+    const onCountChange = vi.fn();
+    listInviteLinks.mockResolvedValue({
+      links: [row({ id: 'a' }), row({ id: 'b' })],
+      config: CONFIG,
+    });
+    render(<LinkManager onCountChange={onCountChange} />);
+
+    await waitFor(() => expect(onCountChange).toHaveBeenCalledWith(2));
   });
 
   it('says plainly that withdrawing does not take back what people already claimed', async () => {
