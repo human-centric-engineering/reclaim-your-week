@@ -29,6 +29,7 @@ import { ProgrammeChrome } from '@/components/app/reclaim/programme-chrome';
 import { PhaseRail } from '@/components/app/reclaim/phase-rail';
 import { PhaseReview } from '@/components/app/reclaim/phase-review';
 import { SummaryView } from '@/components/app/reclaim/summary/summary-view';
+import { DownloadReport } from '@/components/app/reclaim/report/download-report';
 import { uiConfigSchema } from '@/components/app/reclaim/types';
 import { fetchSummary } from '@/components/app/reclaim/phase/actions';
 import type { AuditSummary } from '@/components/app/reclaim/summary/types';
@@ -199,7 +200,14 @@ export function RunReview({ runId }: { runId: string }) {
                 </p>
 
                 {summary !== null ? (
-                  <SummaryView summary={summary} />
+                  <>
+                    <SummaryView summary={summary} />
+                    {/* F15. A finished audit is the one a leader is most likely to want a copy of:
+                        they are here because they came back for it. */}
+                    <div className="border-border/70 mt-8 border-t pt-6">
+                      <DownloadReport runId={runId} />
+                    </div>
+                  </>
                 ) : summaryFailed ? (
                   <p className="text-muted-foreground text-sm leading-relaxed" role="status">
                     We could not put the summary together just now. The phases below still hold

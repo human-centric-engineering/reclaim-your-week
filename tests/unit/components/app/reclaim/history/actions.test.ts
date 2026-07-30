@@ -15,6 +15,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   readRuns,
   readRun,
+  abandonRun,
   auditPeriod,
   auditDate,
   RUN_COMPLETE,
@@ -43,6 +44,7 @@ const RUN_ITEM = {
   status: RUN_COMPLETE,
   startedAt: '2026-01-04T09:00:00.000Z',
   completedAt: '2026-01-06T17:30:00.000Z',
+  abandonedAt: null,
   hasConversation: true,
   progress: null,
 };
@@ -143,6 +145,39 @@ describe('readRun', () => {
   it('falls back to its own message when the refusal body has no message', async () => {
     fetchMock.mockResolvedValue({ ok: false, json: () => Promise.resolve({ nope: true }) });
     await expect(readRun('run-1')).rejects.toThrow('We could not load that audit.');
+  });
+});
+
+describe('abandonRun', () => {
+  it('posts to the abandon route and resolves on success', async () => {
+    fetchMock.mockResolvedValue({ ok: true, json: () => Promise.resolve({ success: true }) });
+
+    await abandonRun('run-1');
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, { method: string }];
+    expect(url).toBe('/api/v1/app/reclaim/runs/run-1/abandon');
+    expect(init.method).toBe('POST');
+  });
+
+  it('URL-encodes the run id, matching readRun', async () => {
+    fetchMock.mockResolvedValue({ ok: true, json: () => Promise.resolve({ success: true }) });
+
+    await abandonRun('run/../2');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/app/reclaim/runs/run%2F..%2F2/abandon',
+      expect.anything()
+    );
+  });
+
+  it('surfaces the server’s message on a refusal', async () => {
+    fetchMock.mockResolvedValue(fail('That audit is already finished'));
+    await expect(abandonRun('run-1')).rejects.toThrow('That audit is already finished');
+  });
+
+  it('falls back to a generic message when the refusal carries no envelope', async () => {
+    fetchMock.mockResolvedValue({ ok: false, json: () => Promise.reject(new Error('not json')) });
+    await expect(abandonRun('run-1')).rejects.toThrow('We could not do that just now.');
   });
 });
 

@@ -484,13 +484,21 @@ describe('buildCoachPhaseContext — who speaks first, and how a turn ends', () 
     expect(block).toContain('make the call instead');
   });
 
-  it('does not tell the summary phase to open itself, because nobody arrives into it talking', async () => {
-    // Phase 6's takeaway is asked on the screen (a reflection is the leader's to write, I6) and its
-    // close fires after the summary renders. An opening instruction there would produce a coach
-    // introducing a phase the leader is already halfway through.
+  it('tells the summary phase to open itself, and to open it by asking', async () => {
+    // **This asserted the opposite until F16 t-3**, on the reasoning that phase 6's takeaway is asked
+    // on the screen because a reflection is the leader's to write (I6). P19 reversed that refusal on
+    // 2026-07-27 and three artefacts kept citing it: `opening.ts`'s comment, the arrivals test, and
+    // this. The last textarea in a tool rebuilt as a conversation survived in the gap between them.
+    //
+    // The instruction to ask was already there and had no moment to fire it, which is the shape of
+    // nearly everything the execution-path audit found.
     loadPhaseProgress.mockResolvedValue({ phases: [], currentPhaseKey: 'phase-6-summary' });
 
-    expect(await buildCoachPhaseContext('u1')).not.toContain('This phase begins with you');
+    const block = await buildCoachPhaseContext('u1');
+    expect(block).toContain('This phase begins with you');
+    // And what it opens with: the question, once, recorded in their words and never inferred.
+    expect(block).toContain('They have not yet said what they are taking away');
+    expect(block).toContain('reclaim_reflection_p6');
   });
 });
 

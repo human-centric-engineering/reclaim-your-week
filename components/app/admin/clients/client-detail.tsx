@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { getClient, type ClientDetailView } from '@/components/app/admin/actions';
+import { ReachOutComposer } from '@/components/app/admin/clients/reach-out-composer';
 
 function formatDate(iso: string | null): string {
   if (iso === null) return '—';
@@ -182,6 +183,10 @@ export function ClientDetail({ userId }: { userId: string }) {
           .
         </p>
       </section>
+
+      {/* F18 t-2. Placed after the audits, because the message is written having read where they
+          stopped, and before the export, which is the compliance drawer rather than the coaching. */}
+      <ReachOutComposer userId={userId} />
 
       <section className="space-y-2">
         <h2 className="text-muted-foreground text-sm font-medium uppercase">

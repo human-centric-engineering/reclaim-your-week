@@ -34,6 +34,9 @@ const clientRowSchema = z.object({
   completedRuns: z.number(),
   lastActivityAt: z.string().nullable(),
   chatCostUsd: z.number().nullable(),
+  // F18 t-2. Defaulted so a response cached from a build predating the column still parses, and
+  // reads as "nobody has written" rather than failing the whole list.
+  lastReachedOutAt: z.string().nullable().default(null),
   qualification: z.record(z.string(), z.string()),
 });
 
@@ -91,6 +94,8 @@ const sharedResultSchema = z.object({
   sharedAt: z.string(),
   quarter: z.string().nullable(),
   feedback: z.object({ text: z.string(), quoteConsent: z.boolean() }).nullable(),
+  // F17. Defaulted so a response cached from a build predating the column still parses.
+  transcriptConsent: z.boolean().default(false),
 });
 
 const aggregateSchema = z.object({
@@ -154,6 +159,33 @@ const contentViewSchema = z.object({
   baseVersion: z.number().nullable(),
 });
 
+const reachOutRecordSchema = z.object({
+  id: z.string(),
+  auditRunId: z.string().nullable(),
+  subject: z.string(),
+  body: z.string(),
+  status: z.string(),
+  sentAt: z.string(),
+  sentByName: z.string().nullable(),
+});
+
+const reachOutViewSchema = z.object({
+  draft: z.object({
+    subject: z.string(),
+    body: z.string(),
+    auditRunId: z.string().nullable(),
+    phaseLabel: z.string().nullable(),
+    alreadyWrittenForThisRun: z.boolean(),
+    optedOutOfNudges: z.boolean(),
+  }),
+  sent: z.array(reachOutRecordSchema),
+});
+
+const reachOutSentSchema = z.object({
+  record: reachOutRecordSchema,
+  delivered: z.boolean(),
+});
+
 export type ClientRow = z.infer<typeof clientRowSchema>;
 export type ClientListView = z.infer<typeof clientListSchema>;
 export type ClientDetailView = z.infer<typeof clientDetailSchema>;
@@ -161,6 +193,8 @@ export type MeasuresView = z.infer<typeof measuresSchema>;
 export type InboxView = z.infer<typeof inboxSchema>;
 export type ContentView = z.infer<typeof contentViewSchema>;
 export type ContentField = z.infer<typeof contentFieldSchema>;
+export type ReachOutView = z.infer<typeof reachOutViewSchema>;
+export type ReachOutRecord = z.infer<typeof reachOutRecordSchema>;
 
 /** Read the server's message from a failed response, or a fallback. Never throws. */
 async function failureMessage(res: Response, fallback: string): Promise<string> {
@@ -190,6 +224,37 @@ export function getClient(userId: string): Promise<ClientDetailView> {
     clientDetailSchema,
     'We could not load that record.'
   );
+}
+
+/**
+ * The opening draft for a message to one leader, plus what has already been sent (F18 t-2).
+ *
+ * The draft is built on the server so the phase it names is the client list's own reading of where
+ * they stopped rather than a second computation of it.
+ */
+export function readReachOut(userId: string): Promise<ReachOutView> {
+  return getJson(
+    `/api/v1/app/reclaim/admin/clients/${encodeURIComponent(userId)}/reach-out`,
+    reachOutViewSchema,
+    'We could not prepare a message for that leader.'
+  );
+}
+
+/** Send it. The text posted is whatever the operator actually typed — nothing is templated here. */
+export async function sendReachOut(
+  userId: string,
+  input: { subject: string; body: string; auditRunId: string | null }
+): Promise<z.infer<typeof reachOutSentSchema>> {
+  const res = await fetch(
+    `/api/v1/app/reclaim/admin/clients/${encodeURIComponent(userId)}/reach-out`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    }
+  );
+  if (!res.ok) throw new Error(await failureMessage(res, 'That message could not be sent.'));
+  return parseEnvelope(await res.json(), reachOutSentSchema);
 }
 
 /** The two success measures (F10 t-2). */

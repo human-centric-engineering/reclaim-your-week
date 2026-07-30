@@ -1,0 +1,12 @@
+-- F16: when a leader let an audit go.
+--
+-- A column of its own rather than reusing `completedAt`. Three readers treat that field as "this
+-- audit finished": `listRuns`, the nudge tick's `completedAt ?? startedAt`, and the quarterly
+-- timeline in `admin/measures.ts`. Writing an abandonment into it would put abandoned runs into the
+-- nudge cohort and into the completion trend, silently.
+--
+-- Hand-authored, like the F14 migration before it: `prisma migrate dev` refuses against this
+-- database (a duplicate `_prisma_migrations` row for 20260727210425_app_reclaim_phase_marks reads as
+-- modified-after-apply) and offers a reset, which is never the answer here. See
+-- .context/app/prisma-migration-recovery.md.
+ALTER TABLE "app_reclaim_audit_run" ADD COLUMN "abandonedAt" TIMESTAMP(3);

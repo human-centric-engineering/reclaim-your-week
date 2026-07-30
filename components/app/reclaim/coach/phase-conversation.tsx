@@ -44,7 +44,11 @@ import {
   chartRevealState,
   everyVisibleAreaHasHours,
 } from '@/lib/app/programme/chart/reveal';
-import { arrivalMomentFor, type CoachOpeningMoment } from '@/lib/app/programme/coach/opening';
+import {
+  arrivalMomentFor,
+  CALENDAR_RETURN_MOMENT,
+  type CoachOpeningMoment,
+} from '@/lib/app/programme/coach/opening';
 import {
   phaseCaptureSlots,
   slotApplies,
@@ -76,17 +80,20 @@ import {
  * stand here was the screen saying "when you are ready, say hello and we will begin", which asks
  * someone who came to be guided to do the guiding.
  *
- * Phase 1 has two moments and their order is the whole of I12. The arrival fires on entry like every
- * other phase. The reveal waits for the leader to press the button, because the point of that beat is
- * that they choose when to look, so it is checked first: by the time they press it the arrival has
- * long since been claimed, and while they have not pressed it there is nothing to check.
+ * Phase 1 has three moments and their order matters. The arrival fires on entry like every other
+ * phase. The reveal waits for the leader to press the button, because the point of that beat is that
+ * they choose when to look, so it is checked first: by the time they press it the arrival has long
+ * since been claimed, and while they have not pressed it there is nothing to check. The calendar
+ * return sits between them — a state the leader arrives back in rather than a button they pressed,
+ * so it must never be queued ahead of a press.
  *
  * A moment already in the run's ledger returns `null`, so a reload never replays a beat.
  */
 function openMomentFor(
   phaseKey: string,
   coachOpenings: string[],
-  revealing: boolean
+  revealing: boolean,
+  calendarReconciled: boolean
 ): CoachOpeningMoment | null {
   if (
     phaseKey === CHART_REVEAL_PHASE &&
@@ -94,6 +101,16 @@ function openMomentFor(
     !coachOpenings.includes(CHART_REVEAL_MOMENT)
   ) {
     return CHART_REVEAL_MOMENT;
+  }
+  // Coming back from the calendar step. Checked after the reveal because `revealing` is a button the
+  // leader has just pressed and this is a state they arrive in, so a press must never be queued
+  // behind it — but before the arrival, which by this point is always long since claimed.
+  if (
+    phaseKey === CHART_REVEAL_PHASE &&
+    calendarReconciled &&
+    !coachOpenings.includes(CALENDAR_RETURN_MOMENT)
+  ) {
+    return CALENDAR_RETURN_MOMENT;
   }
   const arrival = arrivalMomentFor(phaseKey);
   if (arrival === null || coachOpenings.includes(arrival)) return null;
@@ -538,7 +555,10 @@ export function PhaseConversation({
 
   // The moment the coach opens with. Only a moment that is due and absent from the run's ledger is
   // passed down, so a phase already under way never troubles the server.
-  const openMoment = openMomentFor(phaseKey, coachOpenings, revealing);
+  // `offerCalendar` above is the mirror of this: the card is withdrawn once an upload is reconciled,
+  // and this is the beat that replaces it.
+  const calendarReconciled = truthy(answers['reclaim_calendar_uploaded']);
+  const openMoment = openMomentFor(phaseKey, coachOpenings, revealing, calendarReconciled);
 
   /**
    * The phase's beats, each with a stable key so `CoachChat` can leave it where it appeared.

@@ -60,6 +60,22 @@ export const COACH_OPENING_PHASES = {
   'phase-1-open': 'phase-1-current',
   /** The perception-versus-reality picture has just been revealed (I12, `Prompt_Text.md:229-237`). */
   'phase-1-chart-reveal': 'phase-1-current',
+  /**
+   * The leader has come back from the calendar step, and it has been reconciled.
+   *
+   * **The beat this closes was silence.** The calendar branch is the one effortful optional thing in
+   * the whole audit: a leader exports a file, uploads it, confirms the ambiguous items and answers
+   * five questions about what a calendar cannot see. `persistComposite` then rewrites every figure
+   * under their chart. Before this moment existed they returned to `/programme` and the conversation
+   * said nothing at all — the arrival moment was long since claimed and the reveal had not been
+   * asked for, so the transcript simply sat there until they typed something. Having done the work,
+   * they had to open the conversation about it themselves.
+   *
+   * A **data** moment rather than an arrival: it fires on figures the leader has just produced, and
+   * the coach's briefing already carries them (`calendar/reading.ts` via `momentForPhase`). Absent
+   * from `ARRIVAL_MOMENTS` for that reason, so it opens with `COACH_OPENING_TRIGGER`.
+   */
+  'phase-1-calendar-return': 'phase-1-current',
   /** Arrival. The energy phase, whose whole value is in why it is worth ten minutes. */
   'phase-2-open': 'phase-2-energy',
   /** Arrival. The week they would want, opened from what the last two phases established. */
@@ -69,18 +85,45 @@ export const COACH_OPENING_PHASES = {
   /** Arrival, and a data beat. Three ways in, for the leader to choose between (`:322`). */
   'phase-5-action': 'phase-5-action',
   /**
+   * Arrival. Phase 6 opens by asking what the leader is taking away, before the summary exists.
+   *
+   * **This used to be a textarea, and it was the last one.** The audit was rebuilt as a conversation
+   * and phase 6 kept asking the question the whole method rests on with a form field, which is the
+   * exact complaint P19 fixed everywhere else. The machinery to do otherwise already existed:
+   * `reflectionSlugForPhase('phase-6-summary')` returns `reclaim_reflection_p6` and the write
+   * allowlist permits the coach to record it, under the same three conditions as every other
+   * reflection (this phase only, never inferred, always visible and editable).
+   *
+   * The source puts this before the artifact on purpose (`Prompt_Text.md:35`): "ask 'what are you
+   * taking away from this?' before producing the final summary in Phase 6, one final moment of
+   * reflection before the written output."
+   */
+  'phase-6-open': 'phase-6-summary',
+  /**
    * The warm close, after the summary has rendered (`:359`, `:361`).
    *
    * A moment rather than a card because it is the one part of the close that genuinely varies: it
    * branches on whether the leader is already working with Rashmir, on whether they have done this
-   * before, and it answers their own takeaway in their own words. The *question* that opens phase 6
-   * is scripted on the card instead — "what are you taking away from this?" is the same question
-   * every time, so a model turn would buy nothing.
+   * before, and it answers their own takeaway in their own words.
+   *
+   * **This used to add that the opening question was "scripted on the card instead", because "what
+   * are you taking away from this?" is the same question every time so a model turn would buy
+   * nothing.** That reasoning was about the *wording* and missed what a conversation is for: the
+   * question is fixed, and what a leader needs after saying something true is to be heard rather
+   * than to watch a Save button enable. `phase-6-open` asks it now, and this beat still closes.
    */
   'phase-6-close': 'phase-6-summary',
 } as const;
 
 export type CoachOpeningMoment = keyof typeof COACH_OPENING_PHASES;
+
+/**
+ * The moment fired when a leader returns from the calendar step with a reconciled upload.
+ *
+ * Named here rather than at the call site so the surface and the server refer to one string. Moment
+ * names are persisted on the run, so renaming this would replay the beat for anyone mid-audit.
+ */
+export const CALENDAR_RETURN_MOMENT: CoachOpeningMoment = 'phase-1-calendar-return';
 
 export const COACH_OPENING_MOMENTS = Object.keys(COACH_OPENING_PHASES) as [
   CoachOpeningMoment,
@@ -95,9 +138,15 @@ export function openingBelongsToPhase(moment: CoachOpeningMoment, phaseKey: stri
 /**
  * The moment fired the instant a leader reaches a phase, per phase.
  *
- * Phase 6 is absent on purpose. Its close is a data moment that fires *after* the summary has
- * rendered (`phase/phase6-panel.tsx`), and there is no conversation to arrive into before that: the
- * takeaway is asked on the screen itself, because a reflection is the leader's to write (I6).
+ * **Phase 6 is here now, and this comment used to explain why it was not.** It said the takeaway is
+ * asked on the screen "because a reflection is the leader's to write (I6)" — which was true when it
+ * was written and stopped being true on 2026-07-27, when P19 reversed exactly that refusal and
+ * replaced the blanket ban with three narrower guards. The comment outlived the decision it cited
+ * by three days, in the file that decides what the coach says first.
+ *
+ * Phase 6 now carries two moments: this one asks the takeaway before the artifact exists
+ * (`Prompt_Text.md:35`), and `phase-6-close` is a data moment that fires *after* the summary has
+ * rendered. Only the first is an arrival.
  */
 export const ARRIVAL_MOMENTS: Readonly<Record<string, CoachOpeningMoment>> = {
   'phase-0-setup': 'phase-0-open',
@@ -106,6 +155,7 @@ export const ARRIVAL_MOMENTS: Readonly<Record<string, CoachOpeningMoment>> = {
   'phase-3-ideal': 'phase-3-open',
   'phase-4-gap': 'phase-4-gap',
   'phase-5-action': 'phase-5-action',
+  'phase-6-summary': 'phase-6-open',
 };
 
 /** The moment that opens this phase on arrival, or `null` for a phase nobody arrives into talking. */

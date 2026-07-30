@@ -334,17 +334,23 @@ jobs:
         run: npx tsx scripts/db/check-drift.ts
       - run: npx tsx scripts/smoke/erasure.ts
 
-      # Leaf (Reclaim Your Week) smokes — the four that need only Postgres + the seed.
+      # Leaf (Reclaim Your Week) smokes — the six that need only Postgres + the seed.
       #
       # These were local-only until 2026-07-26, which cost us: `smoke:reclaim-calendar` sat red on
       # `main` for two features after F8 put a consent gate in front of `createRun`, and nothing
       # re-ran it.
       #
-      # **Only ONE of the five needs a real model key** — `smoke:reclaim-calendar`, whose whole point
+      # **Only ONE of the seven needs a real model key** — `smoke:reclaim-calendar`, whose whole point
       # is that a real model response never reaches the database. `smoke:reclaim` was assumed to need
       # one too and does not: it stubs the LLM with a fake provider exactly as `smoke:chat` does, so
       # it proves the wiring (surface resolution, primary binding, conversation creation, the three
       # silent-failure traps) with no key at all. That assumption is why it sat outside CI.
+      #
+      # **Adding a smoke and gating a smoke are two acts, and only the first is anybody's habit.**
+      # `reclaim-coach` and `reclaim-join` arrived after this block was written and joined nothing,
+      # so the rule P3 established broke quietly and stayed broken for two features (post-v1 P21).
+      # Anything added to `scripts/smoke/` that needs no provider key belongs in this list on the
+      # day it lands.
       #
       # `db:seed` above already materialises the reclaim module, map and coach agent — the seed
       # runner walks subdirectories, so `prisma/seeds/app-reclaim/**` is included.
@@ -359,6 +365,21 @@ jobs:
       # `globalThis` fixes would silently produce on a sync (.context/app/upstream-sync.md).
       - name: Smoke — reclaim module surface + one streamed turn (fake provider)
         run: npx tsx scripts/smoke/reclaim.ts
+      # Both guard concurrency against a real engine, which is exactly what a mocked Prisma cannot
+      # reach: a unit test asserts the *shape* of a conditional UPDATE and proves nothing about
+      # whether Postgres serialises two of them. `reclaim-coach` covers the moment ledger (two tabs
+      # on the same beat); `reclaim-join` covers the seat check in a WHERE clause under a burst of
+      # concurrent claims (two people taking the last seat).
+      - name: Smoke — reclaim conversational contract (moment ledger, phase context)
+        run: npx tsx scripts/smoke/reclaim-coach.ts
+      - name: Smoke — reclaim group join links (seat cap under concurrent claims)
+        run: npx tsx scripts/smoke/reclaim-join.ts
+      # F15. Renders the summary PDF from a real run read out of the database, which is the half a
+      # fixture cannot reach: a JSONB reading that does not survive the round trip, or a chart with
+      # no buckets because the answers were run-scoped away. The analyst reading is written directly
+      # rather than generated, so this needs no provider key.
+      - name: Smoke — reclaim summary PDF (real run, no provider key)
+        run: npx tsx scripts/smoke/reclaim-report.ts
 
   docker:
     name: Docker Build

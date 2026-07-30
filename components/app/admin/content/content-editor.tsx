@@ -11,11 +11,17 @@
  *
  * Saving posts the whole set of edits with a required change summary. The route forwards to the
  * framework's config service, so validation, versioning and the audit entry are not this screen's job.
+ *
+ * **F18 t-1 put the draft beside the fields.** For a version this was a column of text inputs over
+ * somebody else's writing, with no way to read a sentence where a leader meets it short of saving and
+ * opening the product. The preview panel renders the unsaved draft, and it is the same
+ * `<Signpost>` a leader sees rather than a lookalike.
  */
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { FieldHelp } from '@/components/ui/field-help';
+import { ContentPreview } from '@/components/app/admin/content/content-preview';
 import {
   readContent,
   saveContent,
@@ -92,6 +98,7 @@ export function ContentEditor() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -141,211 +148,241 @@ export function ContentEditor() {
   const canSave = dirty && summary.trim().length > 0 && !busy;
 
   return (
-    <div className="space-y-10">
-      <div className="rounded-lg border p-4 text-sm">
-        <div className="flex items-center gap-1 font-medium">
-          {view.editedCount === 0
-            ? 'Everything here matches the source documents.'
-            : `${view.editedCount} ${view.editedCount === 1 ? 'field differs' : 'fields differ'} from the source documents.`}
-          <FieldHelp title="What “matches the source” means">
-            <p>
-              The wording you originally supplied is checked into the project as read-only source
-              documents. A field marked <strong>edited</strong> is one you have changed since —
-              which is exactly what this screen is for.
-            </p>
-            <p>
-              The marker exists so a change is never invisible. Every save is kept in full, with who
-              made it and why, in the module&rsquo;s{' '}
-              <Link href="/admin/framework/modules/reclaim-audit" className="underline">
-                version history
-              </Link>
-              .
-            </p>
-          </FieldHelp>
+    <div className="grid gap-8 lg:grid-cols-5 lg:items-start">
+      <aside className="lg:sticky lg:top-6 lg:order-2 lg:col-span-2">
+        {/* Collapsed by default on a narrow screen, where a permanent second column would push the
+            fields off the page. Open on a wide one, because a preview nobody opens is not a preview. */}
+        <button
+          type="button"
+          onClick={() => setPreviewOpen((open) => !open)}
+          className="text-muted-foreground hover:text-foreground mb-3 text-xs underline underline-offset-4 lg:hidden"
+        >
+          {previewOpen ? 'Hide how this reads' : 'See how this reads'}
+        </button>
+        <div className={previewOpen ? 'block' : 'hidden lg:block'}>
+          <ContentPreview view={view} drafts={drafts} />
         </div>
-      </div>
+      </aside>
 
-      <section className="space-y-6">
-        <h2 className="text-lg font-medium">The nine buckets</h2>
-        {view.buckets.map((bucket) => (
-          <div key={bucket.bucketSlug} className="space-y-3 rounded-lg border p-4">
-            <Field field={bucket.title} draft={drafts[bucket.title.key]} onChange={change} />
-            <Field
-              field={bucket.description}
-              draft={drafts[bucket.description.key]}
-              onChange={change}
-              multiline
-            />
-            <div className="space-y-1">
-              <Field
-                field={bucket.benchmarkNote}
-                draft={drafts[bucket.benchmarkNote.key]}
-                onChange={change}
-              />
-              <p className="text-muted-foreground text-xs">
-                The range in your own words, shown to the leader. The numbers that decide whether a
-                bar is marked over or under are set separately and are not on this screen.
+      <div className="space-y-10 lg:order-1 lg:col-span-3">
+        <div className="rounded-lg border p-4 text-sm">
+          <div className="flex items-center gap-1 font-medium">
+            {view.editedCount === 0
+              ? 'Everything here matches the source documents.'
+              : `${view.editedCount} ${view.editedCount === 1 ? 'field differs' : 'fields differ'} from the source documents.`}
+            <FieldHelp title="What “matches the source” means">
+              <p>
+                The wording you originally supplied is checked into the project as read-only source
+                documents. A field marked <strong>edited</strong> is one you have changed since —
+                which is exactly what this screen is for.
               </p>
-            </div>
+              <p>
+                The marker exists so a change is never invisible. Every save is kept in full, with
+                who made it and why, in the module&rsquo;s{' '}
+                <Link href="/admin/framework/modules/reclaim-audit" className="underline">
+                  version history
+                </Link>
+                .
+              </p>
+            </FieldHelp>
           </div>
-        ))}
-      </section>
-
-      <section className="space-y-4">
-        <h2 className="text-lg font-medium">Total-hours bands</h2>
-        {view.bands.map((band) => (
-          <div key={band.id} className="rounded-lg border p-4">
-            <Field field={band.label} draft={drafts[band.label.key]} onChange={change} multiline />
-          </div>
-        ))}
-      </section>
-
-      <section className="space-y-4">
-        <div className="flex items-center gap-1">
-          <h2 className="text-lg font-medium">Audit rules</h2>
-          <FieldHelp title="What these change">
-            <p>
-              Thresholds rather than wording. <strong>Stalled</strong> is how long an audit can sit
-              untouched before the client list flags it — an audit is meant to be left and returned
-              to, so this is deliberately generous.
-            </p>
-            <p>
-              <strong>Smallest group</strong> is the anonymity floor on the shared-results page: any
-              figure covering fewer leaders than this is withheld rather than shown, so an average
-              can never point at one person.
-            </p>
-            <p>
-              <strong>How much of a phase</strong> is the point at which a leader is offered the
-              next one, as a percentage of the questions that apply to them. Below it the coach
-              keeps asking and there is no button; at or above it the button appears alongside a
-              line saying what is still open, so they can carry on or move on knowingly. Raising it
-              to 100 means every applicable question must be answered, which can hold a phase open
-              on one a leader would rather not answer.
-            </p>
-          </FieldHelp>
         </div>
-        {view.rules.map((rule) => (
-          <label key={rule.key} className="block space-y-1 rounded-lg border p-4">
-            <span className="flex flex-wrap items-baseline justify-between gap-2">
-              <span className="text-sm font-medium">{rule.label}</span>
-              <SourceMarker field={rule} />
-            </span>
-            <input
-              type="number"
-              min={rule.min}
-              max={rule.max}
-              value={drafts[rule.key] ?? rule.value}
-              onChange={(e) => change(rule.key, e.target.value)}
-              className="bg-background w-32 rounded-md border p-2 text-sm"
-            />
-          </label>
-        ))}
-      </section>
 
-      <section className="space-y-4">
-        <h2 className="text-lg font-medium">Framing and the footnote</h2>
-        {view.prose.map((field) => (
-          <div key={field.key} className="rounded-lg border p-4">
-            <Field field={field} draft={drafts[field.key]} onChange={change} multiline />
-          </div>
-        ))}
-      </section>
-
-      <section className="space-y-4">
-        <div className="flex items-center gap-1">
-          <h2 className="text-lg font-medium">How each phase opens</h2>
-          <FieldHelp title="What a leader reads first">
-            <p>
-              Every phase opens with these words before anyone types anything. They set what the
-              phase is, what it involves, and roughly how long it takes, so the process never feels
-              open-ended.
-            </p>
-            <p>
-              Most of this wording was written for the app rather than taken from your documents, so
-              it is marked <strong>as shipped</strong> rather than measured against a source. The
-              one exception is the second part of Phase 0, which is your own outline and is marked
-              as such.
-            </p>
-          </FieldHelp>
-        </div>
-        {view.signposts.map((signpost) => (
-          <div key={signpost.phaseKey} className="space-y-3 rounded-lg border p-4">
-            <p className="text-muted-foreground text-xs tracking-wide uppercase">
-              {signpost.phaseKey}
-            </p>
-            <Field
-              field={signpost.involves}
-              draft={drafts[signpost.involves.key]}
-              onChange={change}
-            />
-            <Field
-              field={signpost.duration}
-              draft={drafts[signpost.duration.key]}
-              onChange={change}
-            />
-            {signpost.opening.map((beat) => (
+        <section className="space-y-6">
+          <h2 className="text-lg font-medium">The nine buckets</h2>
+          {view.buckets.map((bucket) => (
+            <div key={bucket.bucketSlug} className="space-y-3 rounded-lg border p-4">
+              <Field field={bucket.title} draft={drafts[bucket.title.key]} onChange={change} />
               <Field
-                key={beat.key}
-                field={beat}
-                draft={drafts[beat.key]}
+                field={bucket.description}
+                draft={drafts[bucket.description.key]}
                 onChange={change}
                 multiline
               />
-            ))}
-            {signpost.opening.length === 0 && (
-              <p className="text-muted-foreground text-xs">
-                This phase opens on its heading alone. The summary needs no introduction because the
-                document is the point.
-              </p>
-            )}
-          </div>
-        ))}
-      </section>
+              <div className="space-y-1">
+                <Field
+                  field={bucket.benchmarkNote}
+                  draft={drafts[bucket.benchmarkNote.key]}
+                  onChange={change}
+                />
+                {/* This line used to say the range was "shown to the leader". Nothing renders it on any
+                  leader-facing surface: the coach is given it at the start of phases 1 and 3, and is
+                  told to recognise what it hears with it rather than quote it. Corrected in F18 t-1,
+                  on the task whose whole purpose is that this screen tells the truth about where a
+                  field lands. */}
+                <p className="text-muted-foreground text-xs">
+                  The range in your own words. It is given to the coach rather than shown on screen,
+                  so it shapes what the coach notices and is never read out. The numbers that decide
+                  whether a bar is marked over or under are set separately and are not on this
+                  screen.
+                </p>
+              </div>
+            </div>
+          ))}
+        </section>
 
-      <section className="bg-background sticky bottom-0 space-y-2 border-t py-4">
-        <label className="block space-y-1">
-          <span className="flex items-center gap-1 text-sm font-medium">
-            What changed, and why
-            <FieldHelp title="Why this is required">
+        <section className="space-y-4">
+          <h2 className="text-lg font-medium">Total-hours bands</h2>
+          {view.bands.map((band) => (
+            <div key={band.id} className="rounded-lg border p-4">
+              <Field
+                field={band.label}
+                draft={drafts[band.label.key]}
+                onChange={change}
+                multiline
+              />
+            </div>
+          ))}
+        </section>
+
+        <section className="space-y-4">
+          <div className="flex items-center gap-1">
+            <h2 className="text-lg font-medium">Audit rules</h2>
+            <FieldHelp title="What these change">
               <p>
-                Every save is kept as a numbered version you can compare and roll back to. This line
-                is what makes that history readable a year from now — without it the history is a
-                list of anonymous diffs.
+                Thresholds rather than wording. <strong>Stalled</strong> is how long an audit can
+                sit untouched before the client list flags it — an audit is meant to be left and
+                returned to, so this is deliberately generous.
               </p>
               <p>
-                It also keeps the record straight about authorship: these are your words, and a
-                change with a reason attached can never be mistaken for someone else rewriting them.
+                <strong>Smallest group</strong> is the anonymity floor on the shared-results page:
+                any figure covering fewer leaders than this is withheld rather than shown, so an
+                average can never point at one person.
+              </p>
+              <p>
+                <strong>How much of a phase</strong> is the point at which a leader is offered the
+                next one, as a percentage of the questions that apply to them. Below it the coach
+                keeps asking and there is no button; at or above it the button appears alongside a
+                line saying what is still open, so they can carry on or move on knowingly. Raising
+                it to 100 means every applicable question must be answered, which can hold a phase
+                open on one a leader would rather not answer.
               </p>
             </FieldHelp>
-          </span>
-          <input
-            type="text"
-            value={summary}
-            onChange={(e) => setSummary(e.target.value)}
-            placeholder="Softened the wording on organisational oversight"
-            className="bg-background w-full rounded-md border p-2 text-sm"
-          />
-        </label>
-        <div className="flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            onClick={() => void save()}
-            disabled={!canSave}
-            className="bg-primary text-primary-foreground rounded-md px-4 py-2 text-sm disabled:opacity-50"
-          >
-            {busy ? 'Saving…' : 'Save changes'}
-          </button>
-          {dirty && summary.trim().length === 0 && (
-            <span className="text-muted-foreground text-sm">
-              Add a line about what changed before saving.
+          </div>
+          {view.rules.map((rule) => (
+            <label key={rule.key} className="block space-y-1 rounded-lg border p-4">
+              <span className="flex flex-wrap items-baseline justify-between gap-2">
+                <span className="text-sm font-medium">{rule.label}</span>
+                <SourceMarker field={rule} />
+              </span>
+              <input
+                type="number"
+                min={rule.min}
+                max={rule.max}
+                value={drafts[rule.key] ?? rule.value}
+                onChange={(e) => change(rule.key, e.target.value)}
+                className="bg-background w-32 rounded-md border p-2 text-sm"
+              />
+            </label>
+          ))}
+        </section>
+
+        <section className="space-y-4">
+          <h2 className="text-lg font-medium">Framing and the footnote</h2>
+          {view.prose.map((field) => (
+            <div key={field.key} className="rounded-lg border p-4">
+              <Field field={field} draft={drafts[field.key]} onChange={change} multiline />
+            </div>
+          ))}
+        </section>
+
+        <section className="space-y-4">
+          <div className="flex items-center gap-1">
+            <h2 className="text-lg font-medium">How each phase opens</h2>
+            <FieldHelp title="What a leader reads first">
+              <p>
+                Every phase opens with these words before anyone types anything. They set what the
+                phase is, what it involves, and roughly how long it takes, so the process never
+                feels open-ended.
+              </p>
+              <p>
+                Most of this wording was written for the app rather than taken from your documents,
+                so it is marked <strong>as shipped</strong> rather than measured against a source.
+                The one exception is the second part of Phase 0, which is your own outline and is
+                marked as such.
+              </p>
+            </FieldHelp>
+          </div>
+          {view.signposts.map((signpost) => (
+            <div key={signpost.phaseKey} className="space-y-3 rounded-lg border p-4">
+              <p className="text-muted-foreground text-xs tracking-wide uppercase">
+                {signpost.phaseKey}
+              </p>
+              <Field
+                field={signpost.involves}
+                draft={drafts[signpost.involves.key]}
+                onChange={change}
+              />
+              <Field
+                field={signpost.duration}
+                draft={drafts[signpost.duration.key]}
+                onChange={change}
+              />
+              {signpost.opening.map((beat) => (
+                <Field
+                  key={beat.key}
+                  field={beat}
+                  draft={drafts[beat.key]}
+                  onChange={change}
+                  multiline
+                />
+              ))}
+              {signpost.opening.length === 0 && (
+                <p className="text-muted-foreground text-xs">
+                  This phase opens on its heading alone. The summary needs no introduction because
+                  the document is the point.
+                </p>
+              )}
+            </div>
+          ))}
+        </section>
+
+        <section className="bg-background sticky bottom-0 space-y-2 border-t py-4">
+          <label className="block space-y-1">
+            <span className="flex items-center gap-1 text-sm font-medium">
+              What changed, and why
+              <FieldHelp title="Why this is required">
+                <p>
+                  Every save is kept as a numbered version you can compare and roll back to. This
+                  line is what makes that history readable a year from now — without it the history
+                  is a list of anonymous diffs.
+                </p>
+                <p>
+                  It also keeps the record straight about authorship: these are your words, and a
+                  change with a reason attached can never be mistaken for someone else rewriting
+                  them.
+                </p>
+              </FieldHelp>
             </span>
-          )}
-          {notice !== null && (
-            <span className="text-sm text-emerald-700 dark:text-emerald-400">{notice}</span>
-          )}
-          {error !== null && <span className="text-destructive text-sm">{error}</span>}
-        </div>
-      </section>
+            <input
+              type="text"
+              value={summary}
+              onChange={(e) => setSummary(e.target.value)}
+              placeholder="Softened the wording on organisational oversight"
+              className="bg-background w-full rounded-md border p-2 text-sm"
+            />
+          </label>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => void save()}
+              disabled={!canSave}
+              className="bg-primary text-primary-foreground rounded-md px-4 py-2 text-sm disabled:opacity-50"
+            >
+              {busy ? 'Saving…' : 'Save changes'}
+            </button>
+            {dirty && summary.trim().length === 0 && (
+              <span className="text-muted-foreground text-sm">
+                Add a line about what changed before saving.
+              </span>
+            )}
+            {notice !== null && (
+              <span className="text-sm text-emerald-700 dark:text-emerald-400">{notice}</span>
+            )}
+            {error !== null && <span className="text-destructive text-sm">{error}</span>}
+          </div>
+        </section>
+      </div>
     </div>
   );
 }

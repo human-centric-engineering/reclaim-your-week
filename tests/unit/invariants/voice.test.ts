@@ -19,6 +19,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { reclaimCoachAgent, RECLAIM_BANNED_LEXICON } from '@/lib/app/programme/agent';
+import { reclaimAnalystAgent } from '@/lib/app/programme/analyst/agent';
 import { EM_DASH, FIRST_PERSON_RASHMIR } from '@/tests/helpers/voice-rules';
 
 /** The three prose fields that must read cleanly. `brandVoiceInstructions` is handled separately —
@@ -27,11 +28,17 @@ const PROSE_FIELDS: Array<[string, string]> = [
   ['persona', reclaimCoachAgent.persona],
   ['systemInstructions', reclaimCoachAgent.systemInstructions],
   ['guardrails', reclaimCoachAgent.guardrails],
+  // F14: the analyst is a second authored voice. It is not conversational, but it writes two
+  // sections of the artifact the leader keeps, so I1 and I2 bind it exactly as they bind the coach.
+  ['analyst.persona', reclaimAnalystAgent.persona],
+  ['analyst.systemInstructions', reclaimAnalystAgent.systemInstructions],
+  ['analyst.guardrails', reclaimAnalystAgent.guardrails],
 ];
 
 const ALL_FIELDS: Array<[string, string]> = [
   ...PROSE_FIELDS,
   ['brandVoiceInstructions', reclaimCoachAgent.brandVoiceInstructions],
+  ['analyst.brandVoiceInstructions', reclaimAnalystAgent.brandVoiceInstructions],
 ];
 
 describe('I2 — no em dash in any agent content', () => {
@@ -47,12 +54,20 @@ describe('I2 — banned lexicon', () => {
     expect(hits).toEqual([]);
   });
 
-  it('brandVoiceInstructions names every banned term (the prohibition is complete)', () => {
-    const lower = reclaimCoachAgent.brandVoiceInstructions.toLowerCase();
-    for (const term of RECLAIM_BANNED_LEXICON) {
-      expect(lower).toContain(term.toLowerCase());
+  // F14: the analyst carries its own copy of the prohibition, in the same field, for the same
+  // reason — a prose field listing the banned terms would fail the check above.
+  it.each([
+    ['coach', reclaimCoachAgent.brandVoiceInstructions],
+    ['analyst', reclaimAnalystAgent.brandVoiceInstructions],
+  ])(
+    '%s brandVoiceInstructions names every banned term (the prohibition is complete)',
+    (_n, field) => {
+      const lower = field.toLowerCase();
+      for (const term of RECLAIM_BANNED_LEXICON) {
+        expect(lower).toContain(term.toLowerCase());
+      }
     }
-  });
+  );
 });
 
 describe('I1 — third-person voice, never Rashmir, never the model', () => {

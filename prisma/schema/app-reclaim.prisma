@@ -88,8 +88,33 @@ model ReclaimAuditRun {
   /// disclosure away on screen. It is what the transcript *draws*, not what the audit holds.
   phaseMarks Json @default("{}")
 
+  /// The analyst's two §10 sections for this run: the key gaps, and the phased pathway (F14).
+  ///
+  /// A per-run artifact, like `coachOpenings` and `phaseMarks` above, and deliberately **not** a
+  /// slot. A slot value is what the *leader* said; writing the tool's own prose there would make
+  /// every consumer that treats a slot as testimony wrong. One column also means the screen, the
+  /// PDF, the email and the public share render identical text rather than three model calls
+  /// disagreeing with each other.
+  ///
+  /// **Nullable with no default, and the distinction is load-bearing.** `null` means "never
+  /// generated" and is what the lazy read path keys its write-once `updateMany` on. A `'{}'` default
+  /// would make "generated but empty" indistinguishable from "never ran", so a run whose analyst was
+  /// refused would never be retried — the same reasoning `conversationId` gives above.
+  analystReading Json?
+
   startedAt   DateTime  @default(now())
   completedAt DateTime?
+  /// When the leader let this audit go and started again (F16).
+  ///
+  /// **Its own column, never `completedAt`.** Three readers treat that field as "this audit
+  /// finished" — `listRuns`, the nudge tick's `completedAt ?? startedAt`, and the quarterly
+  /// completion timeline — so recording an abandonment there would put abandoned runs into the
+  /// nudge cohort and into the trend that measures whether the programme works.
+  ///
+  /// The row is kept rather than deleted. The phases and the transcript are still the leader's and
+  /// still reachable from their history, erasure cascades either way, and "how many started and did
+  /// not finish" is a question the operator's measures have to be able to answer.
+  abandonedAt DateTime?
   updatedAt   DateTime  @updatedAt
 
   @@index([userId])
@@ -319,6 +344,19 @@ model ReclaimReportShare {
   userId     String // ON DELETE CASCADE
   auditRunId String
 
+  /// Whether the leader also let Rashmir read the conversation, not only the results (F17).
+  ///
+  /// **Its own fact, like `quoteConsent` next door.** Sharing a summary is not sharing the exchange
+  /// that produced it: a transcript carries what someone said while working something out, in the
+  /// order they worked it out, including the parts they went back on. A leader can want the first
+  /// and not the second, and until this column there was no way to say so — while the conversation
+  /// was reachable anyway, through a `conversationId` the admin export handed over.
+  ///
+  /// `NOT NULL DEFAULT false` rather than nullable, so absent consent reads as "not given" and no
+  /// reader can reach for a `?? true`. Withdrawable: unticking this, or the share itself, sets it
+  /// back to false, because consent that cannot be taken back is not consent.
+  transcriptConsent Boolean @default(false)
+
   createdAt DateTime @default(now())
 
   /// One coach-share per run (F10 t-1, plan D8) — see `ReclaimShare`. The inbox counts these.
@@ -392,4 +430,48 @@ model ReclaimNudge {
   updatedAt DateTime @updatedAt
 
   @@map("app_reclaim_nudge")
+}
+
+/// One message Rashmir wrote to a leader herself (F18 t-2).
+///
+/// **Not a nudge, and the distinction is the whole reason this table exists.** `ReclaimNudge` is the
+/// scheduler's state: one row per leader, a cadence, an opt-out. This is a log of messages a human
+/// composed after looking at a record and deciding — which post-v1 P24 names as the version I16 is
+/// comfortable with, against an automated "you left an audit open" that Brief §2 and
+/// `nudges/select.ts` both refuse.
+///
+/// **A row per message rather than columns on the nudge row**, unlike F17's consent flag: a coach
+/// writes to a leader across several audits and the question the screen has to answer is "what did I
+/// already say, and when", which a single latest-message triple cannot hold.
+///
+/// `auditRunId` is nullable and carries no FK, matching `ReclaimNudge.lastNudgedForRunId`: it is
+/// one-way provenance about which audit prompted the message, and a leader who has never started one
+/// can still be written to.
+///
+/// Personal data → CASCADE on `userId` (their address, and words about them). The **sender** is
+/// SET NULL: an admin account is erasable too, and erasing Rashmir must de-attribute her outbox
+/// rather than delete the record that a leader was contacted.
+model ReclaimReachOut {
+  id     String @id @default(cuid())
+  userId String // FK to User.id — ON DELETE CASCADE (personal data)
+
+  /// Which audit prompted it, where one did. No FK — provenance, like `lastNudgedForRunId`.
+  auditRunId String?
+
+  /// The operator who wrote it. FK to User.id — ON DELETE SET NULL (the record outlives the sender).
+  sentByUserId String?
+
+  /// What the leader received. Kept so the next message can be written knowing the last one.
+  subject String
+  body    String
+
+  /// `sent` or `failed`. A failed send is recorded deliberately: an operator who is told nothing
+  /// would write again, and a provider outage should read as one rather than as silence.
+  status String @default("sent")
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([auditRunId])
+  @@map("app_reclaim_reach_out")
 }

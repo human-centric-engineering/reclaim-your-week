@@ -29,9 +29,33 @@ export interface CompositeResult {
   variance: VarianceEntry[];
 }
 
-/** A divergence counts as significant at ≥ 3 hours OR ≥ 25% of the estimate — the chart's "small note". */
-const VARIANCE_MIN_HOURS = 3;
-const VARIANCE_MIN_RATIO = 0.25;
+/**
+ * A divergence counts as significant at ≥ 3 hours OR ≥ 25% of the estimate — the chart's "small note".
+ *
+ * **Exported because `calendar/reading.ts` needs the complement of this rule** and must not restate
+ * it. The source asks the coach to name what is higher, what is lower **and what is confirmed**
+ * (`Prompt_Text.md:233`); only the first two are recorded here, because a variance list of
+ * everything is not a variance list. "Confirmed" is therefore every area present in both columns
+ * that this rule did *not* select, which is only a safe thing to compute from the same two numbers.
+ * Two files each holding a sensible-looking threshold would drift into a state where an area is in
+ * neither list, or in both.
+ */
+export const VARIANCE_MIN_HOURS = 3;
+export const VARIANCE_MIN_RATIO = 0.25;
+
+/**
+ * Whether a delta against an estimate counts as a significant divergence.
+ *
+ * The `estimate > 0` guard is not defensive: a ratio against zero is meaningless, so at an estimate
+ * of nothing the hours test alone applies. `reading.ts` depends on this exact behaviour to decide
+ * what "confirmed" means, which is why the predicate is shared rather than the constants alone.
+ */
+export function isSignificantVariance(estimate: number, delta: number): boolean {
+  return (
+    Math.abs(delta) >= VARIANCE_MIN_HOURS ||
+    (estimate > 0 && Math.abs(delta) / estimate >= VARIANCE_MIN_RATIO)
+  );
+}
 
 /**
  * Pure reconciliation: composite = calendar + off-calendar, per bucket, with a variance entry wherever
@@ -59,10 +83,9 @@ export function computeComposite(
     const estimate = estimateHours[token];
     if (estimate !== undefined) {
       const delta = round1(composite - estimate);
-      const significant =
-        Math.abs(delta) >= VARIANCE_MIN_HOURS ||
-        (estimate > 0 && Math.abs(delta) / estimate >= VARIANCE_MIN_RATIO);
-      if (significant) variance.push({ token, estimate, composite, delta });
+      if (isSignificantVariance(estimate, delta)) {
+        variance.push({ token, estimate, composite, delta });
+      }
     }
   }
 

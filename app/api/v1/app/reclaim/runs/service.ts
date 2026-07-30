@@ -30,6 +30,14 @@ import {
   loadPhaseProgress,
   type PhaseView,
 } from '@/lib/app/programme/runs/journey';
+import { Prisma } from '@prisma/client';
+import { readRunAnswers } from '@/lib/app/programme/runs/answers';
+import { readBucketLabels } from '@/lib/app/programme/buckets/labels';
+import { buildAnalystBrief } from '@/lib/app/programme/analyst/brief';
+import { runAnalyst } from '@/lib/app/programme/analyst/reading';
+import { auditSummaryUrl } from '@/lib/app/programme/urls';
+import { sendEmail } from '@/lib/email/send';
+import AuditCompleteEmail from '@/components/app/emails/audit-complete';
 
 export const RUN_STATUS = {
   inProgress: 'in_progress',
@@ -92,6 +100,30 @@ export async function transitionRun(
 }
 
 /**
+ * Close the leader's module-surface conversation (I15).
+ *
+ * **Extracted in F16 because there are now two ways an audit ends**, and only one of them used to do
+ * this. A run that stops — completed or let go — must not leave its transcript active, or the next
+ * audit resumes it and the coach opens audit 2 having read audit 1's phase 4. That is the whole of
+ * I15, and it is the easiest thing to forget when adding a second ending, which is why
+ * `tests/unit/invariants/conversation-close.test.ts` now asserts both paths call this.
+ *
+ * Scoped to the surface conversation rather than to the run: `AiConversation` carries no run id, and
+ * a leader has at most one active module-surface conversation at a time by construction.
+ */
+async function closeSurfaceConversation(userId: string): Promise<void> {
+  await prisma.aiConversation.updateMany({
+    where: {
+      userId,
+      contextType: MODULE_SURFACE_CONTEXT_TYPE,
+      contextId: RECLAIM_MODULE_SLUG,
+      isActive: true,
+    },
+    data: { isActive: false },
+  });
+}
+
+/**
  * Complete the run (I15): mark the row complete and set `isActive:false` on the module surface
  * conversation, so a repeat audit opens a fresh transcript rather than resuming this one. Idempotent.
  */
@@ -124,17 +156,167 @@ export async function completeRun(userId: string, runId: string): Promise<Reclai
   emitReclaimAccessEvent('reclaim.audit_completed', { userId, runId });
 
   // I15: close the surface conversation so audit 2 does not resume audit 1's transcript.
-  await prisma.aiConversation.updateMany({
-    where: {
-      userId,
-      contextType: MODULE_SURFACE_CONTEXT_TYPE,
-      contextId: RECLAIM_MODULE_SLUG,
-      isActive: true,
-    },
-    data: { isActive: false },
-  });
+  await closeSurfaceConversation(userId);
+
+  // F14: §10's last two sections. Best-effort, and wrapped exactly as the referral unlock above is —
+  // a leader who has just pressed "finish my audit" must not be held at a spinner because a model
+  // timed out, and must never see a failure for a section that did not exist a week ago.
+  await ensureAnalystReading(userId, runId);
+
+  // F15: the one message a finished audit sends. **After the analyst, deliberately** — the email
+  // links to the summary, and sending first would point a leader at a page missing the two sections
+  // that had just been generated. That is the one ordering they would actually notice.
+  await sendCompletionEmail(userId, runId);
 
   return updated;
+}
+
+/**
+ * Let an audit go, so the leader can start another (F16 t-1).
+ *
+ * **`RUN_STATUS.abandoned` was declared here and written nowhere.** `createRun` refuses a second
+ * in-progress run with "complete or abandon the current audit before starting another", which was
+ * advice the product could not take: there was no route, no control and no job that set it. The two
+ * abandoned rows in the development database were written by hand in psql, which is how the gap was
+ * found. Combined with I14 (the free tier is one *complete* audit), a leader who began an audit for
+ * the wrong period was locked into it permanently.
+ *
+ * What this does, and each line is a decision:
+ *
+ *  - **Sets `abandonedAt`, never `completedAt`.** Three readers treat that field as "this audit
+ *    finished" — `listRuns`, the nudge tick, and the quarterly completion timeline — so writing an
+ *    abandonment into it would put this run into the nudge cohort and into the trend that measures
+ *    whether the programme works.
+ *  - **Closes the surface conversation** (I15). Missing this re-opens the invariant by a new door:
+ *    the next audit would resume the abandoned one's transcript.
+ *  - **Touches the entitlement not at all.** `consumeAudit` fires in `completeRun`, so an abandoned
+ *    run has consumed nothing. Abandoning must neither consume an audit nor refund one, and the
+ *    partial unique index on `(userId) WHERE status='in_progress'` releases on the status change, so
+ *    `createRun` succeeds immediately afterwards.
+ *  - **Leaves the journey rows alone.** `UserJourney` is keyed on `contextKey = runId`, so this
+ *    run's journey is already distinct from the next one's, and `JourneyEvent` is an audit trail.
+ *    The correct state is "this journey stopped where it stopped".
+ *
+ * Idempotent on an already-abandoned run. Refuses a completed one: you cannot let go of something
+ * you finished, and a leader asking to would be asking for something else.
+ */
+export async function abandonRun(userId: string, runId: string): Promise<ReclaimAuditRun> {
+  const run = await loadOwnedRun(runId, userId);
+  if (run.status === RUN_STATUS.abandoned) return run;
+  if (run.status === RUN_STATUS.complete) {
+    throw new ValidationError('That audit is already finished', {
+      run: ['A finished audit cannot be let go. It stays in your history.'],
+    });
+  }
+
+  const updated = await prisma.reclaimAuditRun.update({
+    where: { id: runId },
+    data: { status: RUN_STATUS.abandoned, abandonedAt: new Date() },
+  });
+
+  await closeSurfaceConversation(userId);
+
+  logger.info('Reclaim: audit let go', { runId, userId });
+  return updated;
+}
+
+/**
+ * Tell the leader their audit is finished and where it lives (F15 t-3).
+ *
+ * Sent directly rather than through the email registry, because `EmailPropsMap` is a closed
+ * interface of four auth kinds and a leaf cannot add one (sunrise#468). `quarterly-nudge` set the
+ * precedent; when that ask lands, both move to `lib/app/emails.ts` together.
+ *
+ * **Never throws, and never blocks.** A leader has just pressed "finish my audit". A provider outage
+ * must not turn that into an error on a screen that has already done everything it needed to do.
+ * `sendEmail` already swallows provider failures into a result object; this catches everything
+ * around it as well, including a missing name lookup.
+ */
+async function sendCompletionEmail(userId: string, runId: string): Promise<void> {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true, name: true },
+    });
+    if (user === null) return;
+
+    // The audit's own first name where it captured one, falling back to the account name. The audit
+    // asks for a first name; an account holds whatever was typed at signup, which is often a full
+    // one, so the greeting takes the first word rather than "Hello Sam Patel,".
+    const answers = await readRunAnswers(userId, runId);
+    const fromAudit = answers['reclaim_profile_first_name']?.value?.trim();
+    const firstName =
+      fromAudit !== undefined && fromAudit.length > 0
+        ? fromAudit.split(/\s+/)[0]
+        : (user.name?.trim().split(/\s+/)[0] ?? null);
+
+    const result = await sendEmail({
+      to: user.email,
+      subject: 'Your time audit is finished',
+      react: AuditCompleteEmail({
+        firstName: firstName === undefined || firstName === '' ? null : firstName,
+        summaryUrl: auditSummaryUrl(runId),
+      }),
+    });
+
+    // Logged either way: an unsent completion email is invisible otherwise, and "did the leader ever
+    // hear from us" is a question an operator will eventually ask. Status only, never content.
+    logger.info('Reclaim completion email', { runId, status: result.status });
+  } catch (error: unknown) {
+    logger.warn(
+      'Reclaim: the completion email could not be sent; the audit is finished regardless',
+      {
+        runId,
+        error: error instanceof Error ? error.message : String(error),
+      }
+    );
+  }
+}
+
+/**
+ * Generate the analyst's reading for a run, once.
+ *
+ * Called from `completeRun`, and again lazily from the summary read — which is what covers the two
+ * cases completion alone cannot: audits finished before F14 shipped, and generations that failed.
+ *
+ * **Write-once via a conditional `updateMany`**, the same pattern `linkRunConversation` uses. Two
+ * tabs opening a finished summary at the same moment would otherwise both generate, and the second
+ * would overwrite the first with a different reading of the same audit — the leader's artifact
+ * changing under them between one refresh and the next.
+ *
+ * Never throws. Both call sites are places a leader is finishing or reading their own audit.
+ */
+export async function ensureAnalystReading(userId: string, runId: string): Promise<void> {
+  try {
+    const run = await prisma.reclaimAuditRun.findFirst({
+      where: { id: runId, userId },
+      select: { analystReading: true },
+    });
+    // `null` means never generated. A stored reading is never regenerated, even if today's guards
+    // would refuse it: `buildSummary` re-parses on the way out, so a stale one is dropped at read
+    // time rather than silently replaced by a second model call the leader did not ask for.
+    if (run === null || run.analystReading !== null) return;
+
+    const [answers, bucketLabels] = await Promise.all([
+      readRunAnswers(userId, runId),
+      readBucketLabels(userId),
+    ]);
+    const reading = await runAnalyst(buildAnalystBrief(answers, bucketLabels));
+    if (reading === null) return;
+
+    await prisma.reclaimAuditRun.updateMany({
+      where: { id: runId, userId, analystReading: { equals: Prisma.DbNull } },
+      data: { analystReading: reading as unknown as Prisma.InputJsonValue },
+    });
+  } catch (error: unknown) {
+    logger.warn(
+      'Reclaim: the analyst reading could not be generated; the summary stands without it',
+      {
+        runId,
+        error: error instanceof Error ? error.message : String(error),
+      }
+    );
+  }
 }
 
 type SlotValueJson = Parameters<typeof saveAnswer>[0]['valueJson'];
@@ -542,6 +724,8 @@ export interface RunListItem {
   status: string;
   startedAt: Date;
   completedAt: Date | null;
+  /** When the leader set this one aside (F16). `null` for every other status. */
+  abandonedAt: Date | null;
   /** Whether there is a transcript to read back, or only the answers a form recorded. */
   hasConversation: boolean;
   /**
@@ -584,6 +768,9 @@ export async function listRuns(userId: string): Promise<RunListItem[]> {
         status: run.status,
         startedAt: run.startedAt,
         completedAt: run.completedAt,
+        // F16: so the history row can say "set aside" rather than falling through to "begun", which
+        // is what a run with no completion time used to mean and no longer does.
+        abandonedAt: run.abandonedAt,
         hasConversation: run.conversationId !== null,
         progress,
       };

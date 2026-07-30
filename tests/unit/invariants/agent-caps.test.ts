@@ -363,3 +363,49 @@ describe('a number reading is stored as prose a leader can read', () => {
     }
   );
 });
+
+/**
+ * I6 — the analyst holds nothing (F14).
+ *
+ * A second agent is the easiest way to reopen I6 without noticing. The coach may write audit answers
+ * for one reason only: its run comes from a server-issued dispatch scope rather than from a model
+ * argument. The analyst has no scope, because it is not dispatched through the chat handler at all —
+ * so if it ever held `record_answers`, that reason would not apply to it and the write would be
+ * exactly the model-chooses-its-own-run shape `fill_slot` was removed for.
+ *
+ * It does not need one. It reads a brief and returns JSON, and its output is persisted by the
+ * application to a column on the run, never to a slot: a slot value is what the *leader* said, and
+ * writing the tool's own prose there would make every consumer that treats a slot as testimony wrong.
+ */
+describe('I6 — the analyst is not a second writer', () => {
+  it('declares no capabilities at all', async () => {
+    const { reclaimAnalystAgent } = await import('@/lib/app/programme/analyst/agent');
+    // Not "no write capability" — no capability field whatsoever. There is nothing to widen.
+    expect('capabilities' in reclaimAnalystAgent).toBe(false);
+  });
+
+  it('is seeded internal, so it can never resolve as a surface a leader could chat to', async () => {
+    const seed = await import('node:fs').then((fs) =>
+      fs.readFileSync('prisma/seeds/app-reclaim/005-reclaim-analyst.ts', 'utf8')
+    );
+    expect(seed).toContain("visibility: 'internal'");
+    expect(seed).not.toContain("visibility: 'public'");
+    // A module binding would give it a seat on the coach surface; it must not have one.
+    expect(seed).not.toContain('moduleAgentBinding');
+    expect(seed).not.toContain('aiAgentCapability');
+  });
+
+  it('never reaches a slot write path', async () => {
+    const fs = await import('node:fs');
+    const dir = 'lib/app/programme/analyst';
+    for (const file of fs.readdirSync(dir)) {
+      const code = fs.readFileSync(`${dir}/${file}`, 'utf8');
+      expect(code, `${file} writes slots — the analyst's output is not testimony`).not.toMatch(
+        /\bsaveAnswer\b|\bappendSlotValue\b|\bsaveRunAnswer\b/
+      );
+      // `streamChat` would persist an AiMessage, putting a non-conversational pass into the
+      // leader's own transcript.
+      expect(code, `${file} imports streamChat`).not.toMatch(/\bstreamChat\b/);
+    }
+  });
+});

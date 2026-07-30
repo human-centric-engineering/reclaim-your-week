@@ -42,6 +42,13 @@ const CROSS_USER_MODULES = [
   'lib/app/programme/admin/aggregate.ts',
   'lib/app/programme/admin/clients.ts',
   'lib/app/programme/admin/export.ts',
+  // F17. Reads another leader's conversation, and only where they consented to it. Added here
+  // deliberately, which is what this list asks for: it is the most sensitive cross-user read in the
+  // app, and it should be impossible to add one without touching this file.
+  'lib/app/programme/admin/transcript.ts',
+  // F18 t-2. Reads another leader's runs, nudge preference and address in order to write to them,
+  // and holds the record of what was written. Added deliberately, like the entry above it.
+  'lib/app/programme/admin/reach-out.ts',
 ];
 
 /** The framework reads that take a bare `userId` and therefore carry no gate of their own. */

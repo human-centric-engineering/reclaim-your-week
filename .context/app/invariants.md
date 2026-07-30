@@ -5,35 +5,58 @@ Every Claude Code session must read it before writing code. These are the rules 
 do not travel on their own: each one is a decision that looks arbitrary in isolation and is
 load-bearing in aggregate.
 
-> **The `Test:` lines below are guards that exist and run.** As of 2026-07-26 (RYW v1 complete),
-> every one named here is built and wired into `npm run leaf:checks`, which CI runs on **every PR**
-> via the `app:ci-checks` seam:
+> **The `Test:` lines below are guards that exist and run — but they do not all run in the same
+> place, and this block used to imply they did.** Three gates matter and they have different reach,
+> so each guard is listed under the one that actually runs it. Verified against
+> `package.json` and `.github/workflows/ci.yml` on 2026-07-29.
 >
-> | Guard                                            | Invariant | Landed  |
-> | ------------------------------------------------ | --------- | ------- |
-> | `npm run leaf:content-diff`                      | I11 hop 1 | pre-F2  |
-> | `tests/unit/app/programme/content.test.ts`       | I11 hop 2 | F2 t-3  |
-> | `tests/unit/invariants/voice.test.ts`            | I1, I2    | F2 t-4  |
-> | `tests/unit/invariants/slot-sensitivity.test.ts` | I5        | F2 t-4  |
-> | `tests/unit/invariants/agent-caps.test.ts`       | I6        | F2 t-4  |
-> | `tests/unit/invariants/write-path.test.ts`       | I3        | F4 t-2  |
-> | `tests/unit/invariants/calendar-privacy.test.ts` | I4        | F5      |
-> | `tests/unit/invariants/admin-support.test.ts`    | D4 (F10)  | F10 t-1 |
-> | `tests/unit/invariants/chart-beat.test.ts`       | I12       | conv. 5 |
-> | `tests/unit/invariants/reachability.test.ts`     | —         | conv. 7 |
-> | `npm run smoke:reclaim-coach`                    | I12, I19  | conv. 9 |
+> **1 · `npm run leaf:checks` — every PR, via the `app:ci-checks` seam.** It is exactly
+> `leaf:content-diff && leaf:board-check && leaf:invariants`, and `leaf:invariants` is
+> `vitest run tests/unit/invariants` — so **the directory is the wiring**. A new file dropped in
+> there gates automatically; a guard placed anywhere else does not, however invariant-shaped it looks.
 >
-> **This block used to say the opposite** — that every test below was "still to be written" — and it
-> stayed that way through all ten features while the guards were built one by one. Its own closing
-> line was "an unwritten test that reads as written is worse than no test named at all", and the
-> inversion is just as bad: a written guard that reads as unwritten invites the next person to
-> re-do it or to distrust it. Corrected at the v1 close-out audit
-> ([[planning/post-v1|post-v1]] P2).
+> | Guard                                            | Invariant   | Landed      |
+> | ------------------------------------------------ | ----------- | ----------- |
+> | `npm run leaf:content-diff`                      | I11 hop 1   | pre-F2      |
+> | `npm run leaf:board-check`                       | — (P21/P23) | F12 t-3     |
+> | `tests/unit/invariants/voice.test.ts`            | I1, I2      | F2 t-4      |
+> | `tests/unit/invariants/slot-sensitivity.test.ts` | I5          | F2 t-4      |
+> | `tests/unit/invariants/agent-caps.test.ts`       | I6          | F2 t-4      |
+> | `tests/unit/invariants/write-path.test.ts`       | I3          | F4 t-2      |
+> | `tests/unit/invariants/calendar-privacy.test.ts` | I4          | F5          |
+> | `tests/unit/invariants/admin-support.test.ts`    | D4 (F10)    | F10 t-1     |
+> | `tests/unit/invariants/product-voice.test.ts`    | I1, I2      | open item 8 |
+> | `tests/unit/invariants/chart-beat.test.ts`       | I12         | conv. 5     |
+> | `tests/unit/invariants/reachability.test.ts`     | —           | conv. 7     |
 >
-> **Two things are still specification rather than guard, and are named as such where they appear:**
-> the real-DB smokes (`smoke:reclaim-calendar`, `smoke:reclaim`) are **not** run by any gate — see
-> [[planning/post-v1|post-v1]] P3 — and I-frame, I13, I16 and I17 are judgement rules a test cannot
-> express. For those, read the `Test:` line as "this is what would have to be checked by hand".
+> **2 · The main test suite — every PR, but not via `leaf:checks`.**
+> `tests/unit/app/programme/content.test.ts` (I11 hop 2, F2 t-3) lives outside
+> `tests/unit/invariants/`, so `leaf:invariants` does not run it. CI's `test` job does. The
+> distinction matters to anyone reasoning about which gate protects what: I11's second hop is as
+> gated as the first, by a different job.
+>
+> **3 · CI's `smoke` job — every PR, real Postgres.** All six that need no provider key:
+> `smoke:reclaim-run`, `smoke:reclaim-erasure`, `smoke:reclaim-access`, `smoke:reclaim` (a fake
+> provider), and — since F12 t-2 — `smoke:reclaim-coach` (I12's pacing, the moment ledger) and
+> `smoke:reclaim-join` (the seat cap under concurrency).
+>
+> **Not gated anywhere.** The two that need a real model key, and only those:
+> `smoke:reclaim-calendar` (I4 end to end) and `smoke:reclaim-analyst` (whether a real model can get
+> a reading past the guards at all). Both are deliberate manual gates — see
+> [[planning/post-v1|post-v1]] P16, whose one decision now covers both.
+>
+> **This block has now been wrong in both directions, which is the thing to take from it.** It first
+> said every test below was "still to be written" and stayed that way through ten features while the
+> guards were built one by one — corrected at the v1 close-out audit (P2). The correction then
+> overshot: it put every guard under one heading that claimed `leaf:checks` ran them all, and by
+> 2026-07-29 four statements in it were false — `content.test.ts` is not in `leaf:checks`,
+> `smoke:reclaim-coach` is in no gate at all, `product-voice.test.ts` was missing entirely, and the
+> closing note named `smoke:reclaim` as ungated three days after P16 recorded that it had joined CI.
+> None of that made a guard weaker. It made the map wrong, in the one file `CLAUDE.md` requires
+> every session to read first. **A guard's name is not its wiring; the gate that runs it is.**
+>
+> **Still specification rather than guard:** I-frame, I13, I16 and I17 are judgement rules no test
+> can express. For those, read the `Test:` line as "this is what would have to be checked by hand".
 
 ---
 
@@ -542,13 +565,19 @@ single page. But most of that copy is **ours**, not hers.
 
 That matters because `content-diff.ts` marks every field as "matches the source document" or
 "edited — differs from source", and the second would be a false statement about copy that has no
-source document. **So the signposts are deliberately not in the leaf content editor yet.** They are
-editable through the framework's own module config form (as raw JSON, per daybreak#161), and adding
-them to `/admin/programme/content` requires `ContentField` to carry a
-`sourceKind: 'rashmir' | 'authored'` first, so the marker can say "matches the shipped wording"
-instead. Attributing our orientation copy to Rashmir on her own editing screen is the inverse of what
-this invariant protects, and shipping the editor row before the distinction exists would do exactly
-that. Tracked in [[planning/ryw-conversational]] stage 3.
+source document. Attributing our orientation copy to Rashmir on her own editing screen is the inverse
+of what this invariant protects.
+
+**The condition this section set has since been met, and the paragraph is updated rather than left
+reading as a refusal.** It said the signposts were "deliberately not in the leaf content editor yet",
+and that adding them required `ContentField` to carry a `sourceKind: 'rashmir' | 'authored'` first.
+That field exists: `authored` fields compare against the shipped wording and are marked "as shipped"
+or "edited", `rashmir` fields against a source document, and phase 0's second beat — her process
+outline — is derived from the defaults rather than pinned to an index, so inserting a beat before hers
+cannot re-point the marker at one of ours. The signposts are on the screen, correctly attributed.
+**Since F18 t-1 the same screen also shows where each field lands**, which is the other half of the
+same honesty: a field the coach is briefed with is not a field a leader reads, and the editor now says
+which is which.
 
 **One field inside the signposts is hers**: phase 0's opening is
 `[RECLAIM_WARM_OPEN, RECLAIM_PROCESS_OUTLINE]`, and `opening` is an **array of paragraphs** precisely

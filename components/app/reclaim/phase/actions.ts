@@ -37,7 +37,7 @@ export type RunAnswers = z.infer<typeof answersEnvelope>['answers'];
 
 /** Save one answer for the run — the confirm/correct path beside the conversation. Throws on failure. */
 export async function saveAnswer(runId: string, answer: AnswerInput): Promise<void> {
-  const res = await fetch(`/api/v1/app/reclaim/runs/${runId}/answers`, {
+  const res = await fetch(`/api/v1/app/reclaim/runs/${encodeURIComponent(runId)}/answers`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(answer),
@@ -50,7 +50,7 @@ export async function saveAnswer(runId: string, answer: AnswerInput): Promise<vo
 
 /** Save many answers for the run. Throws with the server message on failure. */
 export async function saveBatch(runId: string, answers: AnswerInput[]): Promise<void> {
-  const res = await fetch(`/api/v1/app/reclaim/runs/${runId}/answers/batch`, {
+  const res = await fetch(`/api/v1/app/reclaim/runs/${encodeURIComponent(runId)}/answers/batch`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ answers }),
@@ -64,8 +64,8 @@ export async function saveBatch(runId: string, answers: AnswerInput[]): Promise<
 /** Read the run's answers for the given slugs (all if omitted), keyed by slug. */
 export async function readAnswers(runId: string, slugs?: string[]): Promise<RunAnswers> {
   const query = slugs && slugs.length > 0 ? `?slugs=${encodeURIComponent(slugs.join(','))}` : '';
-  const res = await fetch(`/api/v1/app/reclaim/runs/${runId}/answers${query}`);
-  const json: unknown = await res.json();
+  const res = await fetch(`/api/v1/app/reclaim/runs/${encodeURIComponent(runId)}/answers${query}`);
+  const json: unknown = await res.json().catch(() => null);
   if (!res.ok) throw new Error(errorMessageFrom(json) ?? 'We could not load your answers.');
   return parseEnvelope(json, answersEnvelope).answers;
 }
@@ -108,7 +108,7 @@ export interface AdvanceResult {
  * genuinely did not land.
  */
 export async function claimOpening(runId: string, moment: string): Promise<void> {
-  await fetch(`/api/v1/app/reclaim/runs/${runId}/coach/openings`, {
+  await fetch(`/api/v1/app/reclaim/runs/${encodeURIComponent(runId)}/coach/openings`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ moment }),
@@ -117,8 +117,8 @@ export async function claimOpening(runId: string, moment: string): Promise<void>
 
 /** Fetch the leader's own summary for a run (Phase 6). Throws on failure. */
 export async function fetchSummary(runId: string): Promise<AuditSummary> {
-  const res = await fetch(`/api/v1/app/reclaim/runs/${runId}/summary`);
-  const json: unknown = await res.json();
+  const res = await fetch(`/api/v1/app/reclaim/runs/${encodeURIComponent(runId)}/summary`);
+  const json: unknown = await res.json().catch(() => null);
   if (!res.ok) throw new Error(errorMessageFrom(json) ?? 'We could not load your summary.');
   return parseEnvelope(json, auditSummarySchema);
 }
@@ -126,6 +126,8 @@ export async function fetchSummary(runId: string): Promise<AuditSummary> {
 export interface ShareInput {
   publicLink?: boolean;
   withCoach?: boolean;
+  /** F17. Whether the coach may also read the conversation, not only the result. */
+  shareTranscript?: boolean;
   ageBand?: string;
   takeaway?: string;
   quotable?: boolean;
@@ -133,12 +135,12 @@ export interface ShareInput {
 
 /** Apply the leader's Phase 6 share choices; returns the public token (or null). */
 export async function shareSummary(runId: string, input: ShareInput): Promise<string | null> {
-  const res = await fetch(`/api/v1/app/reclaim/runs/${runId}/share`, {
+  const res = await fetch(`/api/v1/app/reclaim/runs/${encodeURIComponent(runId)}/share`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   });
-  const json: unknown = await res.json();
+  const json: unknown = await res.json().catch(() => null);
   if (!res.ok)
     throw new Error(errorMessageFrom(json) ?? 'We could not save your choices just now.');
   const parsed = parseEnvelope(json, z.object({ token: z.string().nullable() }));
@@ -147,7 +149,9 @@ export async function shareSummary(runId: string, input: ShareInput): Promise<st
 
 /** Complete the run (Phase 6 finish) — closes the conversation (I15) and consumes the grant (I14). */
 export async function completeAudit(runId: string): Promise<void> {
-  const res = await fetch(`/api/v1/app/reclaim/runs/${runId}/complete`, { method: 'POST' });
+  const res = await fetch(`/api/v1/app/reclaim/runs/${encodeURIComponent(runId)}/complete`, {
+    method: 'POST',
+  });
   if (!res.ok) {
     const json: unknown = await res.json().catch(() => null);
     throw new Error(errorMessageFrom(json) ?? 'We could not finish your audit just now.');
@@ -156,7 +160,7 @@ export async function completeAudit(runId: string): Promise<void> {
 
 /** Advance from `fromPhase` to the next. Surfaces the server's 422 REFLECTION_REQUIRED distinctly. */
 export async function advancePhase(runId: string, fromPhase: string): Promise<AdvanceResult> {
-  const res = await fetch(`/api/v1/app/reclaim/runs/${runId}/transition`, {
+  const res = await fetch(`/api/v1/app/reclaim/runs/${encodeURIComponent(runId)}/transition`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ fromPhase }),

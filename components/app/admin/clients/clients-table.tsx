@@ -148,6 +148,11 @@ export function ClientsTable() {
                     An audit is designed to be left and come back to, so silence is not abandonment
                     until it has gone on a while. You can change how long that is in Content.
                   </p>
+                  <p>
+                    Nothing is emailed to a leader whose audit is open. A stalled row that says
+                    <strong> written to</strong> is one somebody chose to write to from their
+                    record.
+                  </p>
                 </FieldHelp>
               </th>
               <th className="py-2 pr-4 font-medium">Phase</th>
@@ -193,6 +198,14 @@ export function ClientsTable() {
                   {client.completedRuns > 1 && (
                     <div className="text-muted-foreground mt-1 text-xs">
                       {client.completedRuns} audits
+                    </div>
+                  )}
+                  {/* F18 t-2. Beside the badge rather than in a column of its own: it is only ever
+                      read as a qualifier on the status, and the answer to "who needs me now" is
+                      wrong without it. */}
+                  {client.lastReachedOutAt !== null && (
+                    <div className="text-muted-foreground mt-1 text-xs">
+                      written to {formatDate(client.lastReachedOutAt)}
                     </div>
                   )}
                 </td>

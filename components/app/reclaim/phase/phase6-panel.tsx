@@ -8,7 +8,7 @@
  * offer + closing affirmation appear once, at the end.
  */
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   RECLAIM_CLOSING_AFFIRMATION,
   RECLAIM_CONSULTATION_EMAIL,
@@ -16,6 +16,7 @@ import {
 import { SummaryView } from '@/components/app/reclaim/summary/summary-view';
 import { CoachChat } from '@/components/app/reclaim/coach-chat';
 import { ReferralInvite } from '@/components/app/reclaim/referral-invite';
+import { DownloadReport } from '@/components/app/reclaim/report/download-report';
 import { TextAreaField, SelectField } from '@/components/app/reclaim/phase/fields';
 import {
   fetchSummary,
@@ -51,10 +52,21 @@ export function Phase6Panel({
    */
   const [takeawayValue, setTakeawayValue] = useState<string | null>(null);
   const [takeawayDraft, setTakeawayDraft] = useState('');
+  /**
+   * Whether the leader has chosen the field over the conversation for this one question.
+   *
+   * The conversation is the way through, and the form is the alternative — the same arrangement
+   * phases 0 to 5 have had since P18, and the reason there is no dead end here. If the coach cannot
+   * record the takeaway (a provider outage, a refused write), a leader who could only be asked would
+   * be stuck at the last question of the audit with the summary behind it.
+   */
+  const [writingItMyself, setWritingItMyself] = useState(false);
   const [savingTakeaway, setSavingTakeaway] = useState(false);
   const [failed, setFailed] = useState(false);
   const [wantShare, setWantShare] = useState(false);
   const [withCoach, setWithCoach] = useState(false);
+  /** F17: its own question, asked only once sharing with the coach is on. */
+  const [shareTranscript, setShareTranscript] = useState(false);
   const [publicLink, setPublicLink] = useState(false);
   const [ageBand, setAgeBand] = useState('');
   const [quotable, setQuotable] = useState(false);
@@ -69,12 +81,20 @@ export function Phase6Panel({
       .catch(() => setFailed(true));
   }, [runId]);
 
-  // The takeaway, read back so a leader who saved it and reloaded is not asked again.
-  useEffect(() => {
-    void readAnswers(runId)
-      .then((answers) => setTakeawayValue(answers['reclaim_reflection_p6']?.value ?? ''))
-      .catch(() => setTakeawayValue(''));
+  // The takeaway, read back so a leader who saved it and reloaded is not asked again — and re-read
+  // after every coach turn, because the coach is now what usually records it.
+  const refreshTakeaway = useCallback(async () => {
+    try {
+      const answers = await readAnswers(runId);
+      setTakeawayValue(answers['reclaim_reflection_p6']?.value ?? '');
+    } catch {
+      setTakeawayValue('');
+    }
   }, [runId]);
+
+  useEffect(() => {
+    void refreshTakeaway();
+  }, [refreshTakeaway]);
 
   const saveTakeaway = async () => {
     setSavingTakeaway(true);
@@ -99,6 +119,9 @@ export function Phase6Panel({
       const input: ShareInput = {
         publicLink,
         withCoach,
+        // Withdrawn with its parent: sharing the exchange but not the summary it produced is a
+        // state nobody asked for, and the server enforces the same rule.
+        shareTranscript: withCoach && shareTranscript,
         ageBand: ageBand && ageBand !== 'Prefer not to say' ? ageBand : undefined,
         // Reuses what they already wrote rather than asking a near-identical question twice. The
         // source asks the takeaway of everyone before the summary; Brief §3 asks sharers for "in a
@@ -173,7 +196,43 @@ export function Phase6Panel({
   }
 
   // The source asks this before it produces anything, and so does this screen.
+  //
+  // **It is asked in the conversation now** (F16 t-3). This was the last textarea in a tool that had
+  // been rebuilt as a conversation, and it was asking the question the whole method rests on: "ask
+  // 'what are you taking away from this?' before producing the final summary" (`Prompt_Text.md:35`).
+  // A leader who has just spent forty minutes being listened to should not meet a form field and a
+  // Save button for the one answer that matters most.
+  //
+  // The field is still one click away, and that is not a hedge. The coach records this through
+  // `record_answers` under the same three conditions as every other reflection, and if that write
+  // cannot happen a leader who could only be asked would be stranded at the last question with the
+  // summary behind it.
   if (takeawayValue === null || takeawayValue.trim().length === 0) {
+    if (!writingItMyself) {
+      return (
+        <div className="space-y-6">
+          <CoachChat
+            runId={runId}
+            conversationId={conversationId}
+            openMoment={coachOpenings.includes('phase-6-open') ? null : 'phase-6-open'}
+            // Every turn may be the one that records it, and the summary appears the moment it does.
+            onTurnComplete={() => {
+              void refreshTakeaway();
+              onAdvanced();
+            }}
+            className="border-border/60 h-[26rem] rounded-2xl border"
+          />
+          <button
+            type="button"
+            onClick={() => setWritingItMyself(true)}
+            className="text-muted-foreground hover:text-foreground text-xs underline underline-offset-4"
+          >
+            I would rather write it myself
+          </button>
+        </div>
+      );
+    }
+
     return (
       <div className="space-y-8">
         <TextAreaField
@@ -187,14 +246,23 @@ export function Phase6Panel({
           Whatever comes to mind. Your summary is ready and will be here as soon as you have written
           it.
         </p>
-        <button
-          type="button"
-          onClick={() => void saveTakeaway()}
-          disabled={savingTakeaway || takeawayDraft.trim().length === 0}
-          className="bg-primary text-primary-foreground rounded-full px-8 py-3 text-[0.95rem] font-medium disabled:opacity-40"
-        >
-          {savingTakeaway ? 'Saving…' : 'Save and see my summary'}
-        </button>
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+          <button
+            type="button"
+            onClick={() => void saveTakeaway()}
+            disabled={savingTakeaway || takeawayDraft.trim().length === 0}
+            className="bg-primary text-primary-foreground rounded-full px-8 py-3 text-[0.95rem] font-medium disabled:opacity-40"
+          >
+            {savingTakeaway ? 'Saving…' : 'Save and see my summary'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setWritingItMyself(false)}
+            className="text-muted-foreground hover:text-foreground text-xs underline underline-offset-4"
+          >
+            I would rather talk it through
+          </button>
+        </div>
         {error !== null && (
           <p className="text-muted-foreground text-sm" role="status">
             {error} You can try again.
@@ -229,12 +297,17 @@ export function Phase6Panel({
       </div>
 
       <div className="border-border/70 flex flex-wrap gap-3 border-t pt-6 print:hidden">
+        {/* F15. This used to be one button labelled "Download / print", which did neither: it opened
+            the browser's print dialogue, from which a leader could reach "Save as PDF" if they knew
+            to. There is no print stylesheet in the repository, so what came out carried whatever the
+            screen had. The two are now separate and each does what it says. */}
+        <DownloadReport runId={runId} />
         <button
           type="button"
           onClick={() => window.print()}
           className="border-border text-foreground hover:bg-muted rounded-full border px-6 py-2.5 text-sm"
         >
-          Download / print
+          Print this page
         </button>
         <button
           type="button"
@@ -267,6 +340,36 @@ export function Phase6Panel({
             />
             Share my results with Rashmir
           </label>
+
+          {/*
+            F17. Its own question, and only asked once the first one is answered.
+
+            Sharing a summary is not sharing the exchange that produced it. A transcript holds what
+            someone said while working something out, in the order they worked it out, including the
+            parts they went back on. Brief §3 already draws this line for quoting; the conversation
+            deserves it at least as much, and until now there was no way for a leader to say yes to
+            one and no to the other.
+
+            Indented under its parent because that is what it is: unticking the box above withdraws
+            this one, on the server as well as here.
+          */}
+          {withCoach && (
+            <label className="text-foreground ml-6 flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={shareTranscript}
+                onChange={(e) => setShareTranscript(e.target.checked)}
+                className="mt-1"
+              />
+              <span>
+                She may also read our conversation, not only the results.
+                <span className="text-muted-foreground block text-xs leading-relaxed">
+                  Everything you typed, in the order you typed it. Leave this unticked and she sees
+                  the summary only. You can change your mind here at any time.
+                </span>
+              </span>
+            </label>
+          )}
           <SelectField
             id="age-band"
             label="Age range (optional)"

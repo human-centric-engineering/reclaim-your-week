@@ -10,6 +10,7 @@ const {
   shareUpsert,
   shareFindUnique,
   reportUpsert,
+  reportUpdateMany,
   feedbackFindFirst,
   feedbackCreate,
   feedbackUpdate,
@@ -17,6 +18,7 @@ const {
   shareUpsert: vi.fn(),
   shareFindUnique: vi.fn(),
   reportUpsert: vi.fn(),
+  reportUpdateMany: vi.fn(),
   feedbackFindFirst: vi.fn(),
   feedbackCreate: vi.fn(),
   feedbackUpdate: vi.fn(),
@@ -24,7 +26,7 @@ const {
 vi.mock('@/lib/db/client', () => ({
   prisma: {
     reclaimShare: { upsert: shareUpsert, findUnique: shareFindUnique },
-    reclaimReportShare: { upsert: reportUpsert },
+    reclaimReportShare: { upsert: reportUpsert, updateMany: reportUpdateMany },
     reclaimFeedback: {
       findFirst: feedbackFindFirst,
       create: feedbackCreate,
@@ -45,6 +47,7 @@ beforeEach(() => {
     );
   shareFindUnique.mockReset();
   reportUpsert.mockReset().mockResolvedValue(undefined);
+  reportUpdateMany.mockReset().mockResolvedValue({ count: 0 });
   feedbackFindFirst.mockReset().mockResolvedValue(null);
   feedbackCreate.mockReset().mockResolvedValue(undefined);
   feedbackUpdate.mockReset().mockResolvedValue(undefined);
@@ -93,8 +96,48 @@ describe('createShare', () => {
     await createShare('u1', 'run-1', { withCoach: true });
     expect(reportUpsert).toHaveBeenCalledWith({
       where: { userId_auditRunId: { userId: 'u1', auditRunId: 'run-1' } },
-      create: { userId: 'u1', auditRunId: 'run-1' },
-      update: {},
+      create: { userId: 'u1', auditRunId: 'run-1', transcriptConsent: false },
+      // F17: `update` is no longer empty. The share token must not be regenerated on a re-save, but
+      // a consent must be changeable on one or it cannot be withdrawn, so every save restates the
+      // leader's current answer — including "no".
+      update: { transcriptConsent: false },
+    });
+  });
+
+  describe('transcript consent (F17)', () => {
+    it('records it when the leader says the conversation may be read', async () => {
+      await createShare('u1', 'run-1', { withCoach: true, shareTranscript: true });
+      expect(reportUpsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: { userId: 'u1', auditRunId: 'run-1', transcriptConsent: true },
+          update: { transcriptConsent: true },
+        })
+      );
+    });
+
+    it('withdraws it when they untick it on a later save', async () => {
+      await createShare('u1', 'run-1', { withCoach: true, shareTranscript: false });
+      expect(reportUpsert).toHaveBeenCalledWith(
+        expect.objectContaining({ update: { transcriptConsent: false } })
+      );
+    });
+
+    it('withdraws it when they stop sharing the results at all', async () => {
+      // Sharing the exchange but not the summary it produced is a state nobody asked for.
+      await createShare('u1', 'run-1', { withCoach: false, shareTranscript: true });
+      expect(reportUpdateMany).toHaveBeenCalledWith({
+        where: { userId: 'u1', auditRunId: 'run-1', transcriptConsent: true },
+        data: { transcriptConsent: false },
+      });
+      expect(reportUpsert).not.toHaveBeenCalled();
+    });
+
+    it('leaves it alone when the request never mentions coach sharing', async () => {
+      // A save that only mints a public link must not revoke a consent nobody touched, and must not
+      // put a write on the database to discover that.
+      await createShare('u1', 'run-1', { publicLink: true });
+      expect(reportUpdateMany).not.toHaveBeenCalled();
+      expect(reportUpsert).not.toHaveBeenCalled();
     });
   });
 

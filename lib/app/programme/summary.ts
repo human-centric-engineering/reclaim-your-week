@@ -6,8 +6,10 @@
  * so the same object is safe to serve behind a public share token. Run-scoped (`readRunAnswers`).
  */
 
+import { prisma } from '@/lib/db/client';
 import { readRunAnswers } from '@/lib/app/programme/runs/answers';
 import { RECLAIM_FOOTNOTE } from '@/lib/app/programme/content';
+import { parseAnalystReading, type AnalystReading } from '@/lib/app/programme/analyst/reading';
 import {
   buildChartData,
   type Answers,
@@ -37,6 +39,18 @@ export interface AuditSummary {
     when: string | null;
     howKnown: string | null;
   };
+  /**
+   * §10's two remaining items — the key gaps, and the phased pathway (F14).
+   *
+   * `null` whenever the analyst has not run, was refused, or failed, and **every surface renders
+   * nothing for `null`** rather than an error or a placeholder. The summary satisfied §10's other
+   * six bullets for the whole of v1; telling a leader their artifact is defective is worse than
+   * quietly being the artifact it was before.
+   *
+   * Read from the run row, never generated here. `buildSummary` is called by the public share route
+   * with no session and by the PDF route, and neither is a place to start spending money.
+   */
+  analyst: AnalystReading | null;
   footnote: string;
 }
 
@@ -53,8 +67,23 @@ const numOf = (a: SlotAnswer): number | null => {
 
 /** Build the summary for a run. Reads every slug it needs run-scoped; carries no sensitive prose. */
 export async function buildSummary(userId: string, runId: string): Promise<AuditSummary> {
-  const answers: Answers = await readRunAnswers(userId, runId);
+  const [answers, run] = await Promise.all([
+    readRunAnswers(userId, runId) as Promise<Answers>,
+    prisma.reclaimAuditRun.findFirst({
+      where: { id: runId, userId },
+      select: { analystReading: true },
+    }),
+  ]);
   const current = buildChartData(answers);
+
+  // Re-parsed on the way out rather than trusted as stored. The column is JSON written by an earlier
+  // deploy, so the shape it holds is whatever that build considered valid; re-running the refusals
+  // means a reading that would not pass today's guards does not reach a public share because it
+  // happened to be written before them. The token set is this run's own areas.
+  const analyst =
+    run?.analystReading == null
+      ? null
+      : parseAnalystReading(run.analystReading, new Set(current.buckets.map((b) => b.token)));
 
   const rows: SummaryBucketRow[] = current.buckets.map((b) => ({
     token: b.token,
@@ -76,6 +105,7 @@ export async function buildSummary(userId: string, runId: string): Promise<Audit
       when: text(answers['reclaim_action_when']),
       howKnown: text(answers['reclaim_action_how_known']),
     },
+    analyst,
     footnote: RECLAIM_FOOTNOTE,
   };
 }

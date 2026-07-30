@@ -215,6 +215,15 @@ export function CoachChat({
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   /**
+   * Whether the turn that just failed had already reached the conversation.
+   *
+   * The two failures need different words, and telling them apart is the difference between an
+   * accurate instruction and a guess. If nothing was persisted the leader's sentence is back in the
+   * composer and pressing send is the whole recovery. If it *was* persisted, their words are in the
+   * conversation and only the reply is missing, so re-sending would say the same thing twice.
+   */
+  const [failedAfterSending, setFailedAfterSending] = useState(false);
+  /**
    * The answers on offer for the question this turn ended with, or `null` for an open question.
    *
    * Held only for the turn it arrived in. It is cleared at the top of every turn rather than when one
@@ -348,6 +357,7 @@ export function CoachChat({
   const runTurn = useCallback(
     async (body: Record<string, unknown>, leaderText: string | null) => {
       setError(null);
+      setFailedAfterSending(false);
       setStatus(null);
       // The previous turn's answers, cleared before this one can produce any, along with the
       // leader's choice of which composer to look at. See `offer` and `choicesHidden`.
@@ -367,6 +377,11 @@ export function CoachChat({
 
       const controller = new AbortController();
       abortRef.current = controller;
+      // Whether this turn got far enough for the server to have persisted the leader's message.
+      // `streamChat` writes the user row before it calls the model, and the `start` frame is the
+      // first thing it emits afterwards — so a `start` means "your words are in the conversation",
+      // and its absence means nothing was written and the turn can be retried cleanly.
+      let persisted = false;
       try {
         const res = await fetch(`/api/v1/app/reclaim/runs/${runId}/coach/stream`, {
           method: 'POST',
@@ -407,6 +422,7 @@ export function CoachChat({
               }
               continue;
             }
+            if (event.type === 'start') persisted = true;
             if (event.type === 'content') {
               const { delta } = event;
               fullRef.current += delta;
@@ -432,6 +448,23 @@ export function CoachChat({
       } catch (e) {
         if (controller.signal.aborted) return; // unmounted / superseded — leave state untouched
         setError(e instanceof Error ? e.message : 'Something interrupted the conversation.');
+        setFailedAfterSending(persisted && leaderText !== null);
+
+        // **The turn failed before the server wrote anything, so give the leader their words back.**
+        //
+        // This is the whole of the fix. `send()` used to clear the composer before opening the
+        // stream, so a turn that failed left "you can try again" beside an empty box and a sentence
+        // the leader would have to retype from memory. Restoring the draft is safe *only* when the
+        // message was never persisted, which is exactly what `persisted` tracks: re-sending one the
+        // server already holds would put it in the conversation twice.
+        //
+        // The optimistic line goes with it. It was drawn on the assumption the turn would work, and
+        // leaving it there beside a refilled composer would show the leader their sentence twice and
+        // make sending it look like a duplicate.
+        if (!persisted && leaderText !== null) {
+          setTurns((t) => t.slice(0, -2));
+          setDraft((current) => (current.trim().length > 0 ? current : leaderText));
+        }
       } finally {
         if (!controller.signal.aborted) {
           // The turn's text is committed here rather than on every delta: the animation keeps
@@ -681,9 +714,21 @@ export function CoachChat({
           {trailingBeats}
 
           {error !== null && (
-            <p className="text-muted-foreground border-border border-t pt-3 text-sm" role="status">
-              {error} You can try again.
-            </p>
+            <div className="border-border border-t pt-3" role="status">
+              <p className="text-muted-foreground text-sm">{error}</p>
+              {/* Two different situations, and they used to share one sentence: "You can try again",
+                  beside an empty composer, with no way to try. */}
+              {failedAfterSending ? (
+                <p className="text-muted-foreground mt-1 text-sm">
+                  What you said was recorded, so there is no need to write it again. Ask the coach
+                  to pick it up whenever you are ready.
+                </p>
+              ) : (
+                <p className="text-muted-foreground mt-1 text-sm">
+                  Your message is back in the box below, just as you wrote it.
+                </p>
+              )}
+            </div>
           )}
         </div>
       </div>

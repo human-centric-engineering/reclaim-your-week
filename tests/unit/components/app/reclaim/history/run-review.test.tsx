@@ -100,6 +100,7 @@ const SUMMARY = {
   },
   rows: [],
   action: { chosen: 'Protect Tuesday mornings', when: 'Next week', howKnown: null },
+  analyst: null,
   footnote: 'A tool designed by Rashmir Balasubramaniam.',
 };
 

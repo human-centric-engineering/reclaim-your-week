@@ -111,3 +111,53 @@ describe('I12 — the server holds the gate', () => {
     expect(CHART_REVEAL_PHASE).toBe('phase-1-current');
   });
 });
+
+/**
+ * The calendar-return beat (F13 t-3) — a third moment in phase 1, and it must not disturb I12.
+ *
+ * The risk it introduces is specific: a beat that fires on an uploaded calendar could describe the
+ * leader's week before they have asked to see it, which is exactly what I12 exists to prevent. Two
+ * things keep it honest, and both are asserted here rather than left to the prose. It is a **data**
+ * moment, so it is absent from `ARRIVAL_MOMENTS` and cannot fire simply because someone walked into
+ * the phase. And the reveal branch below it in `momentForPhase` is untouched — the perception lines
+ * are figures, taking the same trade the chart's own figures already take, and the three-state
+ * reveal gate still decides when the picture may be described.
+ */
+describe('I12 — the calendar-return beat does not shorten the pause', () => {
+  it('belongs to phase 1, and is refused anywhere else', async () => {
+    const { CALENDAR_RETURN_MOMENT, openingBelongsToPhase } =
+      await import('@/lib/app/programme/coach/opening');
+    expect(openingBelongsToPhase(CALENDAR_RETURN_MOMENT, CHART_REVEAL_PHASE)).toBe(true);
+    // The client sends the moment and the server owns the phase; a mismatch is a 422.
+    for (const phase of ['phase-0-setup', 'phase-4-gap', 'phase-6-summary']) {
+      expect(openingBelongsToPhase(CALENDAR_RETURN_MOMENT, phase)).toBe(false);
+    }
+  });
+
+  it('is a data moment, so arriving at phase 1 can never fire it', async () => {
+    const { CALENDAR_RETURN_MOMENT, ARRIVAL_MOMENTS, isArrivalMoment, openingTriggerFor } =
+      await import('@/lib/app/programme/coach/opening');
+    expect(isArrivalMoment(CALENDAR_RETURN_MOMENT)).toBe(false);
+    expect(Object.values(ARRIVAL_MOMENTS)).not.toContain(CALENDAR_RETURN_MOMENT);
+    // "Open it the way your context describes" — the beat is built from figures, not a phase intro.
+    expect(openingTriggerFor(CALENDAR_RETURN_MOMENT)).toContain('the way your context describes');
+  });
+
+  it('reaches the surface only once an upload has been reconciled', () => {
+    // The surface gates the moment on `reclaim_calendar_uploaded`, so a leader who never took the
+    // branch, or who is mid-upload, is not spoken to about a calendar that does not exist.
+    const source = read(join('components/app/reclaim/coach/phase-conversation.tsx'));
+    expect(source).toContain('CALENDAR_RETURN_MOMENT');
+    expect(source).toMatch(/calendarReconciled\s*&&/);
+    expect(source).toContain("truthy(answers['reclaim_calendar_uploaded'])");
+  });
+
+  it('adds figures without adding interpretation ahead of the reveal', () => {
+    // The framed block states the leader's own noticing comes first, and hands the beat back rather
+    // than reading it for them. Without this, a coach given fresh figures would summarise them in
+    // the same turn — the exact collapse I12 was written to stop.
+    const reading = read(join('lib/app/programme/calendar/reading.ts'));
+    expect(reading).toContain('Their noticing comes first');
+    expect(reading).toContain('never evidence that they were wrong');
+  });
+});

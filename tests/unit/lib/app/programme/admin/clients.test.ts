@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => ({
   nodeStateFindMany: vi.fn(),
   costGroupBy: vi.fn(),
   slotGroupBy: vi.fn(),
+  reachOutGroupBy: vi.fn(),
   moduleFindUnique: vi.fn(),
   getSlotHeads: vi.fn(),
   listJourneys: vi.fn(),
@@ -38,6 +39,7 @@ vi.mock('@/lib/db/client', () => ({
     userNodeState: { findMany: mocks.nodeStateFindMany },
     aiCostLog: { groupBy: mocks.costGroupBy },
     slotValue: { groupBy: mocks.slotGroupBy },
+    reclaimReachOut: { groupBy: mocks.reachOutGroupBy },
     module: { findUnique: mocks.moduleFindUnique },
   },
 }));
@@ -81,6 +83,7 @@ beforeEach(() => {
   mocks.nodeStateFindMany.mockResolvedValue([]);
   mocks.costGroupBy.mockResolvedValue([]);
   mocks.slotGroupBy.mockResolvedValue([]);
+  mocks.reachOutGroupBy.mockResolvedValue([]);
   mocks.getSlotHeads.mockResolvedValue([]);
   mocks.listJourneys.mockResolvedValue({ journeys: [], total: 0 });
 });
