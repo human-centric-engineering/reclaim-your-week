@@ -116,15 +116,27 @@ export interface FastForwardResult {
   completed: boolean;
 }
 
-/** A password that satisfies `passwordSchema` by construction, from the platform's own randomness. */
+/**
+ * A password that satisfies `passwordSchema` by construction, from the platform's own randomness.
+ *
+ * **base64url of the raw bytes, not an index into an alphabet.** Folding a byte onto a 25-letter
+ * alphabet with `%` makes the first six letters fractionally likelier, because 256 is not a multiple
+ * of 25 — a small bias, but a real one in a credential, and CodeQL flags it as
+ * `js/biased-cryptographic-random`. The two fixes are rejection sampling or not doing the arithmetic
+ * at all; `mintToken` in `invite-links.ts` already established the second here, so this follows it.
+ * Nine bytes is twelve base64url characters with no padding to strip, and 72 bits rather than the 55
+ * the modulo version carried.
+ */
 function generatePassword(): string {
-  const alphabet = 'abcdefghijkmnopqrstuvwxyz';
   // `globalThis.crypto` rather than a bare `crypto`, matching `invite-links.ts` — the explicit form
   // is the one that reads unambiguously in a file that also imports from Node's `crypto` elsewhere.
-  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(12));
-  const body = [...bytes].map((b) => alphabet[b % alphabet.length]).join('');
-  // Upper, lower, digit and symbol are each guaranteed rather than hoped for: a generator that fails
-  // the schema one time in fifty is a bug an operator meets at random and cannot reproduce.
+  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(9));
+  const body = btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_');
+  // Upper, lower, digit and symbol are each guaranteed rather than hoped for: base64url is not
+  // obliged to contain any one of them, and a generator that fails the schema one time in fifty is a
+  // bug an operator meets at random and cannot reproduce.
   return `Rw${body}7!`;
 }
 

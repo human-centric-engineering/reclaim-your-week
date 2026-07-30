@@ -107,6 +107,32 @@ describe('provisionPreviewAccount', () => {
     }
   });
 
+  it('draws the password without folding bytes onto an alphabet', async () => {
+    // `js/biased-cryptographic-random`: mapping a byte onto a 25-letter alphabet with `%` makes the
+    // first six letters likelier, because 256 is not a multiple of 25. base64url has no such step —
+    // every character is a straight 6-bit slice of the bytes. Asserted through the alphabet rather
+    // than by reading the source: a body outside base64url means somebody reintroduced a mapping.
+    const passwords: string[] = [];
+    for (let i = 0; i < 50; i += 1) {
+      const result = await provisionPreviewAccount({
+        label: 'walkthrough',
+        email: `b${i}@example.org`,
+        name: 'Sam',
+        actorUserId: 'admin-1',
+      });
+      passwords.push(result.password);
+    }
+
+    for (const password of passwords) {
+      // `Rw` + 12 base64url characters + `7!`. Nine bytes divide into three-byte groups exactly, so
+      // there is no `=` padding to strip — a `=` here would mean the byte count drifted.
+      expect(password).toMatch(/^Rw[A-Za-z0-9_-]{12}7!$/);
+    }
+    // Not a distribution test, which would be flaky. Just that the body varies at all: a generator
+    // returning a constant would satisfy every assertion above.
+    expect(new Set(passwords).size).toBeGreaterThan(45);
+  });
+
   it('forces emailVerified, or the operator gets a password that cannot sign in', async () => {
     await provisionPreviewAccount({
       label: 'walkthrough',
