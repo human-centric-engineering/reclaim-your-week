@@ -21,6 +21,11 @@ import {
   saveContent,
   readReachOut,
   sendReachOut,
+  listPreviewAccounts,
+  createPreviewAccount,
+  adoptPreviewAccount,
+  fastForwardPreviewAccount,
+  removePreviewAccount,
 } from '@/components/app/admin/actions';
 
 const fetchMock = vi.fn();
@@ -364,5 +369,129 @@ describe('sendReachOut', () => {
     await expect(
       sendReachOut('u1', { subject: 'Bad\nSubject', body: 'Body', auditRunId: null })
     ).rejects.toThrow('A subject cannot contain a line break');
+  });
+});
+
+describe('preview accounts (F19)', () => {
+  const accountRow = {
+    userId: 'u1',
+    name: 'Test Leader',
+    email: 'test@example.org',
+    label: 'Checking the summary',
+    createdAt: '2026-07-30T00:00:00.000Z',
+    createdByName: 'Rashmir',
+    state: 'none' as const,
+    latestRunId: null,
+  };
+
+  it('unwraps the enriched list', async () => {
+    fetchMock.mockResolvedValue(ok({ accounts: [accountRow] }));
+
+    expect(await listPreviewAccounts()).toEqual([accountRow]);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/v1/app/reclaim/admin/preview');
+  });
+
+  it('throws on an unexpected shape rather than returning undefined rows', async () => {
+    fetchMock.mockResolvedValue(ok({ accounts: [{ userId: 'u1' }] }));
+
+    await expect(listPreviewAccounts()).rejects.toThrow(/Unexpected response/);
+  });
+
+  it('creates a test account, returning the one-time password', async () => {
+    fetchMock.mockResolvedValue(
+      ok({
+        account: { userId: 'u2', email: 'ada+rywpreview-abc@example.org', label: 'walkthrough' },
+        password: 'Rwqwertyuiop7!',
+        signInUrl: 'https://ryw.test/login',
+        message: 'Test account created.',
+      })
+    );
+
+    const result = await createPreviewAccount({ label: 'walkthrough', state: 'fresh' });
+
+    expect(result.password).toBe('Rwqwertyuiop7!');
+    const [url, init] = fetchMock.mock.calls[0] as [string, { method: string; body: string }];
+    expect(url).toBe('/api/v1/app/reclaim/admin/preview');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body)).toEqual({ label: 'walkthrough', state: 'fresh' });
+  });
+
+  it('surfaces a conflict when the address is already registered', async () => {
+    fetchMock.mockResolvedValue(fail('An account already exists for this email'));
+
+    await expect(createPreviewAccount({ label: 'x', state: 'fresh' })).rejects.toThrow(
+      'An account already exists for this email'
+    );
+  });
+
+  it('adopts an existing account, returning the server’s confirmation', async () => {
+    fetchMock.mockResolvedValue(ok({ message: 'Marked as a test account.' }));
+
+    const message = await adoptPreviewAccount({ email: 'you+t1@example.org', label: 'front door' });
+
+    expect(message).toBe('Marked as a test account.');
+    const [url, init] = fetchMock.mock.calls[0] as [string, { method: string; body: string }];
+    expect(url).toBe('/api/v1/app/reclaim/admin/preview/adopt');
+    expect(JSON.parse(init.body)).toEqual({ email: 'you+t1@example.org', label: 'front door' });
+  });
+
+  it('surfaces the server’s refusal when adopting fails', async () => {
+    fetchMock.mockResolvedValue(fail('No account exists for that email'));
+
+    await expect(adoptPreviewAccount({ email: 'nobody@example.org', label: 'x' })).rejects.toThrow(
+      'No account exists for that email'
+    );
+  });
+
+  it('fast-forwards an account, returning the server’s confirmation', async () => {
+    fetchMock.mockResolvedValue(
+      ok({ message: 'That test account is now sitting at phase-4-gap.' })
+    );
+
+    const message = await fastForwardPreviewAccount('u1', { to: 'mid-audit' });
+
+    expect(message).toBe('That test account is now sitting at phase-4-gap.');
+  });
+
+  it('fast-forwards an account and passes the engine’s refusal through unchanged', async () => {
+    fetchMock.mockResolvedValue(
+      fail('preview: the engine refused to leave phase-1-current (reflection required)')
+    );
+
+    await expect(fastForwardPreviewAccount('u1', { to: 'mid-audit' })).rejects.toThrow(
+      'preview: the engine refused to leave phase-1-current (reflection required)'
+    );
+    const [url, init] = fetchMock.mock.calls[0] as [string, { method: string; body: string }];
+    expect(url).toBe('/api/v1/app/reclaim/admin/preview/u1/fast-forward');
+    expect(JSON.parse(init.body)).toEqual({ to: 'mid-audit' });
+  });
+
+  it('removes a test account', async () => {
+    fetchMock.mockResolvedValue(ok({ message: 'Test account removed.' }));
+
+    const message = await removePreviewAccount('u1');
+
+    expect(message).toBe('Test account removed.');
+    const [url, init] = fetchMock.mock.calls[0] as [string, { method: string }];
+    expect(url).toBe('/api/v1/app/reclaim/admin/preview/u1');
+    expect(init.method).toBe('DELETE');
+  });
+
+  it('surfaces the server’s refusal when removal fails', async () => {
+    fetchMock.mockResolvedValue(fail('That account is an admin account and was not removed'));
+
+    await expect(removePreviewAccount('u1')).rejects.toThrow(
+      'That account is an admin account and was not removed'
+    );
+  });
+
+  it('URL-encodes a userId in the fast-forward and remove paths', async () => {
+    fetchMock.mockResolvedValue(ok({ message: 'ok' }));
+
+    await removePreviewAccount('user/with slash');
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      '/api/v1/app/reclaim/admin/preview/user%2Fwith%20slash'
+    );
   });
 });

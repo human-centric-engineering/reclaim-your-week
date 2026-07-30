@@ -88,6 +88,28 @@ beforeEach(() => {
   vi.mocked(eraseUser).mockResolvedValue({ receiptId: 'r1', erasedAt: new Date() });
 });
 
+describe('GET preview', () => {
+  it('returns the enriched list from listPreviewAccounts, unwrapped', async () => {
+    const row = {
+      userId: PREVIEW_ID,
+      name: 'Test Leader',
+      email: 'test@example.org',
+      label: 'walkthrough',
+      createdAt: '2026-07-30T00:00:00.000Z',
+      createdByName: 'Ada',
+      state: 'complete' as const,
+      latestRunId: 'run-1',
+    };
+    vi.mocked(listPreviewAccounts).mockResolvedValue([row]);
+
+    const res = await GET(req());
+    const body = (await res.json()) as { data: { accounts: unknown[] } };
+
+    expect(res.status).toBe(200);
+    expect(body.data.accounts).toEqual([row]);
+  });
+});
+
 describe('POST preview — the default email', () => {
   it('uses a plus-subaddress of the acting admin when none is given', async () => {
     // The point of the default: everything the product sends a leader arrives in the operator's own
@@ -280,6 +302,27 @@ describe('fast-forward', () => {
     expect(fastForwardPreviewAccount).not.toHaveBeenCalled();
   });
 
+  it('passes a quarter through when the operator gives one', async () => {
+    await FAST_FORWARD(req({ to: 'mid-audit', quarter: '2026 Q4' }), ctx());
+
+    expect(fastForwardPreviewAccount).toHaveBeenCalledWith(PREVIEW_ID, 'mid-audit', {
+      quarter: '2026 Q4',
+    });
+  });
+
+  it('reports the completed-audit message when the fast-forward finished the run', async () => {
+    vi.mocked(fastForwardPreviewAccount).mockResolvedValue({
+      runId: 'run-1',
+      reachedPhaseKey: 'phase-6-summary',
+      completed: true,
+    });
+
+    const res = await FAST_FORWARD(req({ to: 'completed' }), ctx());
+    const body = (await res.json()) as { data: { message: string } };
+
+    expect(body.data.message).toMatch(/completed audit/i);
+  });
+
   it('surfaces the engine’s own refusal rather than a generic failure', async () => {
     // The one thing this endpoint is uniquely good at telling an operator: the product refused a step
     // it used to allow. Flattening that into "could not be advanced" throws the finding away.
@@ -292,6 +335,18 @@ describe('fast-forward', () => {
 
     expect(res.status).toBe(400);
     expect(body.error.message).toContain('refused to leave phase-1-current');
+  });
+
+  it('falls back to a generic message when the rejection is not an Error', async () => {
+    // A thrown string or object has no `.message` — the fallback is what keeps the response envelope
+    // from crashing on `undefined` rather than returning something a human can read.
+    vi.mocked(fastForwardPreviewAccount).mockRejectedValue('not an Error instance');
+
+    const res = await FAST_FORWARD(req({ to: 'completed' }), ctx());
+    const body = (await res.json()) as { error: { message: string } };
+
+    expect(res.status).toBe(400);
+    expect(body.error.message).toBe('That account could not be advanced.');
   });
 });
 

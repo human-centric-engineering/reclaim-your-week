@@ -199,4 +199,16 @@ describe('InviteManager — the invitation link', () => {
 
     await waitFor(() => expect(screen.queryByText(LINK)).not.toBeInTheDocument());
   });
+
+  it('hides the link on request, without withdrawing the invitation', async () => {
+    issueInvite.mockResolvedValue({ message: 'Invitation sent.', invitationUrl: LINK });
+
+    const user = await issueVia(/send invitation/i);
+    expect(await screen.findByText(LINK)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /^hide$/i }));
+
+    expect(screen.queryByText(LINK)).not.toBeInTheDocument();
+    expect(revokeInvite).not.toHaveBeenCalled();
+  });
 });

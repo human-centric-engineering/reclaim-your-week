@@ -161,6 +161,24 @@ describe('provisionPreviewAccount', () => {
       createdByUserId: 'admin-1',
     });
   });
+
+  it('refuses when the account cannot be found straight after sign-up', async () => {
+    // Would mean `auth.api.signUpEmail` reported success but the user is not readable yet — a
+    // consistency question worth failing loudly on rather than minting a grant for nobody.
+    mocks.userFindUnique.mockResolvedValue(null);
+
+    await expect(
+      provisionPreviewAccount({
+        label: 'x',
+        email: 'sam@example.org',
+        name: 'Sam',
+        actorUserId: 'a',
+      })
+    ).rejects.toThrow('preview: the account was not created');
+
+    expect(mocks.mintGrant).not.toHaveBeenCalled();
+    expect(mocks.registerPreviewAccount).not.toHaveBeenCalled();
+  });
 });
 
 describe('fastForwardPreviewAccount — the interlock', () => {
@@ -174,6 +192,17 @@ describe('fastForwardPreviewAccount — the interlock', () => {
     expect(mocks.createRun).not.toHaveBeenCalled();
     expect(mocks.saveRunAnswers).not.toHaveBeenCalled();
     expect(mocks.recordConsent).not.toHaveBeenCalled();
+  });
+});
+
+describe('fastForwardPreviewAccount — invalid input', () => {
+  it('refuses an unknown phase key rather than silently walking to the end', async () => {
+    // This is a library function a future caller could reach directly (the smoke script already
+    // does), not only through the route that validates `toPhase` with Zod first. The check has to
+    // hold on its own.
+    await expect(
+      fastForwardPreviewAccount(USER, 'mid-audit', { toPhase: 'phase-9-invented' })
+    ).rejects.toThrow('preview: unknown phase phase-9-invented');
   });
 });
 
@@ -225,6 +254,20 @@ describe('fastForwardPreviewAccount — mid-audit', () => {
     await expect(fastForwardPreviewAccount(USER, 'mid-audit')).rejects.toThrow(
       /refused to leave phase-0-setup/
     );
+  });
+
+  it('names the phase even when the engine rejects with something other than an Error', async () => {
+    mocks.transitionRun.mockRejectedValueOnce('the engine exploded');
+
+    await expect(fastForwardPreviewAccount(USER, 'mid-audit')).rejects.toThrow(
+      /refused to leave phase-0-setup \(unknown\)/
+    );
+  });
+
+  it('starts the run under the quarter it is given', async () => {
+    await fastForwardPreviewAccount(USER, 'mid-audit', { quarter: '2026 Q4' });
+
+    expect(mocks.createRun).toHaveBeenCalledWith(USER, '2026 Q4');
   });
 });
 
