@@ -144,10 +144,13 @@ export function ReachOutComposer({ userId }: { userId: string }) {
             />
           </label>
           <p className="text-muted-foreground text-xs leading-relaxed">
-            A starting point, in your voice, to change however you like. It arrives from you with a
-            link back to where they stopped
-            {view.draft.phaseLabel !== null ? `, which is ${view.draft.phaseLabel}` : ''}. Blank
-            lines become paragraphs.
+            A starting point, in your voice, to change however you like. Blank lines become
+            paragraphs.{' '}
+            {view.draft.auditRunId !== null
+              ? `It arrives from you with a link back to where they stopped${
+                  view.draft.phaseLabel !== null ? `, which is ${view.draft.phaseLabel}` : ''
+                }.`
+              : 'They have no audit open, so the draft claims nothing about one and the link is simply the way in.'}
           </p>
           <div className="flex flex-wrap items-center gap-3">
             <button

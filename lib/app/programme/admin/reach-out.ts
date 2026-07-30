@@ -66,16 +66,39 @@ export interface ReachOutDraft {
  * happened without diagnosing it, offers the door in both directions (come back, or leave it), and
  * asks nothing of them.
  *
+ * **It never asserts an audit that is not there.** The composer is reachable from every client record,
+ * not only a stalled one, and a leader who signed up and never started would otherwise be told their
+ * audit "is waiting exactly where you left it". A draft whose first fact is false about the person
+ * reading it is worse than an empty box, because it is the fact she is least likely to reread.
+ *
  * Pure, so the wording is asserted in a test rather than reviewed in a browser.
  */
-export function draftReachOut(input: { firstName: string | null; phaseLabel: string | null }): {
-  subject: string;
-  body: string;
-} {
+export function draftReachOut(input: {
+  firstName: string | null;
+  phaseLabel: string | null;
+  /** Whether they have an audit open right now. Decides what the draft is allowed to claim. */
+  hasOpenAudit: boolean;
+}): { subject: string; body: string } {
   const greeting =
     input.firstName !== null && input.firstName.trim() !== ''
       ? `Hello ${input.firstName.trim()},`
       : 'Hello,';
+
+  if (!input.hasOpenAudit) {
+    // No open audit: nothing about their progress is known worth stating, so the draft states
+    // nothing about it. Deliberately short — it is a blank page with a greeting on it, which is the
+    // honest starting point for a message whose reason lives with the person sending it.
+    return {
+      subject: 'A note from Rashmir',
+      body: [
+        greeting,
+        '',
+        'I was thinking about your week and wanted to get in touch.',
+        '',
+        'Rashmir',
+      ].join('\n'),
+    };
+  }
 
   // The phase is named only where we have it. "You stopped at Energy" is a fact; "you stopped" with
   // no idea where is a guess dressed as one.
@@ -128,7 +151,10 @@ export async function buildReachOutDraft(
         })) > 0;
 
   return {
-    ...draftReachOut(input),
+    // The phase label comes from the caller's own reading of the list row, but whether there is an
+    // audit open is answered here, from the run: a completed leader has no phase label either, and
+    // the two must not be conflated into one guess about what to claim.
+    ...draftReachOut({ ...input, hasOpenAudit: openRun !== null }),
     auditRunId: openRun?.id ?? null,
     phaseLabel: input.phaseLabel,
     alreadyWrittenForThisRun: alreadyWritten,
@@ -191,7 +217,10 @@ export async function sendReachOut(input: {
   userId: string;
   subject: string;
   body: string;
-  /** Which audit this is about, from the draft. Recorded, never used to select the recipient. */
+  /**
+   * Which audit this is about, from the draft. Recorded, never used to select the recipient — and it
+   * is also what tells the email whether "pick up where you left off" is a true sentence.
+   */
   auditRunId: string | null;
 }): Promise<SendReachOutResult | null> {
   const leader = await prisma.user.findUnique({
@@ -208,6 +237,7 @@ export async function sendReachOut(input: {
       firstName,
       body: input.body,
       programmeUrl: `${appUrl()}/programme`,
+      hasOpenAudit: input.auditRunId !== null,
     }),
   }).catch((error: unknown) => {
     logger.warn('Reclaim: reach-out email failed', {

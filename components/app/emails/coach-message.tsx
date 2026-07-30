@@ -41,6 +41,13 @@ export interface CoachMessageEmailProps {
   body: string;
   /** Where the audit they left is waiting. */
   programmeUrl: string;
+  /**
+   * Whether they have an audit open. Decides the button's words and nothing else.
+   *
+   * "Pick up where you left off" is a claim about their state, so it is only made where it is true.
+   * A leader who never started one, or who has finished, gets a door rather than a resume.
+   */
+  hasOpenAudit: boolean;
 }
 
 /** Her text as paragraphs. Blank lines split; single newlines stay inside a paragraph. */
@@ -55,6 +62,7 @@ export default function CoachMessageEmail({
   firstName,
   body,
   programmeUrl,
+  hasOpenAudit,
 }: CoachMessageEmailProps): React.ReactElement {
   const paragraphs = paragraphsOf(body);
 
@@ -74,7 +82,7 @@ export default function CoachMessageEmail({
 
           <Section style={buttonContainer}>
             <Button href={programmeUrl} style={button}>
-              Open your audit
+              {hasOpenAudit ? 'Pick up where you left off' : 'Open Reclaim Your Week'}
             </Button>
           </Section>
 

@@ -73,8 +73,8 @@ beforeEach(() => {
 
 describe('draftReachOut — the copy', () => {
   it('names where they stopped when the phase is known, and does not invent one when it is not', () => {
-    const known = draftReachOut({ firstName: 'Ada', phaseLabel: 'Energy' });
-    const unknown = draftReachOut({ firstName: 'Ada', phaseLabel: null });
+    const known = draftReachOut({ firstName: 'Ada', phaseLabel: 'Energy', hasOpenAudit: true });
+    const unknown = draftReachOut({ firstName: 'Ada', phaseLabel: null, hasOpenAudit: true });
 
     expect(known.body).toContain('Energy');
     expect(unknown.body).toContain('still open');
@@ -82,13 +82,18 @@ describe('draftReachOut — the copy', () => {
   });
 
   it('greets by name where there is one and does not say "Hello there" where there is not', () => {
-    expect(draftReachOut({ firstName: 'Ada', phaseLabel: null }).body).toContain('Hello Ada,');
-    expect(draftReachOut({ firstName: null, phaseLabel: null }).body).toContain('Hello,');
-    expect(draftReachOut({ firstName: '  ', phaseLabel: null }).body).toContain('Hello,');
+    const open = { phaseLabel: null, hasOpenAudit: true };
+    expect(draftReachOut({ firstName: 'Ada', ...open }).body).toContain('Hello Ada,');
+    expect(draftReachOut({ firstName: null, ...open }).body).toContain('Hello,');
+    expect(draftReachOut({ firstName: '  ', ...open }).body).toContain('Hello,');
   });
 
   it('holds the product voice: no em dash, no banned lexicon', () => {
-    const { subject, body } = draftReachOut({ firstName: 'Ada', phaseLabel: 'The gap' });
+    const { subject, body } = draftReachOut({
+      firstName: 'Ada',
+      phaseLabel: 'The gap',
+      hasOpenAudit: true,
+    });
     const banned = /leverage|optimi[sz]e|productivity hack|best practice|KPI/i;
 
     expect(body).not.toContain('—');
@@ -97,7 +102,7 @@ describe('draftReachOut — the copy', () => {
   });
 
   it('offers both doors and asks nothing (I16)', () => {
-    const { body } = draftReachOut({ firstName: 'Ada', phaseLabel: 'Energy' });
+    const { body } = draftReachOut({ firstName: 'Ada', phaseLabel: 'Energy', hasOpenAudit: true });
 
     // Carrying on and setting it aside are offered as equals. A draft that only pointed back into
     // the audit would be a nudge with a person's name on it.
@@ -105,6 +110,22 @@ describe('draftReachOut — the copy', () => {
     expect(body).toContain('set it aside');
     expect(body).toContain('nothing to catch up on');
     expect(body).not.toMatch(/\?/); // it makes no request of them
+  });
+
+  it('claims no audit for a leader who has none open', () => {
+    // The composer is on every client record, not only a stalled one. A leader who signed up and
+    // never started would otherwise be told their audit "is waiting exactly where you left it",
+    // which is the one sentence in the draft nobody would reread before sending.
+    const { subject, body } = draftReachOut({
+      firstName: 'Ada',
+      phaseLabel: null,
+      hasOpenAudit: false,
+    });
+
+    expect(body).not.toContain('still open');
+    expect(body).not.toContain('waiting');
+    expect(subject).not.toContain('audit is still open');
+    expect(body).toContain('Hello Ada,');
   });
 });
 
@@ -133,6 +154,9 @@ describe('buildReachOutDraft — the facts worth reading first', () => {
 
     expect(draft.auditRunId).toBeNull();
     expect(draft.alreadyWrittenForThisRun).toBe(false);
+    // And the body follows the run rather than the phase label: a leader who has completed every
+    // audit also has no phase, and must not be told one is open.
+    expect(draft.body).not.toContain('still open');
   });
 
   it('reports a leader who turned the quarterly reminders off', async () => {
