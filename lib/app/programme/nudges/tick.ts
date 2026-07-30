@@ -25,6 +25,7 @@ import QuarterlyNudgeEmail from '@/components/app/emails/quarterly-nudge';
 import { decideNudges, type NudgeCandidate } from '@/lib/app/programme/nudges/select';
 import { readReclaimNudgeConfig } from '@/lib/app/programme/config';
 import { isUniqueViolation } from '@/lib/app/programme/access/grants';
+import { previewUserIds, excludeIds } from '@/lib/app/programme/preview/accounts';
 
 /** 244 bits of randomness, the same shape as the F7 share token. */
 function mintToken(): string {
@@ -83,8 +84,15 @@ async function claimNudge(userId: string, runId: string, now: Date): Promise<str
  * the leaders who have finished at least one audit, which is small by construction at v1.
  */
 async function gatherCandidates(): Promise<NudgeCandidate[]> {
+  // Test accounts are excluded on **this** query rather than on the `users` read below, deliberately
+  // (F19). Filtering here keeps them out of `userIds` entirely, so `claimNudge` never writes an
+  // `app_reclaim_nudge` row against one either — a preview account should leave no trace in a table
+  // whose whole purpose is deciding who to email next quarter.
+  //
+  // This is the site that spends something real. A fabricated completed run would otherwise enter the
+  // quarterly cohort and an actual email would be dispatched to whatever address the fabrication used.
   const completed = await prisma.reclaimAuditRun.findMany({
-    where: { status: 'complete' },
+    where: { status: 'complete', userId: excludeIds(await previewUserIds()) },
     orderBy: { completedAt: 'desc' },
     select: { id: true, userId: true, completedAt: true, startedAt: true },
   });

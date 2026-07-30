@@ -15,6 +15,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
+  previewFindMany: vi.fn(),
   userFindMany: vi.fn(),
   grantFindMany: vi.fn(),
   consentFindMany: vi.fn(),
@@ -41,6 +42,8 @@ vi.mock('@/lib/db/client', () => ({
     slotValue: { groupBy: mocks.slotGroupBy },
     reclaimReachOut: { groupBy: mocks.reachOutGroupBy },
     module: { findUnique: mocks.moduleFindUnique },
+    // F19: which of these are test accounts, read to badge them. Empty by default.
+    reclaimPreviewAccount: { findMany: mocks.previewFindMany },
   },
 }));
 
@@ -72,6 +75,8 @@ function run(overrides: Partial<Record<string, unknown>> = {}) {
 beforeEach(() => {
   for (const mock of Object.values(mocks)) mock.mockReset();
 
+  // F19: nobody is a test account unless a test says so.
+  mocks.previewFindMany.mockResolvedValue([]);
   mocks.moduleFindUnique.mockResolvedValue({ config: {} }); // schema defaults: 21 days, cohort 5
   mocks.userFindMany.mockResolvedValue([
     { id: 'ada', name: 'Ada', email: 'ada@example.com', createdAt: new Date('2026-01-01') },

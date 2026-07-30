@@ -49,6 +49,11 @@ const CROSS_USER_MODULES = [
   // F18 t-2. Reads another leader's runs, nudge preference and address in order to write to them,
   // and holds the record of what was written. Added deliberately, like the entry above it.
   'lib/app/programme/admin/reach-out.ts',
+  // F19. Joins `user` and the audit runs to describe every test account. Its sibling
+  // `lib/app/programme/preview/accounts.ts` is deliberately NOT here and must never be: that module
+  // reads only the registry table, which is what lets `nudges/tick.ts` — a job with no
+  // `withAdminAuth` — import the exclusion predicate. The split exists to keep this list honest.
+  'lib/app/programme/admin/preview-list.ts',
 ];
 
 /** The framework reads that take a bare `userId` and therefore carry no gate of their own. */

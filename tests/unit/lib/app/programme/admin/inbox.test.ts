@@ -13,6 +13,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
+  previewFindMany: vi.fn(),
   shareFindMany: vi.fn(),
   userFindMany: vi.fn(),
   runFindMany: vi.fn(),
@@ -24,6 +25,8 @@ vi.mock('@/lib/db/client', () => ({
     reclaimReportShare: { findMany: mocks.shareFindMany },
     user: { findMany: mocks.userFindMany },
     reclaimAuditRun: { findMany: mocks.runFindMany },
+    // F19: which shares came from test accounts, read to badge them. Empty by default.
+    reclaimPreviewAccount: { findMany: mocks.previewFindMany },
     reclaimFeedback: { findMany: mocks.feedbackFindMany },
   },
 }));
@@ -45,6 +48,8 @@ beforeEach(() => {
   mocks.userFindMany.mockResolvedValue([{ id: 'ada', name: 'Ada', email: 'ada@example.com' }]);
   mocks.runFindMany.mockResolvedValue([{ id: 'run-1', quarter: '2026-Q3' }]);
   mocks.feedbackFindMany.mockResolvedValue([]);
+  // F19: nobody is a test account unless a test says so.
+  mocks.previewFindMany.mockResolvedValue([]);
 });
 
 describe('listSharedResults', () => {

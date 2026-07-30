@@ -19,6 +19,7 @@
  */
 
 import { prisma } from '@/lib/db/client';
+import { previewUserIds, excludeIds } from '@/lib/app/programme/preview/accounts';
 
 /** Did people come back? Completions per leader, not sessions. */
 export interface ReturnRate {
@@ -216,19 +217,35 @@ export function buildTimeline(input: TimelineInput): MeasurePoint[] {
 
 /** Read the rows and compute. Four batched queries; nothing per-row. */
 export async function readMeasures(): Promise<MeasuresView> {
+  // Every measure on this screen is a count, so every query below excludes test accounts (F19).
+  // Awaited before the batch rather than inside it: one extra round trip, and the alternative is four
+  // copies of the same read. `undefined` when there are none, so the emitted SQL is unchanged.
+  const notPreview = excludeIds(await previewUserIds());
+
   const [completedRuns, referralInvites, grants, runs] = await Promise.all([
     prisma.reclaimAuditRun.findMany({
-      where: { status: 'complete' },
+      where: { status: 'complete', userId: notPreview },
       select: { userId: true, completedAt: true, startedAt: true },
     }),
     // A referral is an invite a *leader* sent — `invitedByUserId` is null for everything Rashmir
     // issues from the admin screen, which is what separates word of mouth from her own outreach.
+    //
+    // Excluded on the **sender**: a test account exercising the referral form would otherwise inflate
+    // word of mouth, which is the one measure here that is about other people's enthusiasm.
     prisma.reclaimInvite.findMany({
-      where: { invitedByUserId: { not: null } },
+      where: { invitedByUserId: { not: null, ...notPreview } },
       select: { redeemedByUserId: true, createdAt: true },
     }),
-    prisma.reclaimGrant.findMany({ select: { userId: true }, distinct: ['userId'] }),
-    prisma.reclaimAuditRun.findMany({ select: { userId: true }, distinct: ['userId'] }),
+    prisma.reclaimGrant.findMany({
+      where: { userId: notPreview },
+      select: { userId: true },
+      distinct: ['userId'],
+    }),
+    prisma.reclaimAuditRun.findMany({
+      where: { userId: notPreview },
+      select: { userId: true },
+      distinct: ['userId'],
+    }),
   ]);
 
   const clientIds = new Set<string>();

@@ -38,6 +38,10 @@ const clientRowSchema = z.object({
   // reads as "nobody has written" rather than failing the whole list.
   lastReachedOutAt: z.string().nullable().default(null),
   qualification: z.record(z.string(), z.string()),
+  // F19. Defaulted `false` for the same reason as the field above, and because the safe reading of a
+  // missing flag is "this is a real client" — a test account wrongly shown as real is a badge an
+  // operator can double-check, while a client wrongly badged as a test account invites deletion.
+  isPreview: z.boolean().default(false),
 });
 
 const clientListSchema = z.object({
@@ -96,6 +100,8 @@ const sharedResultSchema = z.object({
   feedback: z.object({ text: z.string(), quoteConsent: z.boolean() }).nullable(),
   // F17. Defaulted so a response cached from a build predating the column still parses.
   transcriptConsent: z.boolean().default(false),
+  // F19. Defaulted `false` — see the note on `clientRowSchema.isPreview`.
+  isPreview: z.boolean().default(false),
 });
 
 const aggregateSchema = z.object({
@@ -181,6 +187,33 @@ const reachOutViewSchema = z.object({
   sent: z.array(reachOutRecordSchema),
 });
 
+/** F19: one test account, as the preview screen lists it. */
+const previewAccountSchema = z.object({
+  userId: z.string(),
+  name: z.string().nullable(),
+  email: z.string(),
+  label: z.string(),
+  createdAt: z.string(),
+  createdByName: z.string().nullable(),
+  state: z.enum(['none', 'in_progress', 'complete', 'abandoned']),
+  latestRunId: z.string().nullable(),
+});
+
+const previewListSchema = z.object({ accounts: z.array(previewAccountSchema) });
+
+/**
+ * What creating one returns. `password` is the only field in this file that carries a live credential,
+ * and it exists for exactly one render: the caller shows it once and never stores it.
+ */
+const previewCreatedSchema = z.object({
+  account: z.object({ userId: z.string(), email: z.string(), label: z.string() }),
+  password: z.string(),
+  signInUrl: z.string(),
+  message: z.string(),
+});
+
+const previewMessageSchema = z.object({ message: z.string() });
+
 const reachOutSentSchema = z.object({
   record: reachOutRecordSchema,
   delivered: z.boolean(),
@@ -195,6 +228,8 @@ export type ContentView = z.infer<typeof contentViewSchema>;
 export type ContentField = z.infer<typeof contentFieldSchema>;
 export type ReachOutView = z.infer<typeof reachOutViewSchema>;
 export type ReachOutRecord = z.infer<typeof reachOutRecordSchema>;
+export type PreviewAccountRow = z.infer<typeof previewAccountSchema>;
+export type PreviewCreated = z.infer<typeof previewCreatedSchema>;
 
 /** Read the server's message from a failed response, or a fallback. Never throws. */
 async function failureMessage(res: Response, fallback: string): Promise<string> {
@@ -301,4 +336,84 @@ export async function saveContent(input: {
     body: JSON.stringify(input),
   });
   if (!res.ok) throw new Error(await failureMessage(res, 'Those changes could not be saved.'));
+}
+
+/** Every test account (F19), enriched by the server in one request. */
+export function listPreviewAccounts(): Promise<PreviewAccountRow[]> {
+  return getJson(
+    '/api/v1/app/reclaim/admin/preview',
+    previewListSchema,
+    'We could not load the test accounts.'
+  ).then((v) => v.accounts);
+}
+
+/**
+ * Create a test account, optionally already driven into a state.
+ *
+ * Returns the generated password. It is not stored anywhere, so the caller has one chance to show it
+ * and must say so — this is the only response in this file that carries a live credential.
+ */
+export async function createPreviewAccount(input: {
+  label: string;
+  email?: string;
+  name?: string;
+  state: 'fresh' | 'mid-audit' | 'completed';
+}): Promise<PreviewCreated> {
+  const res = await fetch('/api/v1/app/reclaim/admin/preview', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok)
+    throw new Error(await failureMessage(res, 'That test account could not be created.'));
+  return parseEnvelope(await res.json(), previewCreatedSchema);
+}
+
+/**
+ * Mark an account that already exists as a test account.
+ *
+ * The other half of walking the real front door: an account created through `/accept-invite` cannot be
+ * registered at the moment it appears, because account creation belongs to the platform. This is how
+ * one stops counting as a client afterwards.
+ */
+export async function adoptPreviewAccount(input: {
+  email: string;
+  label: string;
+}): Promise<string> {
+  const res = await fetch('/api/v1/app/reclaim/admin/preview/adopt', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw new Error(await failureMessage(res, 'That account could not be marked.'));
+  return parseEnvelope(await res.json(), previewMessageSchema).message;
+}
+
+/** Drive a test account into a state. Returns the server's own sentence, refusal included. */
+export async function fastForwardPreviewAccount(
+  userId: string,
+  input: { to: 'mid-audit' | 'completed'; toPhase?: string }
+): Promise<string> {
+  const res = await fetch(
+    `/api/v1/app/reclaim/admin/preview/${encodeURIComponent(userId)}/fast-forward`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    }
+  );
+  // The engine's refusal is product information, not a generic failure: it says the audit stopped
+  // allowing a step it used to allow. Passed through verbatim.
+  if (!res.ok) throw new Error(await failureMessage(res, 'That account could not be advanced.'));
+  return parseEnvelope(await res.json(), previewMessageSchema).message;
+}
+
+/** Erase a test account and everything it accumulated. */
+export async function removePreviewAccount(userId: string): Promise<string> {
+  const res = await fetch(`/api/v1/app/reclaim/admin/preview/${encodeURIComponent(userId)}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok)
+    throw new Error(await failureMessage(res, 'That test account could not be removed.'));
+  return parseEnvelope(await res.json(), previewMessageSchema).message;
 }

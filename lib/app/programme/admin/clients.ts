@@ -38,6 +38,7 @@ import { RECLAIM_MAP_SLUG, RECLAIM_PHASES } from '@/lib/app/programme/map';
 import { lastReachedOutByUser } from '@/lib/app/programme/admin/reach-out';
 import { readReclaimAdminConfig, readReclaimAccessConfig } from '@/lib/app/programme/config';
 import { grantExpiresAt, grantIsLive } from '@/lib/app/programme/runs/entitlement';
+import { previewUserIdSet } from '@/lib/app/programme/preview/accounts';
 
 /**
  * The support viewer, built in exactly one place (plan D4).
@@ -117,6 +118,20 @@ export interface ClientRow {
   lastReachedOutAt: string | null;
   /** The `standard` qualification answers, slug → display value. */
   qualification: Record<string, string>;
+  /**
+   * Whether this is a test account somebody made to walk the product (F19).
+   *
+   * **This list deliberately still includes them, badged.** They are indistinguishable from a client by
+   * design — a test account signs in and runs the audit through the same routes — so this row is the
+   * only thing that says otherwise, and hiding it would leave an operator unable to find the accounts
+   * she needs to remove. The consequence is that the count on this screen includes them; that is the
+   * accepted trade, and it is safe precisely because each one is labelled here.
+   *
+   * The figures that must NOT include them are elsewhere and exclude at the query: `readAggregate`
+   * (k-anonymity), `readMeasures` (the published counts) and the quarterly nudge (which sends email).
+   * `tests/unit/invariants/preview-exclusion.test.ts` is what keeps that division true.
+   */
+  isPreview: boolean;
 }
 
 export interface ClientListView {
@@ -374,7 +389,7 @@ export async function listClients(
   const userIds = await programmeUserIds(onlyUserIds);
   if (userIds.length === 0) return { clients: [], abandonedAfterDays };
 
-  const [users, grants, consents, invites, runs] = await Promise.all([
+  const [users, grants, consents, invites, runs, previewIds] = await Promise.all([
     prisma.user.findMany({
       where: { id: { in: userIds } },
       select: { id: true, name: true, email: true, createdAt: true },
@@ -395,6 +410,9 @@ export async function listClients(
       where: { userId: { in: userIds } },
       orderBy: { startedAt: 'desc' },
     }),
+    // F19: which of these are test accounts. Read to badge them, never to drop them — see `isPreview`
+    // on `ClientRow` for why this screen shows them and the counting screens do not.
+    previewUserIdSet(),
   ]);
 
   // The referrer's display name, resolved in one extra query rather than per row.
@@ -521,6 +539,7 @@ export async function listClients(
       chatCostUsd: totalCost(userRuns, costByRun),
       lastReachedOutAt: iso(reachedOutByUser.get(user.id) ?? null),
       qualification: qualificationByUser.get(user.id) ?? {},
+      isPreview: previewIds.has(user.id),
     } satisfies ClientRow;
   });
 

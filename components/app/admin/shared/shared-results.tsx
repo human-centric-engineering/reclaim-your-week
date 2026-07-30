@@ -16,6 +16,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { FieldHelp } from '@/components/ui/field-help';
 import { readInbox, type InboxView } from '@/components/app/admin/actions';
+import { PreviewBadge } from '@/components/app/admin/preview/preview-badge';
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-GB', {
@@ -64,12 +65,16 @@ export function SharedResults() {
             {shared.map((entry) => (
               <li key={`${entry.userId}-${entry.auditRunId}`} className="rounded-lg border p-4">
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <Link
-                    href={`/admin/programme/clients/${entry.userId}`}
-                    className="font-medium underline-offset-2 hover:underline"
-                  >
-                    {entry.name ?? entry.email}
-                  </Link>
+                  <span className="flex flex-wrap items-baseline gap-2">
+                    <Link
+                      href={`/admin/programme/clients/${entry.userId}`}
+                      className="font-medium underline-offset-2 hover:underline"
+                    >
+                      {entry.name ?? entry.email}
+                    </Link>
+                    {/* F19: a fabricated share must not read as a leader waiting for a reply. */}
+                    <PreviewBadge isPreview={entry.isPreview} />
+                  </span>
                   <span className="text-muted-foreground text-xs">
                     {entry.quarter !== null && `${entry.quarter} · `}shared{' '}
                     {formatDate(entry.sharedAt)}
