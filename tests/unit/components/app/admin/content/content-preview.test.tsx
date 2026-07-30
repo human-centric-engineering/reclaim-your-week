@@ -116,6 +116,27 @@ describe('ContentPreview', () => {
     expect(screen.getByText(/reach the coach rather than the screen/)).toBeInTheDocument();
   });
 
+  it('draws only the blocks the caller asks for, so the panel matches the fields beside it', () => {
+    // The editor's `buckets` tab asks for `areas` alone. Everything else the draft contains is
+    // being edited under a different tab, and drawing it here is what made the panel read as an
+    // unrelated slab of text.
+    render(<ContentPreview view={VIEW} drafts={{}} show={['areas']} />);
+
+    expect(screen.getByText('Deep work')).toBeInTheDocument();
+    expect(screen.queryByText('One quarter is a snapshot, not a verdict.')).not.toBeInTheDocument();
+    expect(screen.queryByText('This is not a productivity exercise.')).not.toBeInTheDocument();
+    expect(screen.queryByText(/A little context about you\./)).not.toBeInTheDocument();
+  });
+
+  it('draws nothing at all when asked for no blocks — the rules tab has no rendering to preview', () => {
+    render(<ContentPreview view={VIEW} drafts={{}} show={[]} />);
+
+    // The frame stays (a caller that renders it at all still gets a panel); the draft does not.
+    expect(screen.getByText('How this appears')).toBeInTheDocument();
+    expect(screen.queryByText('Deep work')).not.toBeInTheDocument();
+    expect(screen.queryByText('What the coach is told')).not.toBeInTheDocument();
+  });
+
   it('renders nothing for an empty field rather than a blank line that reads as broken', () => {
     const withEmptyFootnote: ContentView = {
       ...VIEW,

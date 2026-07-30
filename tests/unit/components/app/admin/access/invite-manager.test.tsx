@@ -49,6 +49,16 @@ async function rowFor(email: string) {
   return within(tr);
 }
 
+/**
+ * Open the invite form.
+ *
+ * The form lives behind a button now: this tab is a ledger with a toolbar, and the form was a fixed
+ * cost paid on every visit by an operator who is almost always here to read the list.
+ */
+async function openForm(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByRole('button', { name: /invite someone/i }));
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   listInvites.mockResolvedValue([row()]);
@@ -127,7 +137,8 @@ describe('InviteManager — the invitation link', () => {
   async function issueVia(label: RegExp) {
     const user = userEvent.setup();
     render(<InviteManager />);
-    await user.type(screen.getByLabelText(/first name/i), 'Priya');
+    await openForm(user);
+    await user.type(await screen.findByLabelText(/first name/i), 'Priya');
     await user.type(screen.getByLabelText(/^email$/i), 'priya@example.org');
     await user.click(screen.getByRole('button', { name: label }));
     return user;
@@ -210,5 +221,112 @@ describe('InviteManager — the invitation link', () => {
 
     expect(screen.queryByText(LINK)).not.toBeInTheDocument();
     expect(revokeInvite).not.toHaveBeenCalled();
+  });
+
+  it('keeps the form open when an invitation already stood, because re-send is in it', async () => {
+    // The remedy for "already pending" is the re-send button, which lives in this form. Closing it
+    // on that message would put the fix one click further away than the problem.
+    issueInvite.mockResolvedValue({
+      message: 'An invitation is already pending for this address. Re-send it to issue a new link.',
+      invitationUrl: null,
+    });
+
+    await issueVia(/send invitation/i);
+
+    expect(await screen.findByText(/already pending/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /re-send with a new link/i })).toBeInTheDocument();
+    // The address is still there to re-send to, rather than cleared out from under her.
+    expect(screen.getByLabelText(/^email$/i)).toHaveValue('priya@example.org');
+  });
+});
+
+/**
+ * The toolbar — what makes the ledger usable once it is full.
+ *
+ * The screen this replaced showed every invitation ever issued, in one unfiltered table, under a form
+ * nobody was using. These pin the two controls that answer "where is the one I am looking for", and
+ * the distinction the empty states have to keep: *no invitations* and *none matching* are different
+ * sentences, and reading one as the other is how an operator concludes nobody has been invited.
+ */
+describe('InviteManager — finding a row in a full ledger', () => {
+  const many = [
+    row({ id: 'a', email: 'priya@example.org', status: 'pending' }),
+    row({ id: 'b', email: 'sam@elsewhere.com', status: 'redeemed', redeemedByName: 'Sam' }),
+    row({ id: 'c', email: 'jo@elsewhere.com', status: 'revoked' }),
+  ];
+
+  it('narrows the ledger to what the search matches', async () => {
+    const user = userEvent.setup();
+    listInvites.mockResolvedValue(many);
+    render(<InviteManager />);
+
+    expect(await screen.findByText('priya@example.org')).toBeInTheDocument();
+    await user.type(screen.getByLabelText(/search invitations/i), 'elsewhere');
+
+    expect(screen.queryByText('priya@example.org')).not.toBeInTheDocument();
+    expect(screen.getByText('sam@elsewhere.com')).toBeInTheDocument();
+    expect(screen.getByText('jo@elsewhere.com')).toBeInTheDocument();
+  });
+
+  it('searches the name an invitation was redeemed under, not only the address', async () => {
+    // The address on the invitation and the person who turned up are not always the same string,
+    // and the one she remembers is usually the person.
+    const user = userEvent.setup();
+    listInvites.mockResolvedValue(many);
+    render(<InviteManager />);
+
+    await screen.findByText('sam@elsewhere.com');
+    await user.type(screen.getByLabelText(/search invitations/i), 'Sam');
+
+    expect(screen.getByText('sam@elsewhere.com')).toBeInTheDocument();
+    expect(screen.queryByText('priya@example.org')).not.toBeInTheDocument();
+  });
+
+  it('narrows the ledger by status', async () => {
+    const user = userEvent.setup();
+    listInvites.mockResolvedValue(many);
+    render(<InviteManager />);
+
+    await screen.findByText('priya@example.org');
+    await user.selectOptions(screen.getByLabelText(/filter by status/i), 'pending');
+
+    expect(screen.getByText('priya@example.org')).toBeInTheDocument();
+    expect(screen.queryByText('sam@elsewhere.com')).not.toBeInTheDocument();
+  });
+
+  it('says "none matching" rather than "none yet" when a filter empties the table', async () => {
+    // "No invitations yet" in front of a filtered-out ledger reads as "nobody has been invited",
+    // which is the same lie the failed-load case exists to avoid.
+    const user = userEvent.setup();
+    listInvites.mockResolvedValue(many);
+    render(<InviteManager />);
+
+    await screen.findByText('priya@example.org');
+    await user.type(screen.getByLabelText(/search invitations/i), 'nobody');
+
+    expect(screen.getByText(/no invitation matches that search/i)).toBeInTheDocument();
+    expect(screen.queryByText(/no invitations yet/i)).not.toBeInTheDocument();
+  });
+
+  it('restores the whole ledger when the filters are cleared', async () => {
+    const user = userEvent.setup();
+    listInvites.mockResolvedValue(many);
+    render(<InviteManager />);
+
+    await screen.findByText('priya@example.org');
+    await user.type(screen.getByLabelText(/search invitations/i), 'nobody');
+    await user.click(screen.getByRole('button', { name: /clear filters/i }));
+
+    expect(screen.getByText('priya@example.org')).toBeInTheDocument();
+    expect(screen.getByText('sam@elsewhere.com')).toBeInTheDocument();
+  });
+
+  it('reports the ledger’s size for the tab strip', async () => {
+    // The count beside the tab name is only honest if it comes from the load, not from a guess.
+    const onCountChange = vi.fn();
+    listInvites.mockResolvedValue(many);
+    render(<InviteManager onCountChange={onCountChange} />);
+
+    await waitFor(() => expect(onCountChange).toHaveBeenCalledWith(3));
   });
 });
