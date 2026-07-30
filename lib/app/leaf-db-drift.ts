@@ -63,6 +63,19 @@ const RECLAIM_USER_FKS: ReadonlyArray<{ table: string; constraint: string; onDel
   // F9 t-3: the nudge preference. CASCADE — a preference about being emailed evidences nothing once
   // the person is gone, and a retained row keyed by an unsubscribe token could be matched back.
   { table: 'app_reclaim_nudge', constraint: 'app_reclaim_nudge_userId_fkey', onDelete: 'CASCADE' },
+  // F18 t-2: a message the coach wrote to a leader. CASCADE on the leader (their address, and words
+  // about their week) and SET NULL on the sender, because an admin account is erasable too and
+  // erasing the coach must de-attribute her outbox rather than delete the record of the contact.
+  {
+    table: 'app_reclaim_reach_out',
+    constraint: 'app_reclaim_reach_out_userId_fkey',
+    onDelete: 'CASCADE',
+  },
+  {
+    table: 'app_reclaim_reach_out',
+    constraint: 'app_reclaim_reach_out_sentByUserId_fkey',
+    onDelete: 'SET NULL',
+  },
   // F11: who minted a group invite link. SET NULL — retained config, like the invite rows it issued.
   // The link must outlive the admin account that created it, or erasing an admin would take the
   // record of who was invited with it.

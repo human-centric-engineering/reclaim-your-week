@@ -36,6 +36,7 @@ export const EXPORTED_SOURCES = [
   'app_reclaim_feedback',
   'app_reclaim_nudge',
   'app_reclaim_invite_link',
+  'app_reclaim_reach_out',
   'framework_slot_value',
 ] as const;
 
@@ -53,6 +54,14 @@ export interface ClientExport {
   feedback: unknown[];
   /** Their reminder preference — opt-out state and when they were last nudged (F9 t-3). */
   nudge: unknown;
+  /**
+   * Messages the coach wrote to them from the product (F18 t-2).
+   *
+   * Included in full, body and all. A subject-access request asks what the controller holds about the
+   * person, and "what was written to me, when, and by whom" is squarely that — withholding it because
+   * the words are the coach's would be reading the right as covering only what the subject said.
+   */
+  reachOuts: unknown[];
   /**
    * Group invite links this subject minted (F11). Empty for a leader — only an admin creates these —
    * but an admin is a data subject too, and "which doors did I open" is a fact about them.
@@ -87,6 +96,7 @@ export async function buildClientExport(userId: string): Promise<ClientExport | 
     feedback,
     nudge,
     inviteLinks,
+    reachOuts,
     heads,
   ] = await Promise.all([
     // Every field of the run **except `conversationId`** (F17).
@@ -151,6 +161,21 @@ export async function buildClientExport(userId: string): Promise<ClientExport | 
         createdAt: true,
       },
     }),
+    // What was written to them. `sentByUserId` is deliberately not selected: who at the coach's end
+    // composed a message is a fact about that operator, and the subject's own right reaches what was
+    // said to them rather than the staff rota behind it.
+    prisma.reclaimReachOut.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        id: true,
+        auditRunId: true,
+        subject: true,
+        body: true,
+        status: true,
+        createdAt: true,
+      },
+    }),
     // Heads, not history: the subject's data as it stands. Superseded versions are an artefact of
     // how the store works rather than something the leader ever said twice on purpose.
     getSlotHeads(userId),
@@ -172,6 +197,7 @@ export async function buildClientExport(userId: string): Promise<ClientExport | 
     feedback,
     nudge,
     inviteLinks,
+    reachOuts,
     answers: heads.map((h) => ({
       slotSlug: h.slotSlug,
       value: h.value,

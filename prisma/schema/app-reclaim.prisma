@@ -431,3 +431,47 @@ model ReclaimNudge {
 
   @@map("app_reclaim_nudge")
 }
+
+/// One message Rashmir wrote to a leader herself (F18 t-2).
+///
+/// **Not a nudge, and the distinction is the whole reason this table exists.** `ReclaimNudge` is the
+/// scheduler's state: one row per leader, a cadence, an opt-out. This is a log of messages a human
+/// composed after looking at a record and deciding — which post-v1 P24 names as the version I16 is
+/// comfortable with, against an automated "you left an audit open" that Brief §2 and
+/// `nudges/select.ts` both refuse.
+///
+/// **A row per message rather than columns on the nudge row**, unlike F17's consent flag: a coach
+/// writes to a leader across several audits and the question the screen has to answer is "what did I
+/// already say, and when", which a single latest-message triple cannot hold.
+///
+/// `auditRunId` is nullable and carries no FK, matching `ReclaimNudge.lastNudgedForRunId`: it is
+/// one-way provenance about which audit prompted the message, and a leader who has never started one
+/// can still be written to.
+///
+/// Personal data → CASCADE on `userId` (their address, and words about them). The **sender** is
+/// SET NULL: an admin account is erasable too, and erasing Rashmir must de-attribute her outbox
+/// rather than delete the record that a leader was contacted.
+model ReclaimReachOut {
+  id     String @id @default(cuid())
+  userId String // FK to User.id — ON DELETE CASCADE (personal data)
+
+  /// Which audit prompted it, where one did. No FK — provenance, like `lastNudgedForRunId`.
+  auditRunId String?
+
+  /// The operator who wrote it. FK to User.id — ON DELETE SET NULL (the record outlives the sender).
+  sentByUserId String?
+
+  /// What the leader received. Kept so the next message can be written knowing the last one.
+  subject String
+  body    String
+
+  /// `sent` or `failed`. A failed send is recorded deliberately: an operator who is told nothing
+  /// would write again, and a provider outage should read as one rather than as silence.
+  status String @default("sent")
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([auditRunId])
+  @@map("app_reclaim_reach_out")
+}

@@ -35,6 +35,7 @@ import { getSlotHeads } from '@/lib/framework/data-slots/values';
 import { listJourneys } from '@/lib/framework/facilitation/journey/queries';
 import type { JourneyViewer } from '@/lib/framework/shared/access';
 import { RECLAIM_MAP_SLUG, RECLAIM_PHASES } from '@/lib/app/programme/map';
+import { lastReachedOutByUser } from '@/lib/app/programme/admin/reach-out';
 import { readReclaimAdminConfig, readReclaimAccessConfig } from '@/lib/app/programme/config';
 import { grantExpiresAt, grantIsLive } from '@/lib/app/programme/runs/entitlement';
 
@@ -106,6 +107,14 @@ export interface ClientRow {
    * F5's calendar categorise) logs elsewhere.
    */
   chatCostUsd: number | null;
+  /**
+   * When somebody last wrote to this leader from the product (F18 t-2), or null for never.
+   *
+   * On the list rather than only on the record because the question it answers is a list question:
+   * "Stalled" tells Rashmir who to consider, and this tells her which of those has already been
+   * considered by someone. A second operator with no view of it writes the second message.
+   */
+  lastReachedOutAt: string | null;
   /** The `standard` qualification answers, slug → display value. */
   qualification: Record<string, string>;
 }
@@ -400,13 +409,15 @@ export async function listClients(
     : [];
   const referrerName = new Map(referrers.map((r) => [r.id, r.name ?? r.email]));
 
-  const [phaseByRun, costByRun, lastAnswerByUser, slotHeads] = await Promise.all([
+  const [phaseByRun, costByRun, lastAnswerByUser, reachedOutByUser, slotHeads] = await Promise.all([
     currentPhaseByRun(
       viewer,
       runs.filter((r) => r.status === 'in_progress').map((r) => r.id)
     ),
     chatCostByRun(runs),
     lastAnswerAtByUser(userIds),
+    // One batched `groupBy` for the whole cohort, like the answer timestamps above (F18 t-2).
+    lastReachedOutByUser(userIds),
     // One read per leader is unavoidable here — `getSlotHeads` is per-user by design (the access
     // seam is its `userId` argument). It is a single indexed query each, and the list is a cohort of
     // tens, not thousands; if that ever changes, the batched variant is an additive framework ask.
@@ -508,6 +519,7 @@ export async function listClients(
       completedRuns,
       lastActivityAt: iso(lastActivity),
       chatCostUsd: totalCost(userRuns, costByRun),
+      lastReachedOutAt: iso(reachedOutByUser.get(user.id) ?? null),
       qualification: qualificationByUser.get(user.id) ?? {},
     } satisfies ClientRow;
   });

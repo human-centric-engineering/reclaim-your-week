@@ -69,6 +69,19 @@ async function main(): Promise<void> {
   await prisma.reclaimNudge.create({
     data: { userId: uid, token: `${PREFIX}-nudge-${process.pid}`, lastNudgedForRunId: run.id },
   });
+  // F18 t-2: a message the coach wrote to this leader. CASCADE on the leader — their address and
+  // words about their week — while `sentByUserId` SET NULLs, which is why the sender here is the
+  // subject themselves: erasing them must both delete the row (as recipient) and be capable of
+  // de-attributing one (as sender), and a single-user smoke can only prove the first without this.
+  await prisma.reclaimReachOut.create({
+    data: {
+      userId: uid,
+      auditRunId: run.id,
+      sentByUserId: uid,
+      subject: 'Your time audit is still open',
+      body: 'Smoke subject: a message that must not survive erasure.',
+    },
+  });
 
   // F10 t-5: the audit ANSWERS. Everything above is bookkeeping about a leader; `framework_slot_value`
   // is what they actually said — every hour, every reflection, the prose about what keeps them up at
@@ -96,7 +109,7 @@ async function main(): Promise<void> {
     fail('setup failed: no slot values were written, so erasure proves nothing');
 
   console.log(
-    `[2] seeded one row in each of the nine app_reclaim_* tables + ${slotsBefore} slot values`
+    `[2] seeded one row in each of the ten app_reclaim_* tables + ${slotsBefore} slot values`
   );
 
   let receiptId: string | undefined;
@@ -119,12 +132,13 @@ async function main(): Promise<void> {
       report_share: await prisma.reclaimReportShare.count({ where: { userId: uid } }),
       feedback: await prisma.reclaimFeedback.count({ where: { userId: uid } }),
       nudge: await prisma.reclaimNudge.count({ where: { userId: uid } }),
+      reach_out: await prisma.reclaimReachOut.count({ where: { userId: uid } }),
     };
     for (const [table, count] of Object.entries(cascadeCounts)) {
       if (count !== 0)
         fail(`CASCADE failed: ${count} app_reclaim_${table} row(s) survived erasure`);
     }
-    console.log('[3] all seven CASCADE tables emptied');
+    console.log('[3] all eight CASCADE tables emptied');
 
     // ── 4b. The answers themselves (F10 t-5) ─────────────────────────────
     const slotsAfter = await prisma.slotValue.count({ where: { userId: uid } });

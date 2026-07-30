@@ -98,6 +98,25 @@ help read "The range in your own words, shown to the leader". Nothing renders `b
 leader surface; the coach is given it. Corrected in the same task, because a false statement on the
 screen this feature exists to make honest is the one thing t-1 must not ship.
 
+**A pinned surface needed a selector nobody had needed yet.** The preview is themed as the leader's
+surface rather than the admin one, which is [[../ui/surface-theming|surface-theming]] constraint 3 —
+and constraint 4 says a pinned surface needs the **descendant** dark selector, because `.dark` sits on
+`<html>` above the pin. `brand-theme.css` carried only the compound form, so in dark mode the panel
+would have taken the light tokens and rendered white on white inside a dark page. Added as a second
+selector on the existing block rather than a duplicated palette, so there is still one place the dark
+values live. The doc had predicted this failure exactly; it had simply never been exercised.
+
+**The composer's draft read the sensitive prose, and did not need it.** The first version of the GET
+called `getClientDetail`, which fetches `reclaim_setup_keeping_me_up` and `reclaim_setup_why_now`. It
+returned neither, so nothing leaked, and it was still wrong: D5's whole design is that opening a
+leader's most personal answers is a **deliberate act**, and "an operator opened a compose box" is not
+one. It now reads `listClients` narrowed to the one leader, which is the query that withholds them at
+the API level.
+
+**The subject line is the one field on this route that becomes a mail header**, so it refuses a
+newline at the schema. Providers are expected to defend themselves against header injection and this
+one is ours to not hand over.
+
 ## Notes / deferrals
 
 - **No leader-facing walkthrough.** The preview shows fields in place, not the audit re-rendered
