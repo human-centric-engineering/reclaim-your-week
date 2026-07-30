@@ -334,7 +334,8 @@ jobs:
         run: npx tsx scripts/db/check-drift.ts
       - run: npx tsx scripts/smoke/erasure.ts
 
-      # Leaf (Reclaim Your Week) smokes — the six that need only Postgres + the seed.
+      # Leaf (Reclaim Your Week) smokes — every one that needs only Postgres + the seed.
+      # (Do not restate the count here. It was "the six" through two additions.)
       #
       # These were local-only until 2026-07-26, which cost us: `smoke:reclaim-calendar` sat red on
       # `main` for two features after F8 put a consent gate in front of `createRun`, and nothing
@@ -380,6 +381,13 @@ jobs:
       # rather than generated, so this needs no provider key.
       - name: Smoke — reclaim summary PDF (real run, no provider key)
         run: npx tsx scripts/smoke/reclaim-report.ts
+      # F19. Two claims no mocked test can make. That a provisioned test account can actually sign in
+      # — the `emailVerified` ordering only fails against a real better-auth — and that fabricating a
+      # completed audit leaves `readAggregate` and `readMeasures` byte-identical, which is the claim
+      # the whole preview feature rests on and is a property of real SQL rather than of a `where`.
+      # Also asserts zero provider calls, so it needs no key.
+      - name: Smoke — reclaim preview accounts (real engine, figures unmoved)
+        run: npx tsx scripts/smoke/reclaim-preview.ts
 
   docker:
     name: Docker Build

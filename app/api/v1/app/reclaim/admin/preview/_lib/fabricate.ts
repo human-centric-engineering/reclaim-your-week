@@ -119,7 +119,9 @@ export interface FastForwardResult {
 /** A password that satisfies `passwordSchema` by construction, from the platform's own randomness. */
 function generatePassword(): string {
   const alphabet = 'abcdefghijkmnopqrstuvwxyz';
-  const bytes = crypto.getRandomValues(new Uint8Array(12));
+  // `globalThis.crypto` rather than a bare `crypto`, matching `invite-links.ts` — the explicit form
+  // is the one that reads unambiguously in a file that also imports from Node's `crypto` elsewhere.
+  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(12));
   const body = [...bytes].map((b) => alphabet[b % alphabet.length]).join('');
   // Upper, lower, digit and symbol are each guaranteed rather than hoped for: a generator that fails
   // the schema one time in fifty is a bug an operator meets at random and cannot reproduce.

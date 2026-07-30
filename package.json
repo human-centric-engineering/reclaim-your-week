@@ -56,6 +56,7 @@
     "leaf:content-diff": "tsx scripts/content-source/check.ts",
     "smoke:reclaim-access": "tsx --env-file=.env.local scripts/smoke/reclaim-access.ts",
     "smoke:reclaim-join": "tsx --env-file=.env.local scripts/smoke/reclaim-join.ts",
+    "smoke:reclaim-preview": "tsx --env-file=.env.local scripts/smoke/reclaim-preview.ts",
     "nudges:tick": "tsx --env-file=.env.local scripts/nudges/tick.ts"
   },
   "repository": {

@@ -63,8 +63,9 @@ unscheduled until it does.
 
 ## Manual gates
 
-Four of the five leaf smokes run in CI. **One cannot** — `smoke:reclaim-calendar` makes a real model
-call and CI holds no provider key ([[planning/post-v1|post-v1]] P16 is the decision about changing
+Every leaf smoke runs in CI except the ones needing a provider key (do not restate the count here —
+it has said "four of the five" through three additions). **`smoke:reclaim-calendar` cannot** — it
+makes a real model call and CI holds no provider key ([[planning/post-v1|post-v1]] P16 is the decision about changing
 that). Until then it is a release checklist item rather than a gate, which means someone has to
 actually run it:
 
@@ -86,6 +87,40 @@ The structural half of I4 — that nothing in the calendar path can reach a writ
 `tests/unit/invariants/calendar-privacy.test.ts`, which does run on every PR. What these two add is
 proof against a real model and a real database.
 
+## Seeing the product yourself
+
+Two screens, and they do different jobs. Both are admin-only.
+
+**The front door — `/admin/programme/access`.** Issue an invitation to yourself at a plus-address
+(`you+t1@yourdomain`) and the screen shows the `/accept-invite` link. Open it in a private window and
+you walk exactly what a leader walks: setting a password, the consent gate, starting an audit. The
+link is shown **once** and cannot be recovered, because only its hash is stored — re-send to get
+another. This works on an install with no mail provider at all, which is what it is for.
+
+Then go to Preview and **mark that account as a test account**. Until you do, it counts as a client:
+it is in the client list, the published measures, and the anonymised aggregate cohort, and it will be
+sent a quarterly reminder ninety days after it finishes an audit.
+
+**The states behind the door — `/admin/programme/preview`.** Create a test account, optionally driven
+straight to mid-audit or a completed audit, which is the only way to reach history, the summary, the
+PDF and sharing without doing a whole audit by hand. The password is shown once and is not stored.
+Leave the email blank and it uses a variation on your own address, so every message the product would
+send a leader arrives in your inbox.
+
+The fabricated answers are made up, but every one of them is written through the same service the
+audit itself uses, so what you see is what a leader would see. A completed test account has spent the
+audit it came with, so it also shows you the real "no audits left" refusal; asking for another state
+on the same account gives it a fresh one.
+
+**Removing one erases it**, through the same `eraseUser()` path a leader's own account deletion uses.
+Two things survive by design and both look like bugs: the terms it accepted are kept without a name
+(the lawful-basis record has to outlive the person), and any invitation it used stays on the Access
+screen with a dash where the name was.
+
+**One thing test accounts still affect.** The framework's own pages under Framework — the map heat
+view and module engagement — count their journeys, and there is no seam to exclude them from. Filed in
+[[daybreak-asks]].
+
 ## Environment worth knowing about
 
 Beyond `.env.example`:
@@ -95,7 +130,7 @@ Beyond `.env.example`:
 | `NEXT_PUBLIC_APP_NAME`                                            | Set to `Reclaim Your Week`. Drives the brand mark, email subjects and page titles.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `NEXT_PUBLIC_LEGAL_NAME`                                          | **Set it to `Nsansa Ltd`.** It names the data controller in the privacy notice and the counterparty in the terms. Left unset it falls back to the product name, which puts a product rather than a legal person in the controller field. The entity comes from the copyright line carried in the source content — "© Rashmir Balasubramaniam / Nsansa Ltd" — so it is Rashmir's own company, not a third-party operator. **Worth one confirmation from her**: a copyright holder and a data controller are usually but not always the same entity, and the trading name may differ from the registered one (companies-house spelling, "Limited" vs "Ltd"). |
 | `OPENAI_API_KEY` **(testing)** / `ANTHROPIC_API_KEY` **(launch)** | Without a configured provider the coach cannot stream and the calendar categorise cannot run. The audit's forms still work, which makes this fail quietly rather than loudly. **The testing phase runs on OpenAI; Brief §3 requires Anthropic at launch** — see [[planning/post-v1#D-P17]]. The coach agent resolves its provider dynamically, so switching is an environment change with no code diff, and therefore nothing to notice if it is forgotten.                                                                                                                                                                                                |
-| Email provider                                                    | With no provider configured `sendEmail` returns `disabled` rather than throwing, so invitations and nudges silently do not arrive. Worth checking on first deploy.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| Email provider                                                    | With no provider configured `sendEmail` returns `disabled` rather than throwing, so invitations and nudges silently do not arrive. Worth checking on first deploy. It no longer blocks anyone from reaching `/accept-invite`: since F19 the Access screen shows the invitation link itself, which is how the product is walked on an install with no mail at all.                                                                                                                                                                                                                                                                                          |
 
 ## Before launch
 
