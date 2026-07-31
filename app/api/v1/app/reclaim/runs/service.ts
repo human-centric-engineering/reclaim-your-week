@@ -21,6 +21,7 @@ import { emitReclaimAccessEvent } from '@/lib/app/programme/access/events';
 import { RECLAIM_MAP_SLUG } from '@/lib/app/programme/map';
 import { RECLAIM_MODULE_SLUG } from '@/lib/app/programme/module';
 import { readPhaseMarks, type PhaseMarks } from '@/lib/app/programme/runs/phase-marks';
+import { isCoachSyntheticMessage } from '@/lib/app/programme/coach/opening';
 import { FIRST_PHASE_KEY } from '@/lib/app/programme/runs/phases';
 import {
   enterFirstPhase,
@@ -575,6 +576,111 @@ export async function claimCoachOpening(
     data: { coachOpenings: { push: moment } },
   });
   return claimed.count > 0;
+}
+
+/**
+ * Give a claimed moment back, because the turn it was claimed for never said a word.
+ *
+ * **This is the other half of claiming before generating, and it was missing.** The claim is written
+ * first so that a reload part-way through a slow turn cannot buy a second generation — a trade that
+ * was worth making when the ledger only recorded four data beats. Since every phase opens with the
+ * coach speaking, the cost of the other side of it changed: a claim that outlives a turn which said
+ * nothing leaves the leader looking at a signpost card, an empty transcript and a coach that will
+ * never speak, for the rest of that phase. That is not "they speak first, as they always could"; it
+ * is the phase failing to open. Observed on a preview run at phase 4: the trigger row was persisted,
+ * the stream was cut before the first token, and the moment stayed claimed for good.
+ *
+ * So the route releases what it claimed whenever the turn produced no words — an aborted stream, a
+ * provider that failed, a turn that made tool calls and said nothing. The leader's next load fires
+ * the moment again, which is what they would have expected the first time.
+ *
+ * **What this deliberately does not do is release on a turn that spoke.** A moment that was had is
+ * had, whatever happens afterwards, or a reload would replay it.
+ *
+ * **It touches `phase-1-chart-reveal` too, and that is intended.** The reveal's claim is also I12's
+ * transition gate, so releasing it means a leader whose reveal turn died is asked to look at their
+ * week again rather than walked past it in silence — the gate holding for a beat that did not happen
+ * is the gate doing its job.
+ *
+ * Raw SQL because Prisma's scalar-list writes are `set` and `push` only: `array_remove` keeps this a
+ * single statement, so it cannot lose a moment another turn pushed in between a read and a write.
+ * Never throws — a release that fails costs the leader the opener, and a release that took the turn
+ * down with it would cost them the whole conversation.
+ */
+export async function releaseCoachOpening(
+  userId: string,
+  runId: string,
+  moment: string
+): Promise<void> {
+  try {
+    await prisma.$executeRaw`
+      UPDATE "app_reclaim_audit_run"
+      SET "coachOpenings" = array_remove("coachOpenings", ${moment})
+      WHERE "id" = ${runId} AND "userId" = ${userId}
+    `;
+  } catch (error: unknown) {
+    logger.warn('Reclaim: could not release an unspoken coach opening', {
+      runId,
+      moment,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+/**
+ * How long a run's conversation has to have been quiet before a claimed-but-silent moment is read as
+ * dead rather than as a turn still being generated.
+ *
+ * The number is a judgement about what a turn looks like from the outside: a live one writes the
+ * leader's row, then the coach's, seconds apart. Ninety seconds of nothing after a trigger means the
+ * generation that trigger belongs to is not coming back. Shorter and two tabs opening the same phase
+ * at the same moment could both be told to speak; longer and a leader who reloads after a dead turn
+ * sits in front of a silent phase for no reason.
+ */
+const OPENING_ASSUMED_DEAD_MS = 90_000;
+
+/**
+ * Whether the last opening this conversation was told to make never actually happened.
+ *
+ * **The repair path for a claim that no `finally` ever released** — a server that died mid-turn, or a
+ * moment burnt by a build that predates `releaseCoachOpening`. Without it those runs are silent in
+ * that phase for ever, because the ledger says the beat was had and nothing on either side disagrees.
+ *
+ * Read from the transcript rather than from a flag, because the transcript is the only honest record
+ * of whether the coach spoke. Walking back from the newest message: an assistant row with words in it
+ * means the coach has spoken since the last thing it was told to open, so nothing is owed; a trigger
+ * row reached first means the last thing it was told to open produced nothing.
+ *
+ * The quiet window is what keeps this from duplicating a turn that is simply still running — see
+ * `OPENING_ASSUMED_DEAD_MS`. Empty assistant rows (the tail of a tool-call round trip) are excluded
+ * by the query, so a silent `record_answers` turn does not read as the coach having spoken.
+ */
+export async function coachOpeningWentUnspoken(
+  conversationId: string,
+  now: Date = new Date()
+): Promise<boolean> {
+  const recent = await prisma.aiMessage.findMany({
+    where: {
+      conversationId,
+      role: { in: ['user', 'assistant'] },
+      content: { not: '' },
+    },
+    orderBy: { createdAt: 'desc' },
+    select: { role: true, content: true, createdAt: true },
+    take: 20,
+  });
+
+  const newest = recent[0];
+  // No transcript at all is not evidence of a dead turn: it is what the first turn of a run looks
+  // like from here while it is still being generated.
+  if (newest === undefined) return false;
+  if (now.getTime() - newest.createdAt.getTime() < OPENING_ASSUMED_DEAD_MS) return false;
+
+  for (const message of recent) {
+    if (message.role === 'assistant' && message.content.trim().length > 0) return false;
+    if (isCoachSyntheticMessage(message.role, message.content)) return true;
+  }
+  return false;
 }
 
 /** Which coach-opening moments a run has fired. Used by the transition gate (I12) and the surface. */

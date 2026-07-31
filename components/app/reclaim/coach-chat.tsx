@@ -97,6 +97,20 @@ export interface CoachBeat {
 /** How close to the bottom still counts as "following along", in pixels. */
 const FOLLOWING_THRESHOLD = 120;
 
+/**
+ * How long to wait before asking again for an opening the server said had already happened.
+ *
+ * Long enough for the server to have finished releasing the claim the cut-off turn was holding
+ * (which it does as that turn's stream unwinds), short enough that a leader watching an empty column
+ * reads it as the coach taking a breath rather than as a phase that failed to start.
+ */
+const OPENING_RETRY_MS = 2_000;
+
+/** Whether the coach has actually said anything in what is on screen. */
+function spokenIn(turns: Turn[]): boolean {
+  return turns.some((turn) => turn.role === 'coach' && turn.text.trim().length > 0);
+}
+
 /** Set the (in-flight) coach turn — always the last turn — to `text`, immutably. */
 function setCoachText(turns: Turn[], text: string): Turn[] {
   const next = [...turns];
@@ -243,9 +257,37 @@ export function CoachChat({
    * clears with the offer at the top of every turn.
    */
   const [choicesHidden, setChoicesHidden] = useState(false);
+  /**
+   * Whether the coach was asked to open this phase, said it already had, and there is nothing here.
+   *
+   * The one state the transcript cannot express on its own. It only becomes true after the retry
+   * below has been spent, and all it changes is what the empty column says: "the coach is opening
+   * this part" is a promise, and a promise nobody is going to keep should stop being made.
+   */
+  const [openingGaveUp, setOpeningGaveUp] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  /**
+   * The turn's own function, for the one caller that is inside it: the opening retry.
+   *
+   * A ref rather than a dependency, because `runTurn` cannot name itself, and because the retry must
+   * run the *current* turn function rather than the one captured when the refused turn started.
+   */
+  const runTurnRef = useRef<
+    ((body: Record<string, unknown>, leaderText: string | null) => void) | null
+  >(null);
+  /** The pending opening retry, so unmounting this phase does not fire a turn into the next one. */
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** One retry per phase. A refusal that survives it is reported rather than hammered at. */
+  const retriedOpeningRef = useRef(false);
+  /**
+   * The transcript as it stands, for code that runs after a fetch rather than during a render.
+   *
+   * The retry has to know whether anything is on screen, and the `turns` a turn closed over are the
+   * ones it started with.
+   */
+  const turnsRef = useRef<Turn[]>([]);
 
   /**
    * The in-flight coach turn, released at a readable pace.
@@ -337,7 +379,20 @@ export function CoachChat({
 
   // Cancel any in-flight stream on unmount — otherwise the reader keeps running,
   // sets state after unmount, and holds the server generation open (chat-interface.tsx pattern).
-  useEffect(() => () => abortRef.current?.abort(), []);
+  // The pending opening retry goes with it: a phase that has been left must not open behind the one
+  // the leader is now in.
+  useEffect(
+    () => () => {
+      abortRef.current?.abort();
+      if (retryTimerRef.current !== null) clearTimeout(retryTimerRef.current);
+    },
+    []
+  );
+
+  // What is on screen, and the turn function, where code that runs after a fetch can read them.
+  useEffect(() => {
+    turnsRef.current = turns;
+  }, [turns]);
 
   // Hand the cursor back when the coach finishes, so a reply can be typed without reaching for the
   // mouse. Only on the streaming→idle edge: focusing on every render would steal it mid-scroll.
@@ -392,11 +447,29 @@ export function CoachChat({
         if (!res.ok || res.body === null)
           throw new Error(`The coach could not be reached (${res.status}).`);
 
-        // An opening whose moment was already claimed answers in JSON rather than SSE. Nothing has
-        // gone wrong: this run has had that beat, so drop the placeholder and leave the transcript
-        // exactly as it was.
+        // An opening whose moment was already claimed answers in JSON rather than SSE. Usually
+        // nothing has gone wrong — this run has had that beat — so drop the placeholder and leave
+        // the transcript exactly as it was.
+        //
+        // **Unless there is no transcript**, which is the case this branch used to swallow. A phase
+        // whose opener was claimed and then cut off shows a signpost card, an empty column and a
+        // line promising the coach is about to speak, for ever. The server now gives a claim back
+        // when its turn said nothing, but the release lands a moment after the abort that caused it
+        // — so a remount that asks in that window is told "already had" about a beat that never
+        // happened. One retry, a beat later, is the difference between the phase opening and the
+        // leader having to open it themselves.
         if (res.headers.get('content-type')?.includes('application/json')) {
           setTurns((t) => t.slice(0, -1));
+          if (body.kind === 'opening' && !spokenIn(turnsRef.current)) {
+            if (retriedOpeningRef.current) setOpeningGaveUp(true);
+            else {
+              retriedOpeningRef.current = true;
+              retryTimerRef.current = setTimeout(() => {
+                retryTimerRef.current = null;
+                runTurnRef.current?.(body, null);
+              }, OPENING_RETRY_MS);
+            }
+          }
           return;
         }
 
@@ -485,6 +558,12 @@ export function CoachChat({
     },
     [runId, onTurnComplete, appendDelta, resetTyping]
   );
+
+  // The retry inside `runTurn` runs whichever turn function is current when it fires, not the one the
+  // refused turn closed over.
+  useEffect(() => {
+    runTurnRef.current = (body, leaderText) => void runTurn(body, leaderText);
+  }, [runTurn]);
 
   const send = useCallback(async () => {
     const message = draft.trim();
@@ -696,8 +775,13 @@ export function CoachChat({
 
           {turns.length === 0 ? (
             <p className="text-muted-foreground max-w-md pt-2 text-[0.95rem] leading-relaxed">
-              {opener ??
-                'The coach is opening this part. Take your time; there are no wrong answers here.'}
+              {/* The waiting line is a promise that the coach is about to speak, so it stops being
+                  made once we know it will not: a leader looking at an empty column deserves to be
+                  told what to do next rather than left waiting on something that is not coming. */}
+              {openingGaveUp
+                ? 'The coach did not manage to open this part. Say hello below and it will pick things up from there.'
+                : (opener ??
+                  'The coach is opening this part. Take your time; there are no wrong answers here.')}
             </p>
           ) : (
             turns.map((turn, i) => (

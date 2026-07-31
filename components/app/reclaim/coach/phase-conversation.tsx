@@ -37,7 +37,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { buildChartData, truthy } from '@/lib/app/programme/chart/series';
+import { buildChartData, buildGapChartData, truthy } from '@/lib/app/programme/chart/series';
 import {
   CHART_REVEAL_MOMENT,
   CHART_REVEAL_PHASE,
@@ -49,6 +49,7 @@ import {
   CALENDAR_RETURN_MOMENT,
   type CoachOpeningMoment,
 } from '@/lib/app/programme/coach/opening';
+import { readIdealWeek } from '@/lib/app/programme/coach/ideal-week';
 import {
   phaseCaptureSlots,
   slotApplies,
@@ -58,6 +59,8 @@ import { reflectionSlugForLeaving } from '@/lib/app/programme/runs/phases';
 import type { PhaseSignpost } from '@/lib/app/programme/runs/signposts';
 import type { PhaseMarks } from '@/lib/app/programme/runs/phase-marks';
 import { ReclaimChart } from '@/components/app/reclaim/chart/reclaim-chart';
+import { GapChart } from '@/components/app/reclaim/chart/gap-chart';
+import { IdealWeekChart } from '@/components/app/reclaim/chart/ideal-week-chart';
 import {
   CoachChat,
   type CoachBeat,
@@ -558,7 +561,20 @@ export function PhaseConversation({
   // `offerCalendar` above is the mirror of this: the card is withdrawn once an upload is reconciled,
   // and this is the beat that replaces it.
   const calendarReconciled = truthy(answers['reclaim_calendar_uploaded']);
-  const openMoment = openMomentFor(phaseKey, coachOpenings, revealing, calendarReconciled);
+
+  // Phase 4's arrival *is* its data beat (`ARRIVAL_MOMENTS['phase-4-gap']`, `opening.ts`): the coach's
+  // first words are meant to follow the picture, not precede it. `answers` loads asynchronously
+  // (`refresh`, above), but `CoachChat` fires its opening turn the moment it is hydrated, independent of
+  // that fetch — so without this gate the opening turn lands and claims turn 0 before the gap chart's
+  // beat has ever been passed down for `CoachChat` to anchor ahead of the transcript, and the question
+  // ends up rendered above the chart it is meant to follow. Computed once here and reused below, so the
+  // moment and the beat agree on what "ready" means.
+  const gapChartData = buildGapChartData(answers, labels);
+  const gapChartReady = gapChartData.buckets.some((b) => b.current > 0 || b.ideal > 0);
+  const openMoment =
+    phaseKey === 'phase-4-gap' && !gapChartReady
+      ? null
+      : openMomentFor(phaseKey, coachOpenings, revealing, calendarReconciled);
 
   /**
    * The phase's beats, each with a stable key so `CoachChat` can leave it where it appeared.
@@ -633,6 +649,39 @@ export function PhaseConversation({
       </div>
     );
     beats.push({ key: 'chart', node: picture });
+  }
+
+  // Phase 3 draws the week being designed over the week they have, once every area has an ideal
+  // figure. The gate is the one `readIdealWeek` already applies to the "suspiciously similar"
+  // challenge, for the same reason it applies it there: a half-designed week is mostly zeroes, and a
+  // chart of it is a picture of the conversation not having finished rather than of anything the
+  // leader chose. Unlike Phase 1 there is no reveal ceremony — the ideal week is theirs, they have
+  // just been saying it out loud, so there is nothing here to be shown for the first time.
+  if (phaseKey === 'phase-3-ideal' && readIdealWeek(answers, labels).complete) {
+    beats.push({
+      key: 'ideal-week-chart',
+      node: (
+        <div className="border-border/70 rounded-2xl border px-4 py-5 sm:px-6">
+          <IdealWeekChart data={buildGapChartData(answers, labels)} />
+        </div>
+      ),
+    });
+  }
+
+  // Phase 4 opens with the gap shown as a chart — the distance itself, either side of the week they
+  // have now, rather than the two weeks side by side (that is Phase 3's picture, above). Both weeks
+  // are already whole by the time a leader reaches this phase — Phase 1's own reveal gate and Phase
+  // 3's coverage threshold saw to that — so there is nothing accumulating here to guard against and
+  // no reveal ceremony to run; the picture is simply the phase's first beat.
+  if (phaseKey === 'phase-4-gap' && gapChartReady) {
+    beats.push({
+      key: 'gap-chart',
+      node: (
+        <div className="border-border/70 rounded-2xl border px-4 py-5 sm:px-6">
+          <GapChart data={gapChartData} />
+        </div>
+      ),
+    });
   }
 
   const panel = (

@@ -136,6 +136,56 @@ export function buildIdealChartData(
   return chartSeries(answers, labels, 'reclaim_ideal_hours__', 'current');
 }
 
+export interface GapBucket {
+  token: string;
+  slug: string;
+  title: string;
+  /** Hours reported for the week they have now. */
+  current: number;
+  /** Hours designed for the week they want. */
+  ideal: number;
+  /** `ideal - current`. Positive wants more time in this area, negative wants less. */
+  delta: number;
+}
+
+export interface GapChartData {
+  buckets: GapBucket[];
+  totalCurrent: number;
+  totalIdeal: number;
+}
+
+/**
+ * The gap between the reported week and the designed one, bucket by bucket (F7 t-2 — Phase 4 shown
+ * as a chart, the same way Phase 1 shows the current week).
+ *
+ * The same arithmetic `gapLines` (`coach/phase-context.ts`) narrates to the coach in prose, returned
+ * here as numbers instead of sentences so a chart can plot it. Built from `buildChartData` and
+ * `buildIdealChartData` rather than re-reading slots directly, so the figures on screen and the ones
+ * the coach names in the same turn can never disagree.
+ */
+export function buildGapChartData(
+  answers: Answers,
+  labels: Record<string, string> = {}
+): GapChartData {
+  const current = buildChartData(answers, labels);
+  const ideal = buildIdealChartData(answers, labels);
+  const idealBySlug = new Map(ideal.buckets.map((b) => [b.slug, b]));
+
+  const buckets: GapBucket[] = current.buckets.map((b) => {
+    const idealHours = idealBySlug.get(b.slug)?.hours ?? 0;
+    return {
+      token: b.token,
+      slug: b.slug,
+      title: b.title,
+      current: b.hours,
+      ideal: idealHours,
+      delta: round1(idealHours - b.hours),
+    };
+  });
+
+  return { buckets, totalCurrent: current.totalHours, totalIdeal: ideal.totalHours };
+}
+
 /** The shared body: rows, total, percentages, benchmark status, and the zero-hour list. */
 function chartSeries(
   answers: Answers,

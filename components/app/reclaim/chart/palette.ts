@@ -46,3 +46,33 @@ export function bucketColour(token: string, mode: 'light' | 'dark'): string {
   const map = mode === 'dark' ? DARK : LIGHT;
   return map[token] ?? (mode === 'dark' ? FALLBACK_DARK : FALLBACK_LIGHT);
 }
+
+/**
+ * The **diverging** pair, for the one chart whose subject is a direction rather than an identity.
+ *
+ * `<GapChart>` plots `ideal − current` either side of a centre line, so the question every bar answers
+ * is *which way*, not *which area* — the area is already named in the row label beside it. Colouring
+ * those bars by bucket would spend the identity channel re-encoding something the label carries and
+ * leave the polarity, which is the whole point of the chart, encoded by position alone. So a diverging
+ * chart takes two poles and a neutral middle, per the dataviz formula, and the nine-hue categorical set
+ * above is deliberately not used there.
+ *
+ * Warm/cool, so the two poles read as opposites: the brand teal for *more* (the direction the audit is
+ * mostly trying to open up) and a bronze for *less*. **Bronze rather than red** — wanting fewer hours
+ * in delivery and operations is the healthy answer, not a failure, and red would score it as one.
+ *
+ * Both modes pass all six dataviz checks against this app's own surfaces (`#ffffff` light,
+ * `#112c36` dark): lightness band, chroma floor, CVD separation (worst pair ΔE 16.2 light / 16.4 dark,
+ * ≥8 target), normal-vision separation (23.4 / 21.5, ≥15 floor) and 3:1 contrast. The steps differ from
+ * `deep_work` / `fundraising_capital` above for that reason — those are stepped for a nine-way
+ * adjacent-pair test, these for a two-pole one.
+ */
+const POLARITY = {
+  light: { more: '#0E7E9E', less: '#BD7530' },
+  dark: { more: '#2F9BB8', less: '#C4853F' },
+} as const;
+
+/** The pole colour for a gap direction: `more` hours wanted, or `less`. */
+export function gapColour(direction: 'more' | 'less', mode: 'light' | 'dark'): string {
+  return POLARITY[mode][direction];
+}
