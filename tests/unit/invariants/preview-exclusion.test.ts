@@ -79,6 +79,11 @@ const NEITHER: ReadonlyArray<{ path: string; because: string }> = [
     because:
       'Reads `module` and `module_version` — the published wording and audit rules. Config, not people; there is no userId in any query here.',
   },
+  {
+    path: 'lib/app/programme/admin/content-history.ts',
+    because:
+      'The content editor’s version list. Its one `user` read resolves names for the admin ids already on the version rows, so the set is decided by who saved wording, not by any cohort — and a preview account cannot reach an admin-only write in the first place.',
+  },
 ];
 
 /** Where a cohort reader could plausibly appear. Held to account by the completeness assertion. */

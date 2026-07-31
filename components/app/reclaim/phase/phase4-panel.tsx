@@ -13,7 +13,13 @@ import {
   RECLAIM_UNDER_DELEGATION_INVITATION,
   RECLAIM_STRATEGY_MIRROR,
 } from '@/lib/app/programme/content';
-import { buildChartData, truthy, type Answers } from '@/lib/app/programme/chart/series';
+import {
+  buildChartData,
+  buildGapChartData,
+  truthy,
+  type Answers,
+} from '@/lib/app/programme/chart/series';
+import { GapChart } from '@/components/app/reclaim/chart/gap-chart';
 import { Reflection } from '@/components/app/reclaim/phase/reflection';
 import { TextAreaField } from '@/components/app/reclaim/phase/fields';
 import { AdvanceControls } from '@/components/app/reclaim/phase/advance-controls';
@@ -55,6 +61,8 @@ export function Phase4Panel({ runId, onAdvanced }: { runId: string; onAdvanced: 
   const challengeAlreadyOffered = truthy(base['reclaim_gap_challenge_offered']);
 
   const unallocated = useMemo(() => buildChartData(base as Answers).unallocated, [base]);
+  const gap = useMemo(() => buildGapChartData(base as Answers), [base]);
+  const hasGapData = gap.buckets.some((b) => b.current > 0 || b.ideal > 0);
 
   const answers = (): AnswerInput[] => {
     const out: AnswerInput[] = [];
@@ -95,6 +103,15 @@ export function Phase4Panel({ runId, onAdvanced }: { runId: string; onAdvanced: 
           pointing to.
         </p>
       </div>
+
+      {/* The gap, shown as a chart before anything else in this phase — the same visual language as
+          the Phase 1 reveal, with no reveal ceremony of its own: both weeks are already whole by the
+          time a leader reaches here. */}
+      {hasGapData && (
+        <div className="border-border/70 rounded-2xl border px-4 py-5 sm:px-6">
+          <GapChart data={gap} />
+        </div>
+      )}
 
       {/* The refer-back (I13) — the leader's own words, verbatim from setup. */}
       {(keepingMeUp || whyNow) && (

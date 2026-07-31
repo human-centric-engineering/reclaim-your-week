@@ -14,8 +14,8 @@ import type { ChartData, ChartBucket } from '@/lib/app/programme/chart/series';
 import { bucketColour } from '@/components/app/reclaim/chart/palette';
 import { NO_VALUE } from '@/components/app/reclaim/format';
 
-/** Detect the active theme so bar fills use the light or dark palette step. */
-function useIsDark(): boolean {
+/** Detect the active theme so bar fills use the light or dark palette step. Shared with `<GapChart>`. */
+export function useIsDark(): boolean {
   const [dark, setDark] = useState(false);
   useEffect(() => {
     const root = document.documentElement;
@@ -101,11 +101,23 @@ export function ReclaimChart({ data }: { data: ChartData }) {
           </tbody>
         </table>
       ) : (
-        <div className="space-y-2.5" role="img" aria-label="Hours per week by area">
+        <div
+          className="space-y-2.5"
+          role="img"
+          aria-label="Hours per week by area, with each area's guide range shown as a shaded zone"
+        >
           {data.buckets.map((b) => {
             const colour = bucketColour(b.token, isDark ? 'dark' : 'light');
             const low = benchmarkHours(b.lowPercent);
             const high = benchmarkHours(b.highPercent);
+            const hasBand = low !== null || high !== null;
+            const bandLeft = low !== null ? pctOf(low) : '0%';
+            const bandWidth =
+              high !== null
+                ? `calc(${pctOf(high)} - ${bandLeft})`
+                : low !== null
+                  ? `calc(100% - ${bandLeft})`
+                  : '0%';
             return (
               <div key={b.token} className="grid grid-cols-[10.5rem_1fr] items-center gap-3">
                 <div className="text-foreground truncate text-sm" title={b.title}>
@@ -116,13 +128,31 @@ export function ReclaimChart({ data }: { data: ChartData }) {
                     className="absolute inset-y-0 left-0 rounded-md ring-1 ring-black/5 transition-[width]"
                     style={{ width: pctOf(b.hours), backgroundColor: colour }}
                   />
-                  {/* Benchmark markers — a recessive tick at the low/high guide. */}
+                  {/* Guide range — a diagonal hatch from the low to the high guide. Drawn *after*
+                      the value bar (not before) and on top of it, so it stays visible whichever
+                      colour is underneath: a light/dark stripe pair always reads as a texture
+                      against any single base colour, where a flat tint could wash out — e.g. a
+                      pale fill barely shows a lightening tint. */}
+                  {hasBand && (
+                    <div
+                      aria-hidden
+                      className="absolute inset-y-0 rounded-md"
+                      style={{
+                        left: bandLeft,
+                        width: bandWidth,
+                        backgroundImage:
+                          'repeating-linear-gradient(135deg, rgba(0,0,0,0.3) 0, rgba(0,0,0,0.3) 3px, rgba(255,255,255,0.3) 3px, rgba(255,255,255,0.3) 6px)',
+                      }}
+                    />
+                  )}
+                  {/* Guide-range boundary ticks — solid enough to sit on top of the value bar and
+                      the hatch, so the exact edges still read where the bar covers them. */}
                   {[low, high].map((h, i) =>
                     h === null || h <= 0 ? null : (
                       <span
                         key={i}
                         aria-hidden
-                        className="bg-foreground/40 absolute inset-y-1 w-px"
+                        className="bg-foreground/70 absolute inset-y-0.5 w-0.5 rounded-full ring-1 ring-black/20"
                         style={{ left: pctOf(h) }}
                       />
                     )
@@ -143,9 +173,17 @@ export function ReclaimChart({ data }: { data: ChartData }) {
 
       <div className="text-muted-foreground flex flex-wrap items-center gap-x-5 gap-y-1 text-xs">
         <span className="flex items-center gap-1.5">
-          <span className="bg-foreground/40 inline-block h-3 w-px" aria-hidden /> guide range
+          <span
+            aria-hidden
+            className="inline-block h-3 w-7 rounded-sm"
+            style={{
+              backgroundImage:
+                'repeating-linear-gradient(135deg, rgba(0,0,0,0.3) 0, rgba(0,0,0,0.3) 3px, rgba(255,255,255,0.3) 3px, rgba(255,255,255,0.3) 6px)',
+            }}
+          />
+          hatched zone = guide range for this area
         </span>
-        <span>▲ above the guide · ▽ below it</span>
+        <span>▲ above it · ▽ below it</span>
       </div>
 
       {data.unallocated.length > 0 && (

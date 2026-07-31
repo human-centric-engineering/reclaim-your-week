@@ -276,7 +276,8 @@ export function PreviewManager() {
               <a href={created.signInUrl} className="underline" target="_blank" rel="noreferrer">
                 the sign-in page
               </a>{' '}
-              in a private window, so you stay signed in as yourself here.
+              in a private window (e.g. open a browser window in &apos;incognito&apos; mode), so you
+              stay signed in as yourself here.
             </p>
             <dl className="mt-3 space-y-2 text-sm">
               <div className="flex flex-wrap items-center gap-2">

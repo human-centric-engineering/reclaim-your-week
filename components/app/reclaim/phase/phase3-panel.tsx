@@ -9,7 +9,8 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { RECLAIM_BUCKETS, bucketToken } from '@/lib/app/programme/content';
-import { truthy } from '@/lib/app/programme/chart/series';
+import { buildGapChartData, truthy, type Answers } from '@/lib/app/programme/chart/series';
+import { IdealWeekChart } from '@/components/app/reclaim/chart/ideal-week-chart';
 import { Reflection } from '@/components/app/reclaim/phase/reflection';
 import { NumberField, TextAreaField } from '@/components/app/reclaim/phase/fields';
 import { AdvanceControls } from '@/components/app/reclaim/phase/advance-controls';
@@ -66,6 +67,31 @@ export function Phase3Panel({ runId, onAdvanced }: { runId: string; onAdvanced: 
     return nearlySame;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ideal, visible, base]);
+
+  /**
+   * The picture of the week being designed, drawn from what is in the fields right now.
+   *
+   * Read from local state rather than from `base`, because on this surface the ideal figures are not
+   * saved until the leader advances — a chart built from stored answers would sit under a filled-in
+   * table showing every area at zero. The conversation surface has no such problem (the coach writes
+   * each figure as it lands), so it builds the same chart straight from the run's answers.
+   *
+   * Held back until every visible area has a figure, the gate `readIdealWeek` applies for the same
+   * reason: a half-typed week is mostly zeroes, so the chart would be a picture of how far down the
+   * table the leader has got rather than of the week they are designing.
+   */
+  const idealChart = useMemo(() => {
+    const complete =
+      visible.length > 0 && visible.every((b) => parseHours(ideal[bucketToken(b.slug)] ?? '') > 0);
+    if (!complete) return null;
+    const typed: Answers = { ...(base as Answers) };
+    for (const b of visible) {
+      const token = bucketToken(b.slug);
+      const hours = parseHours(ideal[token] ?? '');
+      typed[`reclaim_ideal_hours__${token}`] = { value: String(hours), valueJson: hours };
+    }
+    return buildGapChartData(typed);
+  }, [base, ideal, visible]);
 
   const answers = (): AnswerInput[] => {
     const out: AnswerInput[] = [];
@@ -175,6 +201,14 @@ export function Phase3Panel({ runId, onAdvanced }: { runId: string; onAdvanced: 
           </tbody>
         </table>
       </div>
+
+      {/* The week being designed, drawn over the week they have. The table above is where the figures
+          are entered; this is what they add up to. */}
+      {idealChart !== null && (
+        <div className="border-border/70 rounded-2xl border px-4 py-5 sm:px-6">
+          <IdealWeekChart data={idealChart} />
+        </div>
+      )}
 
       {suspiciouslySimilar && (
         <p className="text-foreground border-primary/40 bg-muted/40 rounded-xl border-l-2 px-5 py-4 text-sm leading-relaxed">

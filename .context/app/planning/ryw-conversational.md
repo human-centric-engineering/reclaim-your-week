@@ -249,10 +249,16 @@ to it, so both halves of the scope stay server-derived and I6's stance carries t
 
 **The moment is claimed atomically, before generating**, with a conditional `updateMany` on a new
 `ReclaimAuditRun.coachOpenings` scalar list. Two tabs, a StrictMode double-effect and a reload
-mid-stream all collapse to one turn. Claim-first trades a rare silent failure — a failed generation
-leaves the moment marked and the leader with no opener, though they can always speak first — for a
-common expensive one. The route header must say so, or a future session will helpfully move the write
-to the end.
+mid-stream all collapse to one turn. Claim-first traded a rare silent failure for a common expensive
+one; the route header must say so, or a future session will helpfully move the write to the end.
+
+**The silent half of that trade is no longer accepted** (2026-07-31). `releaseCoachOpening` gives the
+moment back when the turn produced no words, from the `finally` of the innermost stream wrapper — so
+it fires on an abort, on a provider error and on a turn that only made tool calls. A claim that no
+`finally` ever released (a build older than this, a process that died) is repaired on the next
+attempt: when the claim fails, `coachOpeningWentUnspoken` walks the transcript back from the newest
+message and re-opens only if the last trigger was never answered _and_ the conversation has been
+quiet long enough that nothing can still be generating. See the decision below.
 
 The synthetic trigger reads as a stage direction rather than a magic token, because it stays in the
 model's history for the rest of the run. It is filtered on rehydrate **and from
@@ -442,7 +448,16 @@ Three places where the app deliberately does something else:
   in a URL is a parameter someone will eventually trust.
 - **Phase 6 is embedded, not routed.** The takeaway becomes a conversation inside the existing panel;
   the summary, consent and referral do not move, because consent is not something a coach may record.
-- **The opening moment is claimed before the turn is generated,** not after.
+- **The opening moment is claimed before the turn is generated,** not after — **and given back when
+  the turn says nothing** (2026-07-31). The original trade read "a moment marked but never generated
+  costs the leader nothing: they speak first, as they always could". That stopped being true the
+  moment every phase opened with the coach. A turn cut off before its first token — a tab closed, a
+  reload, a provider that never answered — left the phase behind a signpost card, an empty column and
+  a line promising an opener that would never come, for the rest of the run. Observed on a preview
+  run at phase 4. Three things hold it now: the stream releases a claim no words came out of, a claim
+  that outlived its turn under an older build is repaired by reading the transcript rather than the
+  ledger (`coachOpeningWentUnspoken`, with a quiet window so a turn still running is never
+  duplicated), and the client asks once more before it tells the leader the coach is not coming.
 - **I6's two-layer claim is corrected rather than quietly satisfied.** The second layer is built
   because the invariant should describe what runs; a rule documented as enforced twice and enforced
   once is worse than a rule enforced once and known to be.

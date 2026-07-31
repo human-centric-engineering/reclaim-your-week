@@ -25,6 +25,11 @@
  * the fields it is currently rendering, and the panel draws those. What has no preview at all (the
  * numeric rules) is not this component's problem: the caller simply does not render it.
  *
+ * **It no longer chooses the phase.** The picker used to sit in this panel, over the phase card, and
+ * it moved only the panel: the fields alongside were one scroll of all seven openings, so choosing
+ * Ideal week here left Setup under the cursor there. The choice belongs to the screen rather than to
+ * one column of it, so it is now a `phaseKey` prop and the editor's sub-strip sets it for both.
+ *
  * **It scrolls inside itself.** A block can still outrun the viewport, and as a plain `sticky` column
  * that meant the top stayed pinned while the bottom could not be reached at all. Given a bound by its
  * caller it becomes a fixed header over its own scroll region: the title stays put, the draft moves
@@ -32,7 +37,6 @@
  * short block is a short panel rather than a tall box with a hole in it.
  */
 
-import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { Signpost } from '@/components/app/reclaim/signpost';
 import type { ContentView } from '@/components/app/admin/actions';
@@ -80,17 +84,23 @@ export function ContentPreview({
   view,
   drafts,
   show = ALL_SECTIONS,
+  phaseKey = null,
   className,
 }: {
   view: ContentView;
   drafts: Record<string, string>;
   /** Which blocks to draw. Defaults to all of them — the whole draft, where nothing narrows it. */
   show?: readonly PreviewSection[];
+  /**
+   * Which phase the `phases` block draws. Owned by the caller rather than held here: the editor's
+   * fields are narrowed to one phase by the same choice, and two copies of it would let the panel
+   * show Ideal week beside the fields for Setup. Unrecognised or null falls back to the first.
+   */
+  phaseKey?: string | null;
   /** Sizing from the caller — a bound here is what turns the body into its own scroll region. */
   className?: string;
 }) {
   const preview = buildContentPreview(view, drafts);
-  const [phaseKey, setPhaseKey] = useState<string | null>(null);
   const phase = preview.phases.find((p) => p.phaseKey === phaseKey) ?? preview.phases[0] ?? null;
   const showing = (section: PreviewSection) => show.includes(section);
 
@@ -109,22 +119,6 @@ export function ContentPreview({
       <div className="min-h-0 flex-1 space-y-8 overflow-y-auto px-5 py-5">
         {showing('phases') && phase !== null && (
           <section className="space-y-3">
-            <div className="flex flex-wrap gap-1.5">
-              {preview.phases.map((p) => (
-                <button
-                  key={p.phaseKey}
-                  type="button"
-                  onClick={() => setPhaseKey(p.phaseKey)}
-                  className={`rounded-full border px-3 py-1 text-xs transition-colors ${
-                    p.phaseKey === phase.phaseKey
-                      ? 'bg-primary text-primary-foreground border-transparent'
-                      : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
             <Signpost
               phaseKey={phase.phaseKey}
               index={phase.index}

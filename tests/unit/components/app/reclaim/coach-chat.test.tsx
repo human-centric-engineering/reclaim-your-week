@@ -336,6 +336,64 @@ describe('CoachChat — the coach opening a moment', () => {
     expect(screen.getByText('Earlier turn')).toBeInTheDocument();
   });
 
+  it('asks again when it is told the beat happened and the phase is empty', async () => {
+    // The state this exists for: a previous turn claimed the moment and was cut off before its first
+    // token. The server gives that claim back as the dead turn unwinds, so the refusal the client
+    // meets a moment earlier is about a beat that never happened — and believing it leaves the leader
+    // in front of a signpost card and a promise nobody is going to keep.
+    vi.useFakeTimers();
+    try {
+      fetchMock
+        .mockResolvedValueOnce(json({ messages: [] }))
+        .mockResolvedValueOnce(alreadyOpened())
+        .mockResolvedValueOnce(sse('Now we put the two weeks side by side.'));
+
+      render(<CoachChat runId="run-1" conversationId="conv-1" openMoment="phase-4-gap" />);
+
+      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+      await vi.advanceTimersByTimeAsync(2_500);
+      await vi.waitFor(() =>
+        expect(screen.getByText('Now we put the two weeks side by side.')).toBeInTheDocument()
+      );
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      // The retry is the same request, not a new kind of one.
+      expect(fetchMock).toHaveBeenLastCalledWith(
+        '/api/v1/app/reclaim/runs/run-1/coach/stream',
+        expect.objectContaining({
+          body: JSON.stringify({ kind: 'opening', moment: 'phase-4-gap' }),
+        })
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('says the coach did not open, rather than promising it is about to', async () => {
+    // Two refusals mean the moment really is spent — a run whose opener was lost under an older
+    // build, before the server gave claims back. The leader can still start the phase, and the line
+    // on screen has to tell them so instead of leaving them waiting.
+    vi.useFakeTimers();
+    try {
+      fetchMock.mockResolvedValueOnce(json({ messages: [] })).mockResolvedValue(alreadyOpened());
+
+      render(<CoachChat runId="run-1" conversationId="conv-1" openMoment="phase-4-gap" />);
+
+      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+      await vi.advanceTimersByTimeAsync(2_500);
+      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+      await vi.waitFor(() =>
+        expect(screen.getByText(/did not manage to open this part/i)).toBeInTheDocument()
+      );
+      expect(screen.queryByText(/coach is opening this part/i)).not.toBeInTheDocument();
+
+      // And it stops there: a refusal that survives the retry is reported, not hammered at.
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('does nothing when there is no moment to open', async () => {
     fetchMock.mockResolvedValueOnce(json({ messages: [] }));
 

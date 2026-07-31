@@ -64,6 +64,8 @@ vi.mock('@/app/api/v1/app/reclaim/runs/service', () => ({
   loadCoachTurnTarget: vi.fn(),
   linkRunConversation: vi.fn(),
   claimCoachOpening: vi.fn(),
+  releaseCoachOpening: vi.fn(),
+  coachOpeningWentUnspoken: vi.fn(),
 }));
 vi.mock('@/lib/app/programme/coach/capture-sweep', () => ({ runCaptureSweep: vi.fn() }));
 // Only `pendingChoiceOffer` is imported from here, and the module reaches Prisma. The capability it
@@ -81,6 +83,8 @@ import {
   loadCoachTurnTarget,
   linkRunConversation,
   claimCoachOpening,
+  releaseCoachOpening,
+  coachOpeningWentUnspoken,
 } from '@/app/api/v1/app/reclaim/runs/service';
 import { runCaptureSweep } from '@/lib/app/programme/coach/capture-sweep';
 import { pendingChoiceOffer } from '@/lib/app/programme/coach/phase-context';
@@ -138,6 +142,8 @@ beforeEach(() => {
   });
   vi.mocked(streamChat).mockReturnValue(opensConversation('conv-of-this-run'));
   vi.mocked(claimCoachOpening).mockResolvedValue(true);
+  // The repair only fires on a claim that failed, and the ordinary claim succeeds.
+  vi.mocked(coachOpeningWentUnspoken).mockResolvedValue(false);
   vi.mocked(runCaptureSweep).mockResolvedValue({ recorded: [], refused: [] });
   // Most questions are answered in the leader's own words, so no offer is the ordinary case.
   vi.mocked(pendingChoiceOffer).mockResolvedValue(null);
@@ -395,6 +401,105 @@ describe('POST reclaim coach stream — the coach opening a moment', () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ data: { opened: false } });
     expect(streamChat).not.toHaveBeenCalled();
+  });
+
+  it('opens a claimed moment again when the transcript says it was never spoken', async () => {
+    // The state a cut-off opening leaves: the ledger says the beat happened, the conversation says
+    // nobody said anything. Believing the ledger leaves the phase silent for the rest of the run.
+    vi.mocked(loadCoachTurnTarget).mockResolvedValue({
+      conversationId: 'conv-of-this-run',
+      phaseKey: 'phase-4-gap',
+    });
+    vi.mocked(claimCoachOpening).mockResolvedValue(false);
+    vi.mocked(coachOpeningWentUnspoken).mockResolvedValue(true);
+
+    const res = await POST(req({ kind: 'opening', moment: 'phase-4-gap' }), ctx());
+
+    expect(res.status).toBe(200);
+    expect(coachOpeningWentUnspoken).toHaveBeenCalledWith('conv-of-this-run');
+    expect(streamChat).toHaveBeenCalledWith(
+      expect.objectContaining({ message: COACH_ARRIVAL_TRIGGER })
+    );
+  });
+
+  it('does not ask the transcript about a run that has no conversation yet', async () => {
+    // Nothing to read, and a first turn in flight has not linked its conversation to the run yet —
+    // so re-opening on that evidence is how two tabs would both be told to speak.
+    vi.mocked(loadCoachTurnTarget).mockResolvedValue({
+      conversationId: undefined,
+      phaseKey: 'phase-0-setup',
+    });
+    vi.mocked(claimCoachOpening).mockResolvedValue(false);
+
+    const res = await POST(req({ kind: 'opening', moment: 'phase-0-open' }), ctx());
+
+    expect(await res.json()).toMatchObject({ data: { opened: false } });
+    expect(coachOpeningWentUnspoken).not.toHaveBeenCalled();
+    expect(streamChat).not.toHaveBeenCalled();
+  });
+
+  it('gives the moment back when the opening produced no words', async () => {
+    // The failure this whole path exists for: the trigger is persisted, the stream is cut before the
+    // first token, and the moment stays claimed. Releasing it is what lets the next load open the
+    // phase instead of promising an opener that will never arrive.
+    vi.mocked(loadCoachTurnTarget).mockResolvedValue({
+      conversationId: 'conv-of-this-run',
+      phaseKey: 'phase-4-gap',
+    });
+    vi.mocked(streamChat).mockReturnValue(
+      (async function* (): AsyncGenerator<ChatEvent> {
+        yield { type: 'start', conversationId: 'conv-of-this-run', messageId: 'm1' };
+      })()
+    );
+
+    await POST(req({ kind: 'opening', moment: 'phase-4-gap' }), ctx());
+
+    expect(releaseCoachOpening).toHaveBeenCalledWith('user-1', RUN_ID, 'phase-4-gap');
+  });
+
+  it('keeps the claim when the coach spoke', async () => {
+    // A beat that was had must never be replayed, whatever happens after it.
+    vi.mocked(loadCoachTurnTarget).mockResolvedValue({
+      conversationId: 'conv-of-this-run',
+      phaseKey: 'phase-4-gap',
+    });
+    vi.mocked(streamChat).mockReturnValue(completesTurn('conv-of-this-run'));
+
+    await POST(req({ kind: 'opening', moment: 'phase-4-gap' }), ctx());
+
+    expect(releaseCoachOpening).not.toHaveBeenCalled();
+  });
+
+  it('gives the moment back when the turn throws part-way through', async () => {
+    vi.mocked(loadCoachTurnTarget).mockResolvedValue({
+      conversationId: 'conv-of-this-run',
+      phaseKey: 'phase-4-gap',
+    });
+    vi.mocked(streamChat).mockReturnValue(
+      (async function* (): AsyncGenerator<ChatEvent> {
+        yield { type: 'start', conversationId: 'conv-of-this-run', messageId: 'm1' };
+        throw new Error('provider fell over');
+      })()
+    );
+
+    // The bridge is mocked to drain the generator, so the throw lands in the route's own error
+    // handling where the real SSE response would have turned it into a terminal error frame. Either
+    // way the cleanup has run and the moment is back.
+    await POST(req({ kind: 'opening', moment: 'phase-4-gap' }), ctx());
+
+    expect(releaseCoachOpening).toHaveBeenCalledWith('user-1', RUN_ID, 'phase-4-gap');
+  });
+
+  it('leaves a leader turn’s ledger alone entirely', async () => {
+    vi.mocked(streamChat).mockReturnValue(
+      (async function* (): AsyncGenerator<ChatEvent> {
+        yield { type: 'start', conversationId: 'conv-of-this-run', messageId: 'm1' };
+      })()
+    );
+
+    await POST(req({ message: 'hello' }), ctx());
+
+    expect(releaseCoachOpening).not.toHaveBeenCalled();
   });
 
   it('refuses a moment that does not belong to the phase the leader is on', async () => {

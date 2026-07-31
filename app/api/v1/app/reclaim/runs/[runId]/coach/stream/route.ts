@@ -31,11 +31,14 @@
  * moment is claimed once per run, and the trigger sent in the leader's place is chosen by the moment
  * (`openingTriggerFor`). The card (`runs/signposts.ts`) still orients them first, and costs nothing.
  *
- * **The claim happens before generation and that ordering is deliberate.** A moment marked but never
- * generated costs the leader nothing — they speak first, as they always could. A moment generated
- * twice costs them a repeated beat and a duplicate bill. So this trades a rare silent no-op for
- * avoiding a common expensive duplicate, and the write must not be moved after the stream. Full
- * reasoning on `claimCoachOpening`.
+ * **The claim happens before generation, and the turn gives it back if it says nothing.** Claiming
+ * first is what stops a reload part-way through a slow turn buying a second generation, and that
+ * ordering must not move. What it used to also mean — a moment marked but never generated leaves the
+ * leader to speak first, "as they always could" — stopped being true when every phase started opening
+ * with the coach: a cut stream left the phase behind a card and an empty transcript for good. So
+ * `holdingOpening` releases a claim no words came out of, and a claim that outlived its turn under an
+ * older build is repaired below by reading the transcript rather than the ledger. Full reasoning on
+ * `claimCoachOpening`, `releaseCoachOpening` and `coachOpeningWentUnspoken`.
  *
  * Auth, the two rate-limit checks, and the agent resolution mirror the framework route, so the same
  * agent enforces one cap regardless of which surface a turn arrives through.
@@ -75,6 +78,8 @@ import {
   loadCoachTurnTarget,
   linkRunConversation,
   claimCoachOpening,
+  releaseCoachOpening,
+  coachOpeningWentUnspoken,
 } from '@/app/api/v1/app/reclaim/runs/service';
 import type { ChatEvent } from '@/types/orchestration';
 
@@ -130,6 +135,38 @@ async function* linkingConversation(
       linked = true;
     }
     yield event;
+  }
+}
+
+/**
+ * Watch an opening for words, and give the moment back if none arrive.
+ *
+ * **The failure this exists for, observed on a real run.** The coach was told to open phase 4, the
+ * trigger row was written, and the stream was cut before the first token — a tab closed, a reload, a
+ * provider that never answered. The moment was already claimed, so the phase sat behind a signpost
+ * card and an empty transcript, and every load afterwards was told the beat had happened. A leader
+ * who came to be guided was left to open the conversation themselves, which is the exact thing every
+ * phase arriving with the coach speaking was built to stop.
+ *
+ * `finally` rather than a check after the loop, because the common cut is the consumer disconnecting:
+ * `sseResponse` breaks out of its `for await`, which returns this generator and runs the cleanup. So
+ * the release happens on an abort, on a thrown error, and on a turn that ended with nothing said.
+ *
+ * A turn that spoke keeps its claim, whatever happens afterwards — a beat that was had must never be
+ * replayed on the next load.
+ */
+async function* holdingOpening(
+  events: AsyncIterable<ChatEvent>,
+  release: () => Promise<void>
+): AsyncIterable<ChatEvent> {
+  let spoke = false;
+  try {
+    for await (const event of events) {
+      if (event.type === 'content' && event.delta.trim().length > 0) spoke = true;
+      yield event;
+    }
+  } finally {
+    if (!spoke) await release();
   }
 }
 
@@ -271,11 +308,24 @@ export const POST = withAuth<{ runId: string }>(async (request, session, { param
       });
     }
     // Claimed before generating. See `claimCoachOpening` for why that ordering is deliberate and
-    // must not be moved to after the stream: a moment marked but ungenerated costs a leader nothing,
-    // and a moment generated twice costs them a duplicate beat and a duplicate bill.
+    // must not be moved to after the stream: a moment generated twice costs a leader a duplicate
+    // beat and a duplicate bill. What the claim no longer buys is silence — see
+    // `releaseCoachOpening` below, and the repair here for the claims that outlived their turn.
     if (!(await claimCoachOpening(session.user.id, runId, body.moment))) {
-      log.info('Reclaim coach opening already fired', { runId, moment: body.moment });
-      return successResponse({ opened: false });
+      // "Already fired" is a statement about the ledger, and the ledger can be wrong: a turn that was
+      // cut off before its first token leaves the moment claimed and the phase silent for ever. The
+      // transcript is the honest record, so it is asked before the leader is left with nothing.
+      const unspoken =
+        target.conversationId !== undefined &&
+        (await coachOpeningWentUnspoken(target.conversationId));
+      if (!unspoken) {
+        log.info('Reclaim coach opening already fired', { runId, moment: body.moment });
+        return successResponse({ opened: false });
+      }
+      log.info('Reclaim coach opening claimed but never spoken; opening it again', {
+        runId,
+        moment: body.moment,
+      });
     }
     message = openingTriggerFor(body.moment);
   }
@@ -407,7 +457,20 @@ export const POST = withAuth<{ runId: string }>(async (request, session, { param
     }
   })();
 
-  return sseResponse(offeringChoices(sweepingCapture(observed, sweep, runId, log), offerChoices), {
+  // Innermost of the three wrappers, so it sees every token the model produced and its cleanup runs
+  // whenever the source stops — whichever of the layers above it was the one that let go.
+  const held =
+    body.kind === 'opening'
+      ? holdingOpening(observed, async () => {
+          log.info('Reclaim coach opening produced nothing; giving the moment back', {
+            runId,
+            moment: body.moment,
+          });
+          await releaseCoachOpening(session.user.id, runId, body.moment);
+        })
+      : observed;
+
+  return sseResponse(offeringChoices(sweepingCapture(held, sweep, runId, log), offerChoices), {
     signal: request.signal,
   });
 });

@@ -87,8 +87,14 @@ export interface ContentView {
   editedCount: number;
 }
 
-/** The defaults, which the I11 hop-2 test pins character-identical to `content-source.md`. */
-function sourceDefaults(): ReclaimConfig {
+/**
+ * The defaults, which the I11 hop-2 test pins character-identical to `content-source.md`.
+ *
+ * Exported because the history screen calls this same object **version 0** and offers it back: the
+ * wording as supplied is the one state the version list could not otherwise reach, since the first
+ * `ModuleVersion` is written by the first *edit* and there is no snapshot of what preceded it.
+ */
+export function sourceDefaults(): ReclaimConfig {
   return reclaimConfigSchema.parse({});
 }
 

@@ -76,6 +76,11 @@ const COACH_VOICED = [
   'components/app/reclaim/calendar/calendar-entry.tsx',
   'components/app/reclaim/calendar/calendar-review.tsx',
   'components/app/reclaim/calendar/calendar-upload.tsx',
+  // The three charts. Each one's headings, subtitles, keys and delta labels are the product telling a
+  // leader what they are looking at ("How far your ideal week sits from the week you have now"), which
+  // is prose whatever else a chart is. The palette beside them is not, and stays in the list below.
+  'components/app/reclaim/chart/gap-chart.tsx',
+  'components/app/reclaim/chart/ideal-week-chart.tsx',
   'components/app/reclaim/chart/reclaim-chart.tsx',
   'components/app/reclaim/coach-chat.tsx',
   // The conversational phase surface. The panel speaks to the leader about their own answers ("Taken
