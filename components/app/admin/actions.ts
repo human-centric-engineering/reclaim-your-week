@@ -165,6 +165,29 @@ const contentViewSchema = z.object({
   baseVersion: z.number().nullable(),
 });
 
+/** One field's wording either side of the version that moved it. */
+const contentFieldChangeSchema = z.object({
+  label: z.string(),
+  from: z.string().nullable(),
+  to: z.string(),
+});
+
+/** One saved version of the content, as the editor's history lists it. Version 0 is the original. */
+const contentVersionSchema = z.object({
+  version: z.number(),
+  isBaseline: z.boolean(),
+  changeSummary: z.string().nullable(),
+  savedAt: z.string().nullable(),
+  savedByName: z.string().nullable(),
+  isCurrent: z.boolean(),
+  changes: z.array(contentFieldChangeSchema),
+  moreChanged: z.number(),
+  changedElsewhere: z.boolean(),
+  unreadable: z.boolean(),
+});
+
+const contentHistorySchema = z.object({ versions: z.array(contentVersionSchema) });
+
 const reachOutRecordSchema = z.object({
   id: z.string(),
   auditRunId: z.string().nullable(),
@@ -226,6 +249,8 @@ export type MeasuresView = z.infer<typeof measuresSchema>;
 export type InboxView = z.infer<typeof inboxSchema>;
 export type ContentView = z.infer<typeof contentViewSchema>;
 export type ContentField = z.infer<typeof contentFieldSchema>;
+export type ContentVersion = z.infer<typeof contentVersionSchema>;
+export type ContentFieldChange = z.infer<typeof contentFieldChangeSchema>;
 export type ReachOutView = z.infer<typeof reachOutViewSchema>;
 export type ReachOutRecord = z.infer<typeof reachOutRecordSchema>;
 export type PreviewAccountRow = z.infer<typeof previewAccountSchema>;
@@ -262,7 +287,7 @@ export function getClient(userId: string): Promise<ClientDetailView> {
 }
 
 /**
- * The opening draft for a message to one leader, plus what has already been sent (F18 t-2).
+ * The opening draft for a message to one leader, plus what has already been sent.
  *
  * The draft is built on the server so the phase it names is the client list's own reading of where
  * they stopped rather than a second computation of it.
@@ -336,6 +361,28 @@ export async function saveContent(input: {
     body: JSON.stringify(input),
   });
   if (!res.ok) throw new Error(await failureMessage(res, 'Those changes could not be saved.'));
+}
+
+/** Every saved version of the content, newest first. */
+export function listContentVersions(): Promise<ContentVersion[]> {
+  return getJson(
+    '/api/v1/app/reclaim/admin/content/versions',
+    contentHistorySchema,
+    'We could not load the version history.'
+  ).then((v) => v.versions);
+}
+
+/**
+ * Put a previous version's wording back. Returns the version number it was saved as — a restore
+ * writes forward rather than rewinding, so the answer is always a new number.
+ */
+export async function restoreContentVersion(version: number): Promise<number> {
+  const res = await fetch(
+    `/api/v1/app/reclaim/admin/content/versions/${encodeURIComponent(String(version))}/restore`,
+    { method: 'POST' }
+  );
+  if (!res.ok) throw new Error(await failureMessage(res, 'That version could not be restored.'));
+  return parseEnvelope(await res.json(), z.object({ version: z.number() })).version;
 }
 
 /** Every test account (F19), enriched by the server in one request. */

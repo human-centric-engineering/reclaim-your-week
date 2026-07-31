@@ -26,7 +26,8 @@
  * once. Four **tabs** now hold one job in view at a time — the same move `access-workspace.tsx` made
  * for the same reason — and the cards are gone in favour of one framed list per tab with hairline
  * rules between entries. A tab that is hiding unsaved work says so in its strip, which is the debt
- * tabs incur and this one pays.
+ * tabs incur and this one pays. They run in the order a leader meets them rather than biggest-first;
+ * see `TABS`.
  *
  * **The markers announced the absence of news.** Every field said "matches the source document" —
  * forty-odd repetitions of *nothing has happened*, printed in the same weight as the writing they
@@ -51,12 +52,26 @@
  * `rules` — three numbers, no rendering — the column goes away and the fields take the full width.
  * The heading went with it: "as a leader reads it" was never true of the block titled *what the coach
  * is told*, so the panel now says how the wording appears rather than who reads it.
+ *
+ * **And the phase is chosen once, for both columns.** The picker sat inside the preview and moved
+ * only the preview, against a left column that listed all seven openings end to end — so the panel
+ * could be showing Ideal week while the fields under the cursor were Setup, and the one control on
+ * screen that named a phase changed nothing on the side you were typing into. It is now a strip
+ * directly under the tabs, URL-synced like them (`?tab=phases&phase=phase-3-ideal`), and it narrows
+ * the fields and the panel together.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { History } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -67,6 +82,7 @@ import {
   ContentPreview,
   type PreviewSection,
 } from '@/components/app/admin/content/content-preview';
+import { ContentHistory } from '@/components/app/admin/content/content-history';
 import {
   readContent,
   saveContent,
@@ -74,12 +90,32 @@ import {
   type ContentField,
 } from '@/components/app/admin/actions';
 
-const TABS = ['buckets', 'phases', 'framing', 'rules'] as const;
+/**
+ * The tabs, in the order a leader meets what they hold.
+ *
+ * The strip first ran biggest-first — the nine buckets are twenty-seven of the roughly forty-five
+ * fields — and size is not obviousness. This page's promise is *the words leaders read*, and the
+ * phase openings are the first of them: read in full, in order, before anyone types. The bucket
+ * descriptions are the vocabulary those phases then use, the frame and footnote sit under a finished
+ * audit, and the rules are not words at all. Chronology also settles the tie with the panel beside
+ * it, whose sections have always run phases → areas → summary → briefing; the strip used to
+ * contradict its own preview.
+ *
+ * `rules` stays last on its own merit rather than by chronology: three numbers that change what the
+ * programme does rather than what it says, and the one tab with nothing to preview.
+ *
+ * **History is not among them.** It was a fifth tab for one release and read as a fifth *kind of
+ * wording* — the strip's other four are places to type, and a reader scanning them for a section of
+ * the content has no reason to stop on the one that is a record of the others. It is the state of the
+ * whole page rather than a part of it, so it sits with the live version number at the top right,
+ * where a version stamp is a thing you glance at and a button beside it is a thing you press.
+ */
+const TABS = ['phases', 'buckets', 'framing', 'rules'] as const;
 type ContentTab = (typeof TABS)[number];
 
 const TAB_LABELS: Record<ContentTab, string> = {
-  buckets: 'The nine buckets',
   phases: 'Phase openings',
+  buckets: 'The nine buckets',
   framing: 'Framing',
   rules: 'Rules',
 };
@@ -98,8 +134,8 @@ const TAB_LABELS: Record<ContentTab, string> = {
  * rather than parking a full-height panel with nothing to say beside them.
  */
 const TAB_PREVIEW: Record<ContentTab, readonly PreviewSection[]> = {
-  buckets: ['areas'],
   phases: ['phases'],
+  buckets: ['areas'],
   framing: ['summary', 'briefing'],
   rules: [],
 };
@@ -117,9 +153,12 @@ const TAB_PREVIEW: Record<ContentTab, readonly PreviewSection[]> = {
 function indexFields(view: ContentView): {
   saved: Record<string, string>;
   byTab: Record<ContentTab, string[]>;
+  /** Within the phases tab, which fields belong to each phase — the sub-strip needs its own counts. */
+  byPhase: Record<string, string[]>;
 } {
   const saved: Record<string, string> = {};
-  const byTab: Record<ContentTab, string[]> = { buckets: [], phases: [], framing: [], rules: [] };
+  const byTab: Record<ContentTab, string[]> = { phases: [], buckets: [], framing: [], rules: [] };
+  const byPhase: Record<string, string[]> = {};
   const add = (tab: ContentTab, ...fields: ContentField[]) => {
     for (const field of fields) {
       saved[field.key] = field.value;
@@ -127,22 +166,40 @@ function indexFields(view: ContentView): {
     }
   };
 
+  for (const signpost of view.signposts) {
+    const fields = [signpost.involves, signpost.duration, ...signpost.opening];
+    add('phases', ...fields);
+    byPhase[signpost.phaseKey] = fields.map((field) => field.key);
+  }
   for (const bucket of view.buckets) {
     add('buckets', bucket.title, bucket.description, bucket.benchmarkNote);
-  }
-  for (const signpost of view.signposts) {
-    add('phases', signpost.involves, signpost.duration, ...signpost.opening);
   }
   add('framing', ...view.prose, ...view.bands.map((band) => band.label));
   add('rules', ...view.rules);
 
-  return { saved, byTab };
+  return { saved, byTab, byPhase };
 }
 
 /** The human name of a phase, from the map a leader actually reads, falling back to its key. */
 function phaseLabel(phaseKey: string): string {
   return RECLAIM_PHASES.find((phase) => phase.key === phaseKey)?.label ?? phaseKey;
 }
+
+/**
+ * The phases tab's own strip, one level under the main one.
+ *
+ * The phase picker used to live *inside* the preview panel, which split one choice across the two
+ * columns: the fields were a single scroll of all seven openings while the panel showed one phase at
+ * a time, and picking Ideal week on the right moved nothing on the left. One selection now drives
+ * both, and it sits with the tabs rather than in the preview because it is navigation, not preview
+ * furniture.
+ *
+ * Taken from the static map rather than from the loaded view, so `allowedTabs` is stable from the
+ * first render — `useUrlTabs` strips a param it does not recognise, and a list that starts empty
+ * while the content loads would eat `?phase=…` out of a link somebody sent.
+ */
+const PHASE_KEYS = RECLAIM_PHASES.map((phase) => phase.key);
+type PhaseKey = (typeof RECLAIM_PHASES)[number]['key'];
 
 /** The shared shape of everything that annotates a field label: small, quiet, and set in caps. */
 const MARKER = 'text-[0.65rem] font-medium tracking-[0.1em] uppercase';
@@ -207,6 +264,32 @@ function Field({
 }) {
   const value = draft ?? field.value;
   const dirty = draft !== undefined && draft !== field.value;
+  const box = useRef<HTMLTextAreaElement>(null);
+
+  // Grow to fit the wording instead of clipping it at `rows`. Every one of these
+  // fields arrives full from the server, which is why the composer's trick in
+  // `coach-chat.tsx` — sizing inside `onChange` — is not enough here: that box
+  // starts empty, these start at their final length, so an `onChange`-only autosize
+  // would leave each one stuck at its `rows` default until the first keystroke.
+  //
+  // Keyed on `value` rather than run once on mount, because the phase strip swaps
+  // the content underneath a field that stays mounted: `involves` and `duration`
+  // are the same two elements for all seven phases, so picking a new phase changes
+  // their text without remounting them. `useLayoutEffect` runs before paint, so the
+  // box is the right size the first time it is seen. Resetting to `auto` first is
+  // what lets it shrink again — `scrollHeight` never reports less than the height
+  // already set, so without it the box could only ever grow.
+  //
+  // The ceiling is CSS, not arithmetic: `max-h` caps the element and the browser
+  // scrolls the overflow, so the rare very long opening stays readable without
+  // pushing the fields below it off the screen.
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (el === null) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, [value]);
+
   return (
     <label className="block">
       <FieldLabel marker={<FieldMarker field={field} dirty={dirty} />} help={help}>
@@ -214,10 +297,11 @@ function Field({
       </FieldLabel>
       {multiline === true ? (
         <Textarea
+          ref={box}
           value={value}
           rows={rows ?? 4}
           onChange={(e) => onChange(field.key, e.target.value)}
-          className="text-sm leading-relaxed"
+          className="max-h-[22rem] text-sm leading-relaxed"
         />
       ) : (
         <Input
@@ -314,9 +398,17 @@ export function ContentEditor() {
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  /** Bumped whenever a save lands, so the history re-reads rather than showing a stale list. */
+  const [savedAt, setSavedAt] = useState(0);
   const { activeTab, setActiveTab } = useUrlTabs<ContentTab>({
-    defaultTab: 'buckets',
+    defaultTab: 'phases',
     allowedTabs: TABS,
+  });
+  const { activeTab: activePhase, setActiveTab: setActivePhase } = useUrlTabs<PhaseKey>({
+    paramName: 'phase',
+    defaultTab: RECLAIM_PHASES[0].key,
+    allowedTabs: PHASE_KEYS,
   });
 
   const load = useCallback(async () => {
@@ -360,7 +452,8 @@ export function ContentEditor() {
       });
       setSummary('');
       await load();
-      setNotice('Saved. Everyone sees the new wording from now on.');
+      setSavedAt((n) => n + 1);
+      setNotice('Saved. Everyone sees the new wording from now on, and History has kept the last.');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Those changes could not be saved.');
     } finally {
@@ -377,40 +470,98 @@ export function ContentEditor() {
   const sections = TAB_PREVIEW[activeTab];
   const unsavedIn = (tab: ContentTab) =>
     changedKeys.filter((key) => index.byTab[tab].includes(key)).length;
+  const unsavedInPhase = (phaseKey: string) =>
+    changedKeys.filter((key) => (index.byPhase[phaseKey] ?? []).includes(key)).length;
+  /** The one selected phase, driving the fields and the panel alike. Falls back to the first. */
+  const phase =
+    view.signposts.find((signpost) => signpost.phaseKey === activePhase) ??
+    view.signposts[0] ??
+    null;
 
   return (
     <div className="space-y-5">
-      {/* Said once, at the top, so no field has to repeat it. A dot rather than a box: this is a
-          state to glance at, not a notice to read. */}
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
-        <span
-          aria-hidden
-          className={cn(
-            'size-1.5 rounded-full',
-            view.editedCount === 0 ? 'bg-emerald-600 dark:bg-emerald-400' : 'bg-amber-500'
-          )}
-        />
-        <span className={view.editedCount === 0 ? 'text-muted-foreground' : 'text-foreground'}>
-          {view.editedCount === 0
-            ? 'Everything here matches the source documents.'
-            : `${view.editedCount} ${view.editedCount === 1 ? 'field differs' : 'fields differ'} from the source documents.`}
-        </span>
-        <FieldHelp title="What “matches the source” means">
-          <p>
-            The wording you originally supplied is checked into the project as read-only source
-            documents. A field marked <strong>edited</strong> is one you have changed since — which
-            is exactly what this screen is for.
+      {/* Two statements about the whole page, on one line and at opposite ends of it: how far the
+          wording has travelled from the documents, and which numbered version is currently live.
+          They belong together — the first is why you would open the second — but the version stamp
+          is deliberately the right-hand edge rather than another item in the sentence, so it reads
+          as the page's identity rather than as more prose. */}
+      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+        {/* Said once, at the top, so no field has to repeat it. A dot rather than a box: this is a
+            state to glance at, not a notice to read. */}
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+          <span
+            aria-hidden
+            className={cn(
+              'size-1.5 rounded-full',
+              view.editedCount === 0 ? 'bg-emerald-600 dark:bg-emerald-400' : 'bg-amber-500'
+            )}
+          />
+          <span className={view.editedCount === 0 ? 'text-muted-foreground' : 'text-foreground'}>
+            {view.editedCount === 0
+              ? 'Everything here matches the source documents.'
+              : `${view.editedCount} ${view.editedCount === 1 ? 'field differs' : 'fields differ'} from the source documents.`}
+          </span>
+          <FieldHelp title="What “matches the source” means">
+            <p>
+              The wording you originally supplied is checked into the project as read-only source
+              documents. A field marked <strong>edited</strong> is one you have changed since —
+              which is exactly what this screen is for.
+            </p>
+            <p>
+              The marker exists so a change is never invisible. Every save is kept in full — who
+              made it, when, why, and which wording moved — under <strong>History</strong>, top
+              right, where any version can be put back. Version 0 there is the wording as supplied,
+              so the originals are always one press away.
+            </p>
+          </FieldHelp>
+        </div>
+
+        {/* The version, and the door to the rest of them. `baseVersion` is null until the first save
+            ever made from this screen, and that state is version 0 rather than a blank: the history
+            lists it under that number and can restore it, so the stamp should call it what the list
+            calls it. */}
+        <div className="flex items-center gap-3">
+          {/* Label and number on one line, reading as a single phrase — "live version 4" is what it
+              says aloud, and stacking the number under the label made it a column of two unrelated
+              things. Baselined at the same optical line by `items-baseline`, since the caps label is
+              small enough that centring it against the numeral leaves it visibly high. */}
+          <p className="flex items-baseline gap-1.5">
+            <span className={cn(MARKER, 'text-muted-foreground')}>Live version</span>
+            <span className="text-foreground text-sm font-medium tabular-nums">
+              {view.baseVersion ?? 0}
+            </span>
+            {view.baseVersion === null && (
+              <span className="text-muted-foreground text-xs">as supplied</span>
+            )}
           </p>
-          <p>
-            The marker exists so a change is never invisible. Every save is kept in full, with who
-            made it and why, in the module&rsquo;s{' '}
-            <Link href="/admin/framework/modules/reclaim-audit" className="underline">
-              version history
-            </Link>
-            .
-          </p>
-        </FieldHelp>
+          <Button type="button" variant="outline" size="sm" onClick={() => setHistoryOpen(true)}>
+            <History aria-hidden="true" />
+            History
+          </Button>
+        </div>
       </div>
+
+      {/* A dialog rather than a pane: the history is a thing you consult and dismiss, and every
+          route back into the wording runs through the tabs behind it. Its own scroll region, since
+          twenty-five versions quoting their changes is taller than any viewport. */}
+      <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
+        <DialogContent className="max-w-3xl gap-0 p-0">
+          <DialogHeader className="space-y-1.5 border-b px-6 pt-6 pb-4 text-left">
+            <DialogTitle>Version history</DialogTitle>
+            <DialogDescription>
+              Every save, newest first, with the wording it moved — and the way back to any of them,
+              down to the originals as supplied.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[70vh] overflow-y-auto px-6 py-5">
+            <ContentHistory
+              reloadToken={savedAt}
+              unsavedCount={changedKeys.length}
+              onRestored={() => void load()}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <div className="grid gap-6 lg:grid-cols-12 lg:items-start">
         {/* Bounded as well as sticky. Sticky alone pinned a panel taller than the viewport, which
@@ -434,6 +585,7 @@ export function ContentEditor() {
                 view={view}
                 drafts={drafts}
                 show={sections}
+                phaseKey={phase?.phaseKey ?? null}
                 className="lg:max-h-[calc(100vh-5.5rem)]"
               />
             </div>
@@ -462,6 +614,105 @@ export function ContentEditor() {
                 );
               })}
             </TabsList>
+
+            <TabsContent value="phases" className="mt-5">
+              {/* One level under the tabs, and the only selector for the phase: the fields below and
+                  the panel beside both follow it. A dot for the same reason the tabs carry one —
+                  this strip hides six phases at a time, and an edit under a hidden one has to
+                  announce itself from here or not at all. */}
+              <div className="mb-4 flex flex-wrap gap-1.5">
+                {view.signposts.map((signpost) => {
+                  const unsaved = unsavedInPhase(signpost.phaseKey);
+                  const selected = signpost.phaseKey === phase?.phaseKey;
+                  // Matched against the map rather than asserted onto it: the key comes off the
+                  // stored config, and a phase the map has never heard of is not one this strip can
+                  // route to.
+                  const key = PHASE_KEYS.find((candidate) => candidate === signpost.phaseKey);
+                  return (
+                    <button
+                      key={signpost.phaseKey}
+                      type="button"
+                      aria-pressed={selected}
+                      disabled={key === undefined}
+                      onClick={() => key !== undefined && setActivePhase(key)}
+                      className={cn(
+                        'rounded-full border px-3 py-1 text-xs transition-colors',
+                        selected
+                          ? 'bg-primary text-primary-foreground border-transparent'
+                          : 'text-muted-foreground hover:text-foreground'
+                      )}
+                    >
+                      {phaseLabel(signpost.phaseKey)}
+                      {unsaved > 0 && (
+                        <>
+                          <span
+                            aria-hidden
+                            className={cn(
+                              'ml-2 inline-block size-1.5 rounded-full align-middle',
+                              selected ? 'bg-primary-foreground' : 'bg-primary'
+                            )}
+                          />
+                          <span className="sr-only">
+                            , {unsaved} unsaved {unsaved === 1 ? 'change' : 'changes'}
+                          </span>
+                        </>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+              <Lead
+                help={
+                  <FieldHelp title="What a leader reads first">
+                    <p>
+                      Every phase opens with these words before anyone types anything. They set what
+                      the phase is, what it involves, and roughly how long it takes, so the process
+                      never feels open-ended.
+                    </p>
+                    <p>
+                      Most of this wording was written for the app rather than taken from your
+                      documents, so it is measured against the shipped wording rather than a source
+                      document. The one exception is the second part of Phase 0, which is your own
+                      outline and is marked as such.
+                    </p>
+                  </FieldHelp>
+                }
+              >
+                What a leader reads as {phase === null ? 'each phase opens' : 'this phase opens'},
+                before anyone types anything.
+              </Lead>
+              {/* One phase's fields, framed. Not a `Ledger` any more: a list of one is a list of
+                  nothing, and the strip above already names which phase this is. */}
+              {phase !== null && (
+                <div className="space-y-4 rounded-lg border p-5">
+                  <Field
+                    field={phase.involves}
+                    draft={drafts[phase.involves.key]}
+                    onChange={change}
+                  />
+                  <Field
+                    field={phase.duration}
+                    draft={drafts[phase.duration.key]}
+                    onChange={change}
+                  />
+                  {phase.opening.map((beat) => (
+                    <Field
+                      key={beat.key}
+                      field={beat}
+                      draft={drafts[beat.key]}
+                      onChange={change}
+                      multiline
+                    />
+                  ))}
+                  {phase.opening.length === 0 && (
+                    <p className="text-muted-foreground text-xs">
+                      This phase opens on its heading alone. The summary needs no introduction
+                      because the document is the point.
+                    </p>
+                  )}
+                </div>
+              )}
+            </TabsContent>
 
             <TabsContent value="buckets" className="mt-5">
               <Lead>
@@ -504,62 +755,6 @@ export function ContentEditor() {
                         </FieldHelp>
                       }
                     />
-                  </LedgerRow>
-                ))}
-              </Ledger>
-            </TabsContent>
-
-            <TabsContent value="phases" className="mt-5">
-              <Lead
-                help={
-                  <FieldHelp title="What a leader reads first">
-                    <p>
-                      Every phase opens with these words before anyone types anything. They set what
-                      the phase is, what it involves, and roughly how long it takes, so the process
-                      never feels open-ended.
-                    </p>
-                    <p>
-                      Most of this wording was written for the app rather than taken from your
-                      documents, so it is measured against the shipped wording rather than a source
-                      document. The one exception is the second part of Phase 0, which is your own
-                      outline and is marked as such.
-                    </p>
-                  </FieldHelp>
-                }
-              >
-                What a leader reads as each phase opens, before anyone types anything.
-              </Lead>
-              <Ledger>
-                {view.signposts.map((signpost, i) => (
-                  <LedgerRow key={signpost.phaseKey} ordinal={String(i)}>
-                    <p className="text-foreground text-sm font-medium">
-                      {phaseLabel(signpost.phaseKey)}
-                    </p>
-                    <Field
-                      field={signpost.involves}
-                      draft={drafts[signpost.involves.key]}
-                      onChange={change}
-                    />
-                    <Field
-                      field={signpost.duration}
-                      draft={drafts[signpost.duration.key]}
-                      onChange={change}
-                    />
-                    {signpost.opening.map((beat) => (
-                      <Field
-                        key={beat.key}
-                        field={beat}
-                        draft={drafts[beat.key]}
-                        onChange={change}
-                        multiline
-                      />
-                    ))}
-                    {signpost.opening.length === 0 && (
-                      <p className="text-muted-foreground text-xs">
-                        This phase opens on its heading alone. The summary needs no introduction
-                        because the document is the point.
-                      </p>
-                    )}
                   </LedgerRow>
                 ))}
               </Ledger>
@@ -649,7 +844,8 @@ export function ContentEditor() {
                   help={
                     <FieldHelp title="Why this is required">
                       <p>
-                        Every save is kept as a numbered version you can compare and roll back to.
+                        Every save is kept as a numbered version, listed under{' '}
+                        <strong>History</strong> with what it changed and a button to put it back.
                         This line is what makes that history readable a year from now — without it
                         the history is a list of anonymous diffs.
                       </p>
