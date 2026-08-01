@@ -41,18 +41,19 @@ Editing a bridge conflicts on every Daybreak upgrade. Always edit the `leaf-*` f
 
 ## What is in this folder
 
-| Doc                                                              | Is                                                                                                                                                  |
-| ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`sources/`](./sources/README.md)                                | **The authority.** Rashmir's five originals, byte-identical and **read-only**                                                                       |
-| [`invariants.md`](./invariants.md)                               | **Read before writing any code.** I1–I18 + I-frame + I-composite                                                                                    |
-| [`content-source.md`](./content-source.md)                       | Working extract of `sources/`, verbatim. Loads into `Module.config` (I11)                                                                           |
-| [`slot-spec.md`](./slot-spec.md)                                 | The 106 slot definitions — exact slugs, dataType, sensitivity                                                                                       |
-| [`coverage-audit.md`](./coverage-audit.md)                       | The source-instruction audit: carries / becomes UI / retired / gap                                                                                  |
-| [`daybreak-asks.md`](./daybreak-asks.md)                         | Framework changes we carry + defects we find, so a sync knows what to delegate                                                                      |
-| [`upstream-sync.md`](./upstream-sync.md)                         | **The ordered procedure for a sync** — the four files we have modified inside upstream's tree, and what fails quietly if you resolve them by reflex |
-| [`operations.md`](./operations.md)                               | What has to be **running**: the nudge schedule, the two smokes CI cannot run, the before-launch list                                                |
-| [`prisma-migration-recovery.md`](./prisma-migration-recovery.md) | The way back once `prisma migrate dev` has already dropped the unmodelled FKs and indexes. Prevention stays upstream                                |
-| [`planning/`](./planning/README.md)                              | The feature board, the execution rhythm, the retro — and **[`post-v1.md`](./planning/post-v1.md), the board of what is left now v1 has shipped**    |
+| Doc                                                              | Is                                                                                                                                                       |
+| ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`sources/`](./sources/README.md)                                | **The authority.** Rashmir's five originals, byte-identical and **read-only**                                                                            |
+| [`invariants.md`](./invariants.md)                               | **Read before writing any code.** I1–I18 + I-frame + I-composite                                                                                         |
+| [`content-source.md`](./content-source.md)                       | Working extract of `sources/`, verbatim. Loads into `Module.config` (I11)                                                                                |
+| [`slot-spec.md`](./slot-spec.md)                                 | The 106 slot definitions — exact slugs, dataType, sensitivity                                                                                            |
+| [`coverage-audit.md`](./coverage-audit.md)                       | The source-instruction audit: carries / becomes UI / retired / gap                                                                                       |
+| [`daybreak-asks.md`](./daybreak-asks.md)                         | Framework changes we carry + defects we find, so a sync knows what to delegate                                                                           |
+| [`upstream-sync.md`](./upstream-sync.md)                         | **The ordered procedure for a sync** — the four files we have modified inside upstream's tree, and what fails quietly if you resolve them by reflex      |
+| [`upstream-sync-2026-08.md`](./upstream-sync-2026-08.md)         | **Temporary.** The 2026-08 Sunrise release: all fourteen of our Sunrise asks closed, what differs from what we asked for, what breaks. Delete on landing |
+| [`operations.md`](./operations.md)                               | What has to be **running**: the nudge schedule, the two smokes CI cannot run, the before-launch list                                                     |
+| [`prisma-migration-recovery.md`](./prisma-migration-recovery.md) | The way back once `prisma migrate dev` has already dropped the unmodelled FKs and indexes. Prevention stays upstream                                     |
+| [`planning/`](./planning/README.md)                              | The feature board, the execution rhythm, the retro — and **[`post-v1.md`](./planning/post-v1.md), the board of what is left now v1 has shipped**         |
 
 The first four are the **system of record** for content, data shape, and rules. `planning/plan.md` is
 the build breakdown that consumes them. Start a feature at
@@ -129,10 +130,11 @@ introduce per-module subfolders under `lib/app/programme/` until there is a seco
 Daybreak has no version file of its own, so we record the commit instead. To find
 where we currently sit: `git merge-base HEAD upstream/main`.
 
-| Date       | Daybreak commit | Sunrise version | Notes                                                 |
-| ---------- | --------------- | --------------- | ----------------------------------------------------- |
-| 2026-07-21 | `3846f4c0`      | 0.7.0           | Forked from Daybreak main                             |
-| 2026-07-21 | `c9e9fa26`      | 0.7.0           | daybreak#154 — cold-lint fix, needed for our first CI |
+| Date       | Daybreak commit | Sunrise version | Notes                                                                                                                                                                                                                         |
+| ---------- | --------------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-07-21 | `3846f4c0`      | 0.7.0           | Forked from Daybreak main                                                                                                                                                                                                     |
+| 2026-07-21 | `c9e9fa26`      | 0.7.0           | daybreak#154 — cold-lint fix, needed for our first CI                                                                                                                                                                         |
+| 2026-08-01 | `c9e9fa26`      | 0.7.0           | **Attempted, nothing to take.** Sunrise closed all fourteen of our asks; Daybreak has not synced them, so `upstream/main` is unmoved. Assessment in [`upstream-sync-2026-08.md`](./upstream-sync-2026-08.md); no code changed |
 
 **Do not sync from memory — follow [`upstream-sync.md`](./upstream-sync.md).** It is the ordered
 procedure, and it exists because four open ledger rows mean we carry **modified copies of upstream

@@ -6,6 +6,14 @@ parent: README.md
 
 # Pulling upstream
 
+> **2026-08-01 — read [[upstream-sync-2026-08]] first.** Sunrise has closed all
+> fourteen of this app's Sunrise-tier asks, and **Daybreak has taken none of it**:
+> `upstream/main` is still `c9e9fa26` and `git merge upstream/main` is a no-op.
+> That document is the readiness assessment for the sync when it comes — what
+> shipped, the three rows we should decline rather than adopt, and the two gates
+> that go red on merge with no fix available at our tier. Delete it once the sync
+> has landed; this procedure is the permanent one.
+
 > [[daybreak-asks]] carries a **delegate-when-it-lands** action per row. What it has never carried is
 > a single ordered procedure for a sync — which is the thing you want at exactly the moment you least
 > want to reconstruct it from eighteen table cells ([[planning/post-v1|post-v1]] P11).
@@ -112,8 +120,15 @@ Ranked by how quietly it fails.
 
 ## The ledger, at a glance
 
-**18 rows, all open, all filed. 8 Daybreak · 10 Sunrise.** Four carry upstream code (above); the rest
-are leaf-side workarounds or documented exclusions with nothing to unwind but a comment.
+**20 rows. 10 Daybreak · 10 Sunrise, plus 2 unfiled found on 2026-08-01.** Four carry upstream code
+(above); the rest are leaf-side workarounds or documented exclusions with nothing to unwind but a
+comment.
+
+**As of 2026-08-01 every Sunrise row is fixed upstream and none is reachable** — see
+[[upstream-sync-2026-08]]. The Daybreak rows (#156–#169) are all still open, which matters for the
+carried-file table above: sunrise#462's two `globalThis` patches can go on the sync that lands them,
+but **daybreak#160's third one stays**, so `lib/framework/modules/registry.ts` remains patched and
+`smoke:reclaim` remains the thing that proves the resolution was right.
 
 Three of them are the same finding wearing different hats — `HOOK_EVENT_TYPES` (sunrise#465), the
 module-config descriptor walker (daybreak#161) and `EmailPropsMap` (sunrise#468) are each a generic
