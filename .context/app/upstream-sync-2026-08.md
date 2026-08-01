@@ -52,22 +52,28 @@ differs from what the row assumed.
 | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | ---------- |
 | **#467** subject access               | `exportUserData()`, `SUBJECT_DATA_SOURCES`, seam `collectAppSubjectData()`, two endpoints, **a coverage guard**   | Move our tables to the seam — **but see §C1**, the guard breaks first                  | **High**   |
 | **#463** `SIGNUP_MODE`                | `invite_only` closes the route, `userCreateBeforeHook` (default-deny) and `/signup`; `runInvitedSignup()` exempts | Set it — **after** wrapping the preview fabricator (§C3)                               | **High**   |
-| **#464** user-creation seam           | `lib/app/user-created.ts`, `registerUserCreatedHook()`, after-creation, throws swallowed                          | **Recommend not adopting** as our row described (§C4)                                  | **Medium** |
+| **#464** user-creation seam           | `lib/app/user-created.ts`, `registerUserCreatedHook()`, after-creation, throws swallowed                          | **Close as won't-adopt** — the premise was wrong, our gate is better (§C4)             | **Medium** |
 | **#474** agent-opened turn            | `ChatRequest.openingTurn` — no user row persisted, content reaches the model as a **system** message              | Adopt, then re-test all seven phase openings live (§C5)                                | **Medium** |
 | **#475** message metadata             | `ChatRequest.messageMetadata`, stored under `MessageMetadata.app`                                                 | Adopt — but the filter must keep the sentinel path for historical rows (§C6)           | **Medium** |
-| **#466** email change                 | Cleared `emailVerified` + re-verification; then **#489** added old-address approval, password, session revocation | **Keep** our two compensating conditions; update the comment (§C7)                     | **Medium** |
+| **#466** email change                 | Cleared `emailVerified` + re-verification; then **#489** added old-address approval, password, session revocation | **Adapt** — keep both conditions, re-anchor the stale docstring (§C7)                  | **Medium** |
 | **#469** recurring-job seam           | `lib/app/jobs.ts`, `registerAppJob({ name, intervalMs, run })` on the maintenance tick                            | Register `runNudgeTick`, delete the route, update [[operations]] (§C8)                 | Low        |
 | **#465** open hook events             | `HookEventType` widened to core plus the `app.` and `framework.` template-literal namespaces                      | Emit `app.reclaim.*`, **not** `reclaim.*` (§C9)                                        | Low        |
 | **#476** default-allow binding        | Handler refuses un-advertised tool names (**default on**); `CAPABILITY_BINDING_MODE=strict` (opt-in)              | Drop the `RETIRED` block; audit before flipping strict (§C10)                          | Low        |
-| **#472** structured-completion writes | Non-persistence is now contractual, guarded by an upstream test                                                   | **Keep our canary** rather than delete it (§C11)                                       | Low        |
+| **#472** structured-completion writes | Non-persistence is now contractual, guarded by an upstream test                                                   | **Keep our canary** — ownership, not duplication (§C11)                                | Low        |
 | **#473** protected nav + auth landing | `lib/app/protected-nav.ts` and `lib/app/auth-landing.ts`; a dozen call sites, plus a label                        | Delete both shims, revert eight literal swaps, set the seams (§C12)                    | Low        |
 | **#468** open `EmailPropsMap`         | `defaultTemplates` is `Partial`; `resolveEmailTemplate` throws by name when neither override nor default exists   | Register the quarterly nudge as an `app.`-namespaced kind via `lib/app/emails.ts`      | Low        |
 | **#462** boot registries lost         | `globalThis`-backed context contributors + capability dispatcher                                                  | Delete both keep-mine blocks. **daybreak#160 is still open**, so keep the registry one | Low        |
 | **#461** missing SSE variant          | `chatStreamEventSchema` models `budget_exceeded_per_turn`                                                         | Delete the raw-frame fallback at `coach-chat.tsx:418`                                  | Low        |
 
 **Not one of the fourteen is a row we close by deleting our copy and walking
-away.** Four change behaviour we have to re-verify by hand, three are worse than
-what we already run, and one does not compile until we rename our events.
+away.** Four change behaviour we have to re-verify by hand, three we should not
+consume at all, and one does not compile until we rename our events.
+
+**Three of the fourteen close as won't-adopt or adapt, and raise nothing** —
+#464, #466 and #472 (§C4, §C7, §C11). That is the point worth carrying: two of
+our own asks turn out to have been **wrong about our own needs**, and the honest
+close is to say so rather than consume a seam because we asked for it. The
+general rule now lives in [[daybreak-asks]] under "Closing a row".
 
 ## 3. Concerns — where Sunrise's answer is not our ask
 
@@ -165,13 +171,17 @@ answer to open signup has always been the run-creation gate (I14), and that stay
 regardless — the platform toggle stops accounts being created, not audits being
 started.
 
-### C4 — #464's hook cannot do what our row wanted, and fails more quietly than what we run today
+### C4 — #464 shipped a reasonable seam that this app should not use
 
-**Medium. Recommend not adopting as the row describes.**
+**Outcome: close as won't-adopt.** No code change, no new ask.
 
 Our row asked for the grant to exist **before the user's first action**, so
-`assertEntitled` could simplify back to a pure entitlement check. What shipped
-runs after the row exists, **cannot reject a signup, and swallows a throw**:
+`assertEntitled` could simplify back to a pure entitlement check. **The premise
+was wrong.** Nothing happens between account creation and the run-creation gate —
+the gate _is_ the first action. So the property we asked for, we already have.
+
+What shipped runs after the row exists, **cannot reject a signup, and swallows a
+throw**:
 
 > "a throw is logged and ignored rather than failing account creation, since the
 > account is already there."
@@ -179,20 +189,36 @@ runs after the row exists, **cannot reject a signup, and swallows a throw**:
 So a grant-mint that fails leaves an account with no entitlement, no error to the
 user, and nothing but a log line. Our lazy redemption at the gate is idempotent
 and **self-healing** — it reconciles on every attempt, so a transient failure
-costs nothing. The row's original framing (lazy resolution is "the weaker model")
-is inverted by what actually shipped: here the seam is the weaker model.
+costs nothing. Adopting the seam would trade that for fire-and-forget, and the
+row's original framing (lazy resolution is "the weaker model") is inverted by
+what actually shipped.
 
-**Recommendation:** keep `assertEntitled` exactly as it is. Adopt
-`registerUserCreatedHook` only as an eager optimisation layered _on top of_ the
-gate, if at all.
+**Keep `assertEntitled` exactly as it is.** This is not a workaround waiting for
+a seam; it is the better design, and the row closes as won't-adopt rather than
+staying open forever against a fix that already landed.
 
-One more reason for caution: `initAppUserCreatedHooks()` is a **boot-time
-registry** — the same shape as the two registries #462 had to `globalThis`-back
-for this app, and the shape Sunrise itself deliberately avoided for #465 ("these
-schemas are built at module load… #462 showed boot order across module realms
-isn't guaranteed under Turbopack") and for #467 ("a static import cannot be
-missed"). Verify it survives the instrumentation/route split before depending on
-it for anything that gates access.
+**Correction — the boot-registry concern raised in the first draft of this
+document is withdrawn.** `lib/auth/user-created-hooks.ts` holds a bare
+module-scoped `Map`, but calls `initAppUserCreatedHooks()` **lazily on first
+dispatch, in the dispatching realm** — the request-path self-heal pattern, which
+is exactly what #462 restored for the app tier. It is not vulnerable to the
+Turbopack instrumentation/route split for us. (A _framework_ tier registering at
+`initFramework()` boot would still be lost, which is #462's shape again — but
+Daybreak registers no user-created hooks, so it is not our finding to make.)
+
+Two things worth keeping in view rather than acting on:
+
+- **`viaInvitation` is authoritative provenance our gate has to infer.** It is
+  the one thing the hook knows that `assertEntitled` cannot. If redemption ever
+  needs strengthening, that is the reason to revisit — recorded as a durable
+  hint, never as the authority, because a hook that silently did not run must not
+  read as "did not arrive by invitation".
+- **There is no `user.created` core hook event** (checked against
+  `HOOK_EVENT_TYPES`), so no fork has a durable, retried path for reacting to a
+  new account — even though Sunrise already has delivery, retry and audit
+  machinery, and #465 opened the event type to forks. That is a real generic gap.
+  Filing it is a platform contribution with **no payoff for this app**; do it as
+  a good citizen or not at all, and do not let it block anything here.
 
 ### C5 — #474 changes the coach's prompt, not just its plumbing
 
@@ -228,24 +254,36 @@ person about the leader — appear in their own transcript as something they sai
 **Adopt the tag for new rows; keep the sentinel match as a second arm** until a
 backfill has stamped the historical rows, and delete the strings only then.
 
-### C7 — #466 closed, and #489 went further than the row anticipated
+### C7 — #466 closed, #489 went further, and the work left is a comment
 
-**Medium. A judgement call, not a delegation.**
+**Outcome: adapt, minimally.** No new ask — core did more than we asked and did
+it right.
 
-Two things changed. First, #489 is **breaking for API callers**: a successful
-`PATCH /api/v1/users/me` now returns the _old_ address plus
-`emailChangeRequested: true`, and the change lands only after approval at the old
-address and verification at the new one. Any leaf UI or test asserting the new
-address in the response needs updating.
-
-Second, our row says to "drop the leaf's two compensating conditions in
+Our row says to "drop the leaf's two compensating conditions in
 `lib/app/programme/access/grants.ts` and let redemption match on email alone".
-**Recommend keeping them.** They cost one query, they are already tested, and
-they are the only thing between a future core regression and the invite-hijack
-that `/security-review` rated High. Change the comment from "core does not
-re-verify" to "core re-verifies as of #466/#489; these remain as defence in
-depth" — the reasoning is what a later reader needs, and deleting the conditions
-deletes the reasoning with them.
+**Keep them.** They cost one query, they are already tested, and they are the
+only thing between a future core regression and the invite-hijack
+`/security-review` rated High.
+
+But keeping them is not enough on its own. The docstring at `grants.ts:41` opens
+"**`user.email` is not proof.** `PATCH /api/v1/users/me` (Sunrise core) lets any
+authenticated user…" — a statement that becomes **false** on the merge. A
+condition whose stated reason has visibly expired is precisely what the next
+person deletes during a tidy-up, so re-anchor it to the reason that still holds:
+core re-verifies as of #466/#489, and these remain because this app keys access
+on a field it does not own and inherits core's edit rules as part of its threat
+model. **The comment is the guard on the guard.**
+
+**Correction to the first draft of this document, which called the API break a
+required leaf change.** It is smaller than stated. Checked: no leaf code calls
+`PATCH /api/v1/users/me` at all. `components/app/reclaim/account/account-settings.tsx`
+and `profile-view.tsx` are **read-only** displays wrapping core's own profile
+form, so the changed response shape (the _old_ address plus
+`emailChangeRequested: true`) is core's UI to explain, and `profile-view`'s
+"Email confirmed / not yet confirmed" copy stays accurate — the address does not
+move until approval, so `emailVerified` is not left describing an unproven
+address. What remains is a **look, not a change**: on the merge, open the account
+page and confirm core's new two-step flow reads correctly inside our shell.
 
 ### C8 — #469's seam is safe for us specifically
 
@@ -300,19 +338,27 @@ Related, from #488: refused calls now emit a `{ type: 'warning', code }` SSE
 frame. `components/app/reclaim/coach-chat.tsx` must ignore an unrecognised
 `warning` gracefully rather than treat it as terminal.
 
-### C11 — keep the #472 canary
+### C11 — keep the #472 canary; the value is ownership, not the assertion
 
-**Low. Deliberately overriding the ledger row.**
+**Outcome: keep, and change one comment.** No new ask — Sunrise gave exactly what
+we asked for.
 
 Upstream now states the non-persistence contractually and guards it with
 `structured-completion-no-persistence.test.ts`. The row says to delete our canary
 (`tests/unit/invariants/calendar-privacy.test.ts`) and cite the guarantee.
+Superficially our test is now a duplicate of a stronger upstream one.
 
-**Keep it.** It costs one assertion, and **I4 is a promise this app makes to
-leaders in its own words** — that no meeting title is ever kept. A guarantee held
-only by somebody else's test is a guarantee we discover has moved on the sync
-that breaks it. Cite the upstream contract in the canary's header instead of
-deleting the canary.
+**It is not a duplicate, because it is not in the same tree.** Upstream's test
+lives in Sunrise's and merges to us, so an upstream commit that weakens or
+removes it **arrives silently in a merge** — no conflict, no failing gate,
+nothing at our tier that notices. Ours lives in `tests/unit/invariants/`, runs
+under `leaf:checks`, and a merge cannot remove it.
+
+**I4 is a promise _we_ make to leaders in our own words** — that no meeting title
+is ever kept. A promise guarded only by somebody else's test is one we discover
+has moved on the sync that breaks it. Cost of keeping ours: one assertion. Change
+the canary's header to name the upstream contract as the primary guarantee and
+this as the leaf's tripwire on it.
 
 ### C12 — #473 moves more sites than our eight
 
@@ -362,20 +408,31 @@ row.** Our daybreak#157 row's "paired assertion" lives in this file.
    governs, with the #473 rows now resolvable by taking upstream's seam.
 3. **Expect two red gates that are not ours to fix** (§C1, §C2). File both before
    resolving them, so the workaround has a row pointing at it.
-4. Close the ledger rows one at a time, in the §2 order. Do **not** batch — four
-   of them need behaviour verified by hand, and a batched commit hides which one
-   moved the coach.
-5. Re-run the smokes, including the two CI cannot: `smoke:reclaim` (the
+4. **Close #464, #466 and #472 first — they are the cheapest and they shrink the
+   list.** One is a won't-adopt with no code change (§C4); one is two comment
+   rewrites, at `grants.ts:41` and in the canary's header (§C7, §C11). Doing them
+   first leaves eleven rows that actually need work.
+5. Close the rest one at a time, in the §2 order. Do **not** batch — four of them
+   need behaviour verified by hand, and a batched commit hides which one moved
+   the coach.
+6. Re-run the smokes, including the two CI cannot: `smoke:reclaim` (the
    `globalThis` resolution) and `smoke:reclaim-calendar` (I4).
-6. Re-read the coach's phase openings live (§C5) and one historical transcript
-   (§C6). Neither is covered by a test.
+7. Re-read the coach's phase openings live (§C5), one historical transcript
+   (§C6), and the account page (§C7). None is covered by a test.
 
 ## 6. New asks this assessment found
 
-Both are unfiled, and both are recorded in [[daybreak-asks]]:
+Two are unfiled and worth filing; a third is optional. All three are recorded in
+[[daybreak-asks]]:
 
 - **→ Sunrise:** the #467 coverage guard scans every `prisma/schema/*.prisma`, so
   a fork's and a framework tier's own models fail a core test whose only green
   path is editing a core file (§C1).
 - **→ Daybreak:** `prisma/schema/framework-facilitation.prisma` is not
   `prisma format`-clean, and Sunrise #482 now fails CI on the diff (§C2).
+- **→ Sunrise, optional.** There is no `user.created` core hook event, so no fork
+  has a durable, retried path for reacting to a new account — despite Sunrise
+  owning delivery, retry and audit machinery, and #465 having opened the event
+  type to forks. **This app has no use for the fix** (§C4), so it is a
+  good-citizen contribution rather than an ask. File it or don't; it blocks
+  nothing.
