@@ -26,6 +26,7 @@ import { RECLAIM_MODULE_SLUG, RECLAIM_COACH_ROLE } from '@/lib/app/programme/ide
 import { ReclaimRecordAnswersCapability } from '@/lib/app/programme/coach/capabilities/record-answers';
 import { ReclaimOfferChoicesCapability } from '@/lib/app/programme/coach/capabilities/offer-choices';
 import { RECLAIM_PHASE_SIGNPOSTS } from '@/lib/app/programme/runs/signposts';
+import { reclaimQuestioningSchema } from '@/lib/app/programme/coach/questioning';
 import {
   RECLAIM_GOVERNING_FRAME,
   RECLAIM_DEEP_WORK_NOTE,
@@ -211,26 +212,12 @@ export const reclaimConfigSchema = z.object({
   /**
    * How the coach works through a phase's readings.
    *
-   * Both of these select between prose blocks authored in this repo and guarded by
-   * `product-voice.test.ts`; neither lets an operator write prompt text. That distinction is
-   * load-bearing — see the note on why no coaching prose is a config key.
-   *
-   * `pairing: 'paired'` asks a reading and its partner in one breath, which is what the source
-   * describes for the areas ("roughly how many hours per week …? What does that time actually look
-   * like in practice?") and for the energy pair. `one-at-a-time` is the older behaviour, kept as an
-   * escape hatch rather than as a recommendation: asked singly, the hours arrive and the texture does
-   * not, which is the failure the pairing exists to prevent.
-   *
-   * `opportunistic` lets the leader set the route. The capture list says what is still outstanding, so
-   * a coach that follows them onto a later reading cannot lose its place; turning it off restores a
-   * fixed running order.
+   * Defined in `coach/questioning.ts` and embedded here, rather than the other way round: the
+   * `offer_choices` capability needs the pairing rule to know whether a reading is being asked on its
+   * own, and a capability that imports this file closes a cycle through the module definition below.
+   * One schema, two readers, no second copy of the default to drift.
    */
-  questioning: z
-    .object({
-      pairing: z.enum(['paired', 'one-at-a-time']).default('paired'),
-      opportunistic: z.boolean().default(true),
-    })
-    .default({ pairing: 'paired', opportunistic: true }),
+  questioning: reclaimQuestioningSchema,
 
   /**
    * **The Phase 2 coaching signal is gone, deliberately** (plan.md open item 11, decided 2026-07-26).

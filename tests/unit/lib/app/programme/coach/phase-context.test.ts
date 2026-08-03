@@ -17,6 +17,7 @@ const {
   loadPhaseProgress,
   readCoachContent,
   readSignposts,
+  readQuestioning,
   grantFindFirst,
   hasCompletedAudit,
 } = vi.hoisted(() => ({
@@ -26,6 +27,7 @@ const {
   loadPhaseProgress: vi.fn(),
   readCoachContent: vi.fn(),
   readSignposts: vi.fn(),
+  readQuestioning: vi.fn(),
   grantFindFirst: vi.fn(),
   hasCompletedAudit: vi.fn(),
 }));
@@ -40,6 +42,11 @@ vi.mock('@/lib/app/programme/runs/journey', () => ({ loadPhaseProgress }));
 vi.mock('@/lib/app/programme/config', () => ({
   readReclaimCoachContent: readCoachContent,
   readReclaimSignposts: readSignposts,
+}));
+// The pairing rule reads the module row on its own, out of `coach/questioning.ts` — see that file for
+// why a capability cannot reach it through `config.ts`.
+vi.mock('@/lib/app/programme/coach/questioning', () => ({
+  readReclaimQuestioning: readQuestioning,
 }));
 
 /** Content as an operator's config would supply it — the two areas are enough to show the shape. */
@@ -121,6 +128,9 @@ beforeEach(() => {
   grantFindFirst.mockResolvedValue({ tier: 'standard' });
   hasCompletedAudit.mockResolvedValue(false);
   readCoachContent.mockResolvedValue(content);
+  // The shipped default. `pendingChoiceOffer` reads it on its own rather than through the coach's
+  // content, because whether a reading is asked with a partner decides whether it is offered at all.
+  readQuestioning.mockResolvedValue({ pairing: 'paired', opportunistic: true });
 });
 
 describe("the content the phase needs — Rashmir's words, from the operator's config", () => {
@@ -1005,8 +1015,12 @@ describe('buildCoachPhaseContext — the texture of an area, not only its hours'
       expect(block).toContain(
         '- reclaim_current_deep_block_blocker: does not apply to this leader, so it is complete as it stands. Do not ask it.'
       );
-      // Its sibling, which applies to exactly the other leader, is still outstanding and still paired.
-      expect(block).toContain('  - reclaim_current_deep_block_when: not yet captured');
+      // Its sibling, which applies to exactly the other leader, is still outstanding — and listed at
+      // its own position rather than indented under the anchor, because the anchor is already held.
+      // A pair is one question only while both halves are still to be asked; once the anchor is in,
+      // the follower is what gets asked, on its own.
+      expect(block).toContain('- reclaim_current_deep_block_when: not yet captured');
+      expect(block).not.toContain('  - reclaim_current_deep_block_when: not yet captured');
     });
 
     it('leaves a conditional reading outstanding while its condition is unanswered', async () => {
@@ -2006,11 +2020,8 @@ describe('buildCoachPhaseContext — the questions that have answers to pick fro
   it('marks the closed readings on the list, and leaves the open ones alone', async () => {
     const block = await buildCoachPhaseContext('u1');
 
-    // A yes-or-no, and the period. Both are answered by picking, and the note reads as its own
-    // sentence rather than running on from the label the line ends with.
-    expect(block).toContain(
-      'reclaim_setup_in_transition: not yet captured in this audit. In a period of change (needs a yes or a no). This one has a fixed set of answers, so offer them.'
-    );
+    // The period is asked on its own and answered by picking, and the note reads as its own sentence
+    // rather than running on from the label the line ends with.
     expect(block).toContain(
       'reclaim_setup_audit_period: not yet captured in this audit. The period being audited. This one has a fixed set of answers, so offer them.'
     );
@@ -2018,6 +2029,47 @@ describe('buildCoachPhaseContext — the questions that have answers to pick fro
     // answering on their behalf.
     expect(block).toContain('reclaim_setup_keeping_me_up: not yet captured in this audit.');
     expect(block).not.toMatch(/reclaim_setup_keeping_me_up.*This one has a fixed set of answers/);
+  });
+
+  it('marks neither half of a two-part question, whichever half has the set', async () => {
+    // The bug, as a leader met it: the coach asked "with a team split between two locations, how does
+    // having a distributed team shape your leadership?" and the screen put **Yes / No** under it. The
+    // anchor really is a yes-or-no, so nothing about the *reading* was wrong — but the list had just
+    // told the coach to ask it in one breath with a reading answered in the leader's own words, and a
+    // set of buttons under a two-part question answers the wrong half of it.
+    const block = await buildCoachPhaseContext('u1');
+
+    expect(block).toContain('- Ask these as one question, in this order:');
+    expect(block).not.toMatch(
+      /reclaim_profile_distributed_team.*This one has a fixed set of answers/
+    );
+    expect(block).not.toMatch(/reclaim_setup_in_transition.*This one has a fixed set of answers/);
+    // And not the follower either. The fundraising pair is the case where the *second* half carries
+    // the set ("I have a development team" / "I carry it myself"), and it is the same failure wearing
+    // different buttons.
+    expect(block).not.toMatch(
+      /reclaim_setup_fundraising_support.*This one has a fixed set of answers/
+    );
+  });
+
+  it('marks a half whose partner has landed, because the question now stands alone', async () => {
+    // A pair is a compound question only while both halves are outstanding. Once the anchor is
+    // captured the follower is asked on its own, and a lone closed question keeps its buttons —
+    // suppressing them there would cost a leader the offer for no reason.
+    readRunAnswers.mockResolvedValue({
+      reclaim_setup_fundraising_relevant: {
+        value: 'Yes',
+        valueJson: true,
+        sourceType: 'direct',
+        confidence: 10,
+      },
+    });
+
+    const block = await buildCoachPhaseContext('u1');
+
+    expect(block).toMatch(
+      /reclaim_setup_fundraising_support.*This one has a fixed set of answers, so offer them\./
+    );
   });
 
   it('never puts the answers themselves in the model’s context', async () => {

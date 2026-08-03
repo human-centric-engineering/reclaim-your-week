@@ -28,6 +28,7 @@ import { hasCompletedAudit } from '@/lib/app/programme/compare';
 import {
   phaseCaptureSlots,
   slotApplies,
+  compoundQuestionSlugs,
   type PhaseSlot,
 } from '@/lib/app/programme/coach/phase-slots';
 import { RECLAIM_PHASES } from '@/lib/app/programme/map';
@@ -53,6 +54,7 @@ import {
   readReclaimSignposts,
   type ReclaimCoachContent,
 } from '@/lib/app/programme/config';
+import { readReclaimQuestioning } from '@/lib/app/programme/coach/questioning';
 import { signpostFor, type PhaseSignpost } from '@/lib/app/programme/runs/signposts';
 import {
   presentAnswer,
@@ -1149,7 +1151,12 @@ function howToAsk(next: NextQuestion): string[] {
     // instruction and the question it governs cannot come apart, because the same `NextQuestion`
     // produced both. The offer is only mentioned for a question that is actually being asked, so a
     // turn that follows the leader somewhere else carries no instruction to offer anything.
-    ...(hasChoices(next.slot.slug)
+    //
+    // And never for an anchor with followers riding along. The line above has just told the coach to
+    // ask this reading and its partner as one question; a set of answers under a two-part question
+    // answers half of it, and the leader is left looking at Yes / No beneath "how does that shape the
+    // way you lead?". See `compoundQuestionSlugs` for the failure this closes.
+    ...(next.alongside.length === 0 && hasChoices(next.slot.slug)
       ? [
           `This reading is answered from a fixed set, so call offer_choices for ${next.slot.slug} in`,
           'this same turn, straight after asking. The answers appear under your question on their',
@@ -1218,11 +1225,19 @@ function nextQuestionLines(next: NextQuestion[]): string[] {
  * put a second copy in the model's context, which is the copy that eventually gets paraphrased into
  * the reply. The coach needs to know only that this question closes on a set, and to name the
  * reading; the screen does the rest.
+ *
+ * `insideCompound` is the one case where a reading that has a set must not be told it has one. The
+ * list draws those under "Ask these as one question", and the coach did exactly as it was told: it
+ * asked the pair in one breath *and* offered the anchor's yes-or-no, so a leader asked how a
+ * distributed team shapes their leadership got two buttons that answer a different question. The set
+ * belongs to the reading; the question on screen is the pair. See `compoundQuestionSlugs`.
  */
-function choiceNote(slug: string): string {
+function choiceNote(slug: string, insideCompound: boolean): string {
   // The line it is appended to ends on the label, which carries no full stop of its own, so this
   // opens with one. Without it the note runs straight on from the label into a sentence.
-  return hasChoices(slug) ? '. This one has a fixed set of answers, so offer them.' : '';
+  return !insideCompound && hasChoices(slug)
+    ? '. This one has a fixed set of answers, so offer them.'
+    : '';
 }
 
 /** What a typed slot needs before it may be recorded, in the words the coach should act on. */
@@ -1269,18 +1284,27 @@ function typedValueNote(dataType: string): string {
  * reading it is for, it sits beside a way to type instead, and taking that way out is reversible. A
  * mismatched offer is a visible, dismissible wrong guess rather than a silent one.
  *
- * `presentation` and pairing are passed as the shipped defaults because neither can change *which*
- * slot comes back: the first only formats a captured value for display, the second only decides which
- * followers ride along with an anchor. The selection itself is the ordering in `nextQuestionFor`.
+ * `presentation` is passed as the shipped default because it cannot change *which* slot comes back —
+ * it only formats a captured value for display. The selection itself is the ordering in
+ * `nextQuestionFor`.
+ *
+ * ## And it stands down for a two-part question
+ *
+ * Pairing, by contrast, does change what comes back, so it is read rather than assumed. An anchor with
+ * followers riding along is asked as one question with an open half in it, and a set of answers under
+ * that question answers the wrong half — the failure `compoundQuestionSlugs` documents. `alongside` is
+ * populated by the same call that chose the reading, so the fallback cannot offer a set for a question
+ * the coach was told to ask two ways at once.
  */
 export async function pendingChoiceOffer(input: {
   userId: string;
   runId: string;
   phaseKey: string;
 }): Promise<{ slotSlug: string; label: string; options: string[] } | null> {
-  const [answers, bucketLabels] = await Promise.all([
+  const [answers, bucketLabels, questioning] = await Promise.all([
     readRunAnswers(input.userId, input.runId),
     readBucketLabels(input.userId).catch(() => ({})),
+    readReclaimQuestioning(),
   ]);
   const slots = phaseCaptureSlots(input.phaseKey, {
     fundraisingRelevant: truthy(answers[FUNDRAISING_RELEVANT]),
@@ -1291,8 +1315,14 @@ export async function pendingChoiceOffer(input: {
   // The first of them, which is the reading the turn was told to end on. The fallback beside it is
   // for a coach that has just had this one answered, and the answers on screen follow the question
   // that was asked rather than the one that might be asked next.
-  const [next] = nextQuestionsFor(slots, answers, DEFAULT_PRESENTATION, true);
+  const [next] = nextQuestionsFor(
+    slots,
+    answers,
+    DEFAULT_PRESENTATION,
+    questioning.pairing === 'paired'
+  );
   if (next === undefined) return null;
+  if (next.alongside.length > 0) return null;
 
   const options = choicesFor(next.slot.slug);
   if (options === null) return null;
@@ -1363,6 +1393,9 @@ export async function buildCoachPhaseContext(userId: string): Promise<string> {
 
   const paired = content.questioning.pairing === 'paired';
 
+  // The readings that will be asked two-at-a-time, so neither half is told it has buttons behind it.
+  const compound = compoundQuestionSlugs(slots, answers, paired);
+
   // At most this many `short` flags per block. Deterministic, needs no extra read, and it is what
   // actually holds the restraint rule up: a coach shown eleven short readings and told to go back for
   // them is a coach conducting an interview. `unconfirmed` is not capped, because it is an honesty
@@ -1400,32 +1433,32 @@ export async function buildCoachPhaseContext(userId: string): Promise<string> {
     // Whether this reading is one the leader picks from. Only on the unasked lines, because it is a
     // note about how to *ask*: a reading already captured is not going to be asked again, and telling
     // the coach an answered question has four buttons behind it is an invitation to re-offer them.
-    return `${indent}- ${slot.slug}: not yet captured in this audit. ${slot.label}${suffix}${choiceNote(slot.slug)}`;
+    return `${indent}- ${slot.slug}: not yet captured in this audit. ${slot.label}${suffix}${choiceNote(slot.slug, compound.has(slot.slug))}`;
   };
 
   const byslug = new Map(slots.map((slot) => [slot.slug, slot]));
 
   /**
-   * Which followers get asked inside their anchor's question.
+   * Which followers get asked inside their anchor's question — the same set `compound` names.
    *
    * A pair whose follower does not apply to this leader is not a pair: asking someone who has a
    * protected deep-work block "and what gets in its way?" is asking about something that does not
-   * exist. But a follower dropped from its group must still appear on the list somewhere, marked as
-   * settled — silently removing it would leave the coach with no way to tell a reading that is
-   * finished from one nobody thought to include, which is the ambiguity this whole mechanism exists
-   * to remove.
+   * exist. Nor is a pair whose anchor this audit already holds, because the follower is then the
+   * outstanding reading and it is asked on its own. Either way the reading dropped from its group must
+   * still appear on the list somewhere, at its own position — silently removing it would leave the
+   * coach with no way to tell a reading that is finished from one nobody thought to include, which is
+   * the ambiguity this whole mechanism exists to remove.
+   *
+   * Read off `compound` rather than derived a second time, and that is the point: the header saying
+   * "ask these as one question" and the note saying "this one has a fixed set of answers" have to come
+   * from the same arithmetic, or the list contradicts itself in the way that put Yes / No under an
+   * open question.
    */
-  const groupedFollowers = new Set<string>();
-  if (paired) {
-    for (const slot of slots) {
-      for (const slug of slot.pairedWith ?? []) {
-        const follower = byslug.get(slug);
-        if (follower !== undefined && slotApplies(follower.askOnlyIf, answers) !== false) {
-          groupedFollowers.add(slug);
-        }
-      }
-    }
-  }
+  const groupedFollowers = new Set(
+    slots
+      .filter((slot) => slot.pairedTo !== undefined && compound.has(slot.slug))
+      .map((s) => s.slug)
+  );
 
   const lines: string[] = [];
   for (const slot of slots) {

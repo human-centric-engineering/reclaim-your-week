@@ -24,11 +24,20 @@
  * an answer this audit cannot store. So the argument list is one slug, the options come from
  * `choicesFor`, and there is no argument that can make them come out differently.
  *
- * The slug itself is checkable rather than trusted, and it is checked three ways: the slot must
- * exist, it must have an authored answer set, and it must belong to the section the leader is
- * actually on — which comes from the server-issued dispatch scope, not from the model (I6). A refusal
- * says which of the three failed, because the result is fed back into the same turn and the coach can
- * still ask the question properly with no offer attached.
+ * The slug itself is checkable rather than trusted, and it is checked four ways: the slot must exist,
+ * it must have an authored answer set, it must belong to the section the leader is actually on —
+ * which comes from the server-issued dispatch scope, not from the model (I6) — and the question it is
+ * for must be a question on its own rather than half of a pair. A refusal says which of the four
+ * failed, because the result is fed back into the same turn and the coach can still ask the question
+ * properly with no offer attached.
+ *
+ * The fourth check is the one paid for in a database read, and it was added after a live audit asked
+ * "with a team split between two locations, how does having a distributed team shape your leadership?"
+ * and put **Yes / No** underneath it. Nothing the other three check was wrong: the reading exists, it
+ * is a boolean, and it was in section 0. What was wrong is that the reading is the *anchor* of a pair
+ * whose second half is answered in the leader's own words, so the question actually on screen was the
+ * pair and the buttons answered a question nobody had asked. `compoundQuestionSlugs` in
+ * `../phase-slots.ts` states the rule and explains why it lives beside the definition of a pair.
  *
  * The context builder already decides which reading the turn should end on
  * (`nextQuestionFor` in `../phase-context.ts`) and now tells the coach when that reading has a set.
@@ -37,11 +46,11 @@
  *
  * ## It writes nothing, and that is what keeps I6 intact
  *
- * This capability has no side effects at all: no slot write, no run mutation, no read of the
- * database. It answers a question about static data. `record_answers` remains the coach's only write,
- * and the answer a leader taps comes back through the ordinary path — it is sent as their own turn,
- * in their column of the transcript, and recorded from what they said like anything else. Nothing is
- * stored on their behalf because a button was drawn.
+ * This capability has no side effects at all: no slot write, no run mutation. It reads the run only to
+ * answer the pairing check above, and reads nothing else. `record_answers` remains the coach's only
+ * write, and the answer a leader taps comes back through the ordinary path — it is sent as their own
+ * turn, in their column of the transcript, and recorded from what they said like anything else.
+ * Nothing is stored on their behalf because a button was drawn.
  */
 
 import { z } from 'zod';
@@ -55,6 +64,7 @@ import { readCoachScope } from '@/lib/app/programme/coach/scope';
 import { slotDefinitionFor } from '@/lib/app/programme/coach/writable-slots';
 import { PHASE_SLOT_GROUPS, slotLabel } from '@/lib/app/programme/coach/phase-slots';
 import { choicesFor } from '@/lib/app/programme/coach/slot-choices';
+import { asksInsideCompoundQuestion } from '@/lib/app/programme/coach/compound-question';
 
 const offerChoicesSchema = z.object({
   slotSlug: z.string().trim().min(1).max(120),
@@ -81,7 +91,7 @@ export class ReclaimOfferChoicesCapability extends BaseCapability<
     // Overwritten with the namespaced slug by `namespaceModuleCapability`; the three must match.
     name: 'offer_choices',
     description:
-      'Show the leader the answers to pick from, for a question whose answers are a fixed set. Call it in the same turn as the question, straight after asking, and name the reading the question is about. The answers themselves come from the audit, not from you, so there is nothing to supply beyond the reading. Ask the question in your own words exactly as you otherwise would, and do not list the options in your reply: they appear on screen under it, and reading them out as well is the same question asked twice. Use it only when the answers really are a fixed set, which your context tells you. Never for a question about what something is like, what stands out, or anything the leader answers in their own words. The leader can always type something else instead, so an offer never closes a question.',
+      'Show the leader the answers to pick from, for a question whose answers are a fixed set. Call it in the same turn as the question, straight after asking, and name the reading the question is about. The answers themselves come from the audit, not from you, so there is nothing to supply beyond the reading. Ask the question in your own words exactly as you otherwise would, and do not list the options in your reply: they appear on screen under it, and reading them out as well is the same question asked twice. Use it only when the answers really are a fixed set, which your context tells you. Never for a question about what something is like, what stands out, or anything the leader answers in their own words. Never when you are asking two readings as one question either, even if one of them has a set: the leader is reading a two-part question, and a set of buttons under it answers only half of it. The leader can always type something else instead, so an offer never closes a question.',
     parameters: {
       type: 'object',
       properties: {
@@ -111,30 +121,15 @@ export class ReclaimOfferChoicesCapability extends BaseCapability<
   }
 
   /**
-   * The capability interface is asynchronous; this one has nothing to wait for.
+   * Which answers to draw, or why there are none.
    *
-   * Split rather than declared `async` with no `await` in it, which is a lie the linter is right to
-   * refuse: the decision below is entirely synchronous, over static data and a scope the caller
-   * already holds. Nothing here reads the database, and the shape of this pair is the clearest way
-   * of saying so.
+   * `context` is read for the two things the model must not be allowed to choose: which section this
+   * question is in, and which run it is in. Both come from the server-issued dispatch scope.
    */
-  execute(
+  async execute(
     args: OfferChoicesArgs,
     context: CapabilityContext
   ): Promise<CapabilityResult<OfferChoicesData>> {
-    return Promise.resolve(this.offerFor(args, context));
-  }
-
-  /**
-   * Which answers to draw, or why there are none.
-   *
-   * `context` is read for the one thing the model must not be allowed to choose: which section this
-   * question is in.
-   */
-  private offerFor(
-    args: OfferChoicesArgs,
-    context: CapabilityContext
-  ): CapabilityResult<OfferChoicesData> {
     const definition = slotDefinitionFor(args.slotSlug);
     if (definition === undefined) {
       return this.error(
@@ -149,7 +144,7 @@ export class ReclaimOfferChoicesCapability extends BaseCapability<
     // than falling back to "any section", because an unchecked offer is the failure this guards.
     const scope = readCoachScope(context.scope);
     const phaseKey = scope?.nodeKey;
-    if (phaseKey === undefined) {
+    if (scope === null || phaseKey === undefined) {
       return this.error(
         'This conversation is not attached to a section of the audit, so nothing can be offered.',
         'no_phase_scope'
@@ -171,11 +166,36 @@ export class ReclaimOfferChoicesCapability extends BaseCapability<
       );
     }
 
+    // The last check, and the only one that needs the run: a reading asked as half of a two-part
+    // question has no answer set to offer, because the question the leader is reading is the pair.
+    // Refused with the reason stated plainly, so the coach's next iteration knows it may still ask —
+    // it is the *offer* that is wrong here, never the question.
+    //
+    // A conversation with no leader in it cannot be asked this — there is no run to read a pairing
+    // out of — and it fails open, exactly as a database hiccup does inside the helper. `record_answers`
+    // refuses on the same condition because it is about to *write*; this one draws four buttons the
+    // leader can walk past, and the honest cost of getting it wrong is a wrong offer rather than a
+    // wrong record.
+    if (
+      context.userId !== null &&
+      (await asksInsideCompoundQuestion({
+        userId: context.userId,
+        runId: scope.runId,
+        phaseKey,
+        slotSlug: args.slotSlug,
+      }))
+    ) {
+      return this.error(
+        `"${args.slotSlug}" is being asked together with the reading that follows it, and that second half is answered in the leader's own words. A set of answers under a two-part question answers the wrong half. Ask both as one open question, with no offer.`,
+        'inside_compound_question'
+      );
+    }
+
     return this.success({
       slotSlug: args.slotSlug,
       // The plain label rather than a relabelled one: bucket renaming (I7) touches the nine per-area
       // lanes, and no lane has an answer set, so there is nothing here for a leader's own label to
-      // reach. Passing no labels keeps this capability free of the run read it would otherwise need.
+      // reach. Passing no labels keeps the label free of the bucket read it would otherwise need.
       label: slotLabel(args.slotSlug),
       options: [...options],
     });

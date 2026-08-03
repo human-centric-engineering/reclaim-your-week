@@ -239,15 +239,26 @@ takes the run from the server may write the audit.
 | `reclaim_audit__record_answers`   | `CapabilityContext.scope`, issued by the route | the allowlist below |
 | `reclaim_audit__offer_choices`    | `CapabilityContext.scope`, issued by the route | nothing at all      |
 
-**`offer_choices` is granted and writes nothing** (added 2026-07-29). It answers one question about
-static data — "which answers does this reading offer?" — so the screen can draw them instead of an
-empty box. The model names the reading; the **product** owns the answers (`coach/slot-choices.ts`),
-so there is no argument that can make a leader be shown an option their audit cannot store. The
-section is read from `readCoachScope(context.scope)`, never from an argument, and a dispatch with no
-scope refuses rather than falling back to "any section" — so a coach in section 2 cannot put section
-4's answers in front of the leader. The answer a leader taps is sent as an ordinary turn in their own
-column and recorded through `record_answers` like anything else: nothing is stored because a button
-was drawn. `record_answers` therefore remains the only capability on this agent that writes.
+**`offer_choices` is granted and writes nothing** (added 2026-07-29). It answers one question — "which
+answers does this reading offer, if any?" — so the screen can draw them instead of an empty box. The
+model names the reading; the **product** owns the answers (`coach/slot-choices.ts`), so there is no
+argument that can make a leader be shown an option their audit cannot store. The section is read from
+`readCoachScope(context.scope)`, never from an argument, and a dispatch with no scope refuses rather
+than falling back to "any section" — so a coach in section 2 cannot put section 4's answers in front
+of the leader. The answer a leader taps is sent as an ordinary turn in their own column and recorded
+through `record_answers` like anything else: nothing is stored because a button was drawn.
+`record_answers` therefore remains the only capability on this agent that writes.
+
+It reads the run for one thing only (added 2026-08-03): whether the named reading is being asked as
+half of a **two-part question**, in which case it refuses. A pair — "is your team spread across
+places, and how does that shape how you lead?" — has an open half in it, and a live audit showed the
+cost of ignoring that: the coach asked the open half and the composer drew **Yes / No** beneath it,
+because the anchor is a boolean and booleans have a set. The reading was not wrong; the question was.
+`compoundQuestionSlugs` (`coach/phase-slots.ts`) states the rule beside the definition of a pair, and
+the same rule suppresses the instruction in the capture list and stands the route's deterministic
+fallback down. The read is a read: the capability still writes nothing, and it fails **open** — a run
+it cannot read yields an offer rather than none, because a wrong offer names its reading and can be
+dismissed, while a silently missing one leaves the leader the blank box this mechanism replaced.
 
 **Why the distinction.** `contextKey` is an optional argument on the framework's own tools
 (`lib/framework/guidance/capabilities/shared.ts:18-21`) and the model can pass any string, so

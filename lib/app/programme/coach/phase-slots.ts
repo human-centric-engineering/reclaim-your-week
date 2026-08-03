@@ -362,3 +362,61 @@ export function phaseCaptureSlots(phaseKey: string, options: PhaseSlotOptions = 
       })
   );
 }
+
+/**
+ * The readings this run would ask **inside a compound question**, as it stands right now.
+ *
+ * ## Why anything needs to know this
+ *
+ * A pair is asked in one breath — "is your team spread across places, and how does that shape the way
+ * you lead?" — and that is the whole point of `SLOT_PAIRS`. But half of these anchors are booleans,
+ * and a boolean reading has an answer set (`slot-choices.ts`). Put those two facts together without a
+ * rule between them and the leader is asked an open question with **Yes / No** underneath it, which is
+ * what happened on a live audit: the coach asked how a distributed team shapes someone's leadership
+ * and offered them two buttons neither of which is an answer to it.
+ *
+ * The offer was not wrong about the *reading* — `reclaim_profile_distributed_team` really does close
+ * on yes or no. It was wrong about the *question*, because the question on screen was the pair, and a
+ * pair is not a choice. So the rule is stated once, here, in the same file that decides what a pair
+ * is: **a reading asked inside a compound question carries no answer set.** Both halves. The follower
+ * of the fundraising pair has an authored set of its own, and offering *that* under a two-part
+ * question is the same failure wearing different buttons.
+ *
+ * ## Live, not merely paired
+ *
+ * A pairing that is not being asked right now is not a compound question. An anchor this run has
+ * already captured is not going to be asked again except to be confirmed, and a confirmation is a
+ * single closed question that should keep its buttons. So a pair counts here only when the anchor is
+ * outstanding and at least one follower is outstanding and not ruled out — which is exactly the
+ * condition under which `nextQuestionsFor` pairs them, so the two cannot drift into disagreeing about
+ * what is being asked.
+ */
+export function compoundQuestionSlugs(
+  slots: PhaseSlot[],
+  answers: Readonly<Record<string, { valueJson?: unknown; value: string } | undefined>>,
+  paired: boolean
+): Set<string> {
+  const inside = new Set<string>();
+  // `one-at-a-time` asks every reading on its own, so nothing is compound and every set stands.
+  if (!paired) return inside;
+
+  const byslug = new Map(slots.map((slot) => [slot.slug, slot]));
+  for (const slot of slots) {
+    if (answers[slot.slug] !== undefined) continue;
+    if (slotApplies(slot.askOnlyIf, answers) === false) continue;
+    const live = (slot.pairedWith ?? []).filter((slug) => {
+      const follower = byslug.get(slug);
+      return (
+        follower !== undefined &&
+        answers[slug] === undefined &&
+        // `undefined` — the condition turns on a reading nobody has answered — keeps the follower in
+        // the question, which is what `nextQuestionsFor` does and why these pairs read as one thought.
+        slotApplies(follower.askOnlyIf, answers) !== false
+      );
+    });
+    if (live.length === 0) continue;
+    inside.add(slot.slug);
+    for (const slug of live) inside.add(slug);
+  }
+  return inside;
+}
