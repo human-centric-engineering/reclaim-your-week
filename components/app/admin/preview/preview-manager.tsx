@@ -35,9 +35,15 @@ import {
   type PreviewCreated,
 } from '@/components/app/admin/actions';
 
+/**
+ * `in_progress` reads as "In progress" rather than "Mid-audit" because an audit filled in *to the
+ * summary* is in progress too — it stops before the finish button on purpose — and calling that
+ * "Mid-audit" would point the operator at the wrong screen. Which phase it is on is not on this row:
+ * the phase lives in the journey's node states, one read per run, and this list is one enriched query.
+ */
 const STATE_LABEL: Record<PreviewAccountRow['state'], string> = {
   none: 'Not started',
-  in_progress: 'Mid-audit',
+  in_progress: 'In progress',
   complete: 'Completed',
   abandoned: 'Abandoned',
 };
@@ -62,7 +68,7 @@ export function PreviewManager() {
   const [loadFailed, setLoadFailed] = useState(false);
   const [label, setLabel] = useState('');
   const [email, setEmail] = useState('');
-  const [state, setState] = useState<'fresh' | 'mid-audit' | 'completed'>('fresh');
+  const [state, setState] = useState<'fresh' | 'mid-audit' | 'summary'>('fresh');
   const [adoptEmail, setAdoptEmail] = useState('');
   const [adoptLabel, setAdoptLabel] = useState('');
   const [busy, setBusy] = useState(false);
@@ -218,9 +224,16 @@ export function PreviewManager() {
                   can look at the screens without answering everything first.
                 </p>
                 <p className="mt-2">
-                  <strong>Completed audit</strong> finishes one, which is the only way to reach the
-                  summary, the report and sharing. It uses up the audit that account came with; ask
-                  for another state on the same account and it is given a fresh one.
+                  <strong>At the summary</strong> fills in the whole audit and stops on the last
+                  screen, which is where the summary, the report and the sharing choices are.
+                  Signing in as the account opens there.
+                </p>
+                <p className="mt-2">
+                  It stops <em>before</em> &lsquo;finish my audit&rsquo;, deliberately. Finishing
+                  moves the summary into the history read-back, takes the sharing choices away
+                  entirely, and leaves the account back at the invitation to begin — so a test
+                  account driven past that button cannot show you any of the three. Press it
+                  yourself when you want to see what finishing does, including the email it sends.
                 </p>
                 <p className="mt-2">
                   The answers are made up, but everything is written the way the audit itself writes
@@ -231,12 +244,12 @@ export function PreviewManager() {
             <select
               id="preview-state"
               value={state}
-              onChange={(e) => setState(e.target.value as 'fresh' | 'mid-audit' | 'completed')}
+              onChange={(e) => setState(e.target.value as 'fresh' | 'mid-audit' | 'summary')}
               className="border-input bg-background w-full rounded-md border px-3 py-2 text-sm"
             >
               <option value="fresh">Ready to begin</option>
               <option value="mid-audit">Mid-audit</option>
-              <option value="completed">Completed audit</option>
+              <option value="summary">At the summary</option>
             </select>
           </div>
         </div>
@@ -395,7 +408,41 @@ export function PreviewManager() {
                   <th className="px-4 py-2.5 font-medium">Audit</th>
                   <th className="px-4 py-2.5 font-medium">Made by</th>
                   <th className="px-4 py-2.5 font-medium">Made</th>
-                  <th className="sr-only px-4 py-2.5 font-medium">Actions</th>
+                  {/*
+                    Visible, and named for what the two buttons underneath write. It used to be
+                    `sr-only`, which left the two controls reading as `Mid-audit` next to a badge
+                    also reading `Mid-audit` — the same word twice in one row, once as a state and
+                    once as a command, with nothing to say which was which.
+                  */}
+                  <th className="px-4 py-2.5 text-right font-medium">
+                    <span className="flex items-center justify-end gap-1.5">
+                      Fill in an audit
+                      <FieldHelp title="What these three do">
+                        <p>
+                          <strong>Fill in mid-audit</strong> and{' '}
+                          <strong>Fill in to the summary</strong> write a whole audit for this
+                          account: made-up answers, put through the same engine a leader&rsquo;s own
+                          answers go through, stopping part way or on the last screen.
+                        </p>
+                        <p className="mt-2">
+                          Each one starts a <strong>new</strong> audit rather than moving the one
+                          already there, and the badge in the Audit column is whichever is most
+                          recent. So an account already showing <strong>In progress</strong> has to
+                          be finished or let go first, from the account itself.
+                        </p>
+                        <p className="mt-2">
+                          <strong>Fill in to the summary</strong> is the way to reach the summary,
+                          the report and the sharing choices — all three live on the last screen,
+                          before &lsquo;finish my audit&rsquo;. Neither button presses that:
+                          finishing is what sends the <strong>completion email</strong> to the
+                          address in the first column, and it should be your decision to send it.
+                        </p>
+                        <p className="mt-2">
+                          <strong>Remove</strong> erases the account and everything it built up.
+                        </p>
+                      </FieldHelp>
+                    </span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -423,6 +470,11 @@ export function PreviewManager() {
                     <td className="text-muted-foreground px-4 py-2.5">
                       {formatDate(account.createdAt)}
                     </td>
+                    {/*
+                      Verb-first labels, and bordered rather than underlined. Both changes are the
+                      same point: these two write a whole audit into an account, so they must not
+                      look like, or read like, somewhere to click through to.
+                    */}
                     <td className="px-4 py-2.5 text-right whitespace-nowrap">
                       <button
                         type="button"
@@ -433,22 +485,22 @@ export function PreviewManager() {
                             'That account could not be advanced.'
                           )
                         }
-                        className="text-muted-foreground hover:text-foreground text-xs underline disabled:opacity-50"
+                        className="border-input hover:bg-muted rounded-md border px-2 py-1 text-xs font-medium disabled:opacity-50"
                       >
-                        Mid-audit
+                        Fill in mid-audit
                       </button>
                       <button
                         type="button"
                         disabled={busy}
                         onClick={() =>
                           void run(
-                            () => fastForwardPreviewAccount(account.userId, { to: 'completed' }),
+                            () => fastForwardPreviewAccount(account.userId, { to: 'summary' }),
                             'That account could not be advanced.'
                           )
                         }
-                        className="text-muted-foreground hover:text-foreground ml-3 text-xs underline disabled:opacity-50"
+                        className="border-input hover:bg-muted ml-2 rounded-md border px-2 py-1 text-xs font-medium disabled:opacity-50"
                       >
-                        Complete
+                        Fill in to the summary
                       </button>
                       <button
                         type="button"
@@ -459,7 +511,7 @@ export function PreviewManager() {
                             'That test account could not be removed.'
                           )
                         }
-                        className="text-destructive ml-3 text-xs underline disabled:opacity-50"
+                        className="text-destructive ml-3 text-xs underline underline-offset-2 disabled:opacity-50"
                       >
                         Remove
                       </button>

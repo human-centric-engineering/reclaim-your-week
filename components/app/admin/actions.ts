@@ -404,7 +404,7 @@ export async function createPreviewAccount(input: {
   label: string;
   email?: string;
   name?: string;
-  state: 'fresh' | 'mid-audit' | 'completed';
+  state: 'fresh' | 'mid-audit' | 'summary';
 }): Promise<PreviewCreated> {
   const res = await fetch('/api/v1/app/reclaim/admin/preview', {
     method: 'POST',
@@ -439,7 +439,7 @@ export async function adoptPreviewAccount(input: {
 /** Drive a test account into a state. Returns the server's own sentence, refusal included. */
 export async function fastForwardPreviewAccount(
   userId: string,
-  input: { to: 'mid-audit' | 'completed'; toPhase?: string }
+  input: { to: 'mid-audit' | 'summary'; toPhase?: string }
 ): Promise<string> {
   const res = await fetch(
     `/api/v1/app/reclaim/admin/preview/${encodeURIComponent(userId)}/fast-forward`,

@@ -21,7 +21,7 @@ import { RECLAIM_PHASE_KEYS } from '@/lib/app/programme/runs/phases';
 import { fastForwardPreviewAccount } from '@/app/api/v1/app/reclaim/admin/preview/_lib/fabricate';
 
 const fastForwardSchema = z.object({
-  to: z.enum(['mid-audit', 'completed']),
+  to: z.enum(['mid-audit', 'summary']),
   /** Only meaningful for `mid-audit`. Validated against the map's own phase keys. */
   toPhase: z
     .string()
@@ -50,8 +50,8 @@ export const POST = withAdminAuth<{ userId: string }>(async (request, session, {
 
     return successResponse({
       ...result,
-      message: result.completed
-        ? 'That test account now has a completed audit, with a summary and a report to look at.'
+      message: result.atSummary
+        ? 'That test account now has an audit filled in and waiting at the summary, with the report and the sharing choices. Signing in as it opens there; finishing it is yours to press.'
         : `That test account is now sitting at ${result.reachedPhaseKey}.`,
     });
   } catch (error) {

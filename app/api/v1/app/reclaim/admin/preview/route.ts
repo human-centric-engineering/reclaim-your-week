@@ -40,7 +40,7 @@ const createSchema = z.object({
   /** Omitted means "a plus-subaddress of mine". */
   email: z.string().email().max(320).optional(),
   name: z.string().trim().min(1).max(120).optional(),
-  state: z.enum(['fresh', 'mid-audit', 'completed']).default('fresh'),
+  state: z.enum(['fresh', 'mid-audit', 'summary']).default('fresh'),
 });
 
 /**
@@ -102,7 +102,9 @@ export const POST = withAdminAuth(async (request, session) => {
       message:
         body.state === 'fresh'
           ? 'Test account created. Sign in with the password below to walk it from the consent gate.'
-          : `Test account created and driven to ${body.state === 'completed' ? 'a completed audit' : 'mid-audit'}.`,
+          : body.state === 'summary'
+            ? 'Test account created, with an audit filled in and waiting at the summary. Sign in and it opens there, with the report and the sharing choices — finishing it is yours to press.'
+            : 'Test account created and driven to mid-audit.',
     },
     undefined,
     { status: 201 }

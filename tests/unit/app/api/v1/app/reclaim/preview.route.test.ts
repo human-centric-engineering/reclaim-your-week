@@ -83,7 +83,7 @@ beforeEach(() => {
   vi.mocked(fastForwardPreviewAccount).mockResolvedValue({
     runId: 'run-1',
     reachedPhaseKey: 'phase-4-gap',
-    completed: false,
+    atSummary: false,
   });
   vi.mocked(eraseUser).mockResolvedValue({ receiptId: 'r1', erasedAt: new Date() });
 });
@@ -173,7 +173,7 @@ describe('POST preview — the state', () => {
     expect(fastForwardPreviewAccount).not.toHaveBeenCalled();
   });
 
-  it.each(['mid-audit', 'completed'] as const)('fast-forwards to %s', async (state) => {
+  it.each(['mid-audit', 'summary'] as const)('fast-forwards to %s', async (state) => {
     await POST(req({ label: 'walkthrough', state }));
 
     expect(fastForwardPreviewAccount).toHaveBeenCalledWith(PREVIEW_ID, state);
@@ -310,17 +310,20 @@ describe('fast-forward', () => {
     });
   });
 
-  it('reports the completed-audit message when the fast-forward finished the run', async () => {
+  it('says the run is waiting at the summary, and that finishing is the operator’s', async () => {
+    // The message is the only thing that tells an operator where signing in will land them, and the
+    // one it replaced said "completed audit" for a state that opened on the invitation to begin.
     vi.mocked(fastForwardPreviewAccount).mockResolvedValue({
       runId: 'run-1',
       reachedPhaseKey: 'phase-6-summary',
-      completed: true,
+      atSummary: true,
     });
 
-    const res = await FAST_FORWARD(req({ to: 'completed' }), ctx());
+    const res = await FAST_FORWARD(req({ to: 'summary' }), ctx());
     const body = (await res.json()) as { data: { message: string } };
 
-    expect(body.data.message).toMatch(/completed audit/i);
+    expect(body.data.message).toMatch(/summary/i);
+    expect(body.data.message).toMatch(/finishing it is yours/i);
   });
 
   it('surfaces the engine’s own refusal rather than a generic failure', async () => {
@@ -330,7 +333,7 @@ describe('fast-forward', () => {
       new Error('preview: the engine refused to leave phase-1-current (reflection required)')
     );
 
-    const res = await FAST_FORWARD(req({ to: 'completed' }), ctx());
+    const res = await FAST_FORWARD(req({ to: 'summary' }), ctx());
     const body = (await res.json()) as { error: { message: string } };
 
     expect(res.status).toBe(400);
@@ -342,7 +345,7 @@ describe('fast-forward', () => {
     // from crashing on `undefined` rather than returning something a human can read.
     vi.mocked(fastForwardPreviewAccount).mockRejectedValue('not an Error instance');
 
-    const res = await FAST_FORWARD(req({ to: 'completed' }), ctx());
+    const res = await FAST_FORWARD(req({ to: 'summary' }), ctx());
     const body = (await res.json()) as { error: { message: string } };
 
     expect(res.status).toBe(400);
@@ -361,7 +364,7 @@ describe('every preview route is admin-only', () => {
     ['GET', () => GET(req())],
     ['POST', () => POST(req({ label: 'x' }))],
     ['adopt', () => ADOPT(req({ email: 'a@b.co', label: 'x' }))],
-    ['fast-forward', () => FAST_FORWARD(req({ to: 'completed' }), ctx())],
+    ['fast-forward', () => FAST_FORWARD(req({ to: 'summary' }), ctx())],
     ['DELETE', () => DELETE(req(), ctx())],
   ])('%s refuses a non-admin', async (_name, call) => {
     asPlainUser();

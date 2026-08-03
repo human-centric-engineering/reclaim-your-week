@@ -10,9 +10,13 @@
  *   2. **No swallowed transition.** `smoke/reclaim-analyst.ts` catches and discards a refused
  *      transition; copying that would produce an account the API calls "mid-audit" whose journey never
  *      left phase 0.
- *   3. **The analyst is never called.** The reading is written before `completeRun`, so the write-once
- *      `ensureAnalystReading` finds it already there and the completion costs nothing.
+ *   3. **The analyst is never called.** The reading is written by the fabricator, so the write-once
+ *      `ensureAnalystReading` finds it already there and neither the summary nor a later completion
+ *      costs anything.
  *   4. **Reflections are written**, even though the service does not check for them — the route does.
+ *   5. **Nothing here finishes an audit.** `summary` stops at the last phase and leaves the run in
+ *      progress, because the summary, the report and the sharing choices all live there and are gone
+ *      the moment it is completed.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -23,13 +27,13 @@ const mocks = vi.hoisted(() => ({
   createRun: vi.fn(),
   saveRunAnswers: vi.fn(),
   transitionRun: vi.fn(),
-  completeRun: vi.fn(),
   claimCoachOpening: vi.fn(),
   recordConsent: vi.fn(),
   readConsent: vi.fn(),
   grantAnotherAudit: vi.fn(),
   mintGrant: vi.fn(),
   runUpdate: vi.fn(),
+  grantFindMany: vi.fn(),
   userFindUnique: vi.fn(),
   userUpdate: vi.fn(),
   signUpEmail: vi.fn(),
@@ -38,6 +42,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/lib/db/client', () => ({
   prisma: {
     reclaimAuditRun: { update: mocks.runUpdate },
+    reclaimGrant: { findMany: mocks.grantFindMany },
     user: { findUnique: mocks.userFindUnique, update: mocks.userUpdate },
   },
 }));
@@ -56,13 +61,16 @@ vi.mock('@/lib/app/programme/access/consent', () => ({
 }));
 vi.mock('@/lib/app/programme/config', () => ({
   readReclaimAccessConfig: () =>
-    Promise.resolve({ policyVersion: 'draft-1', clientMustStartWithinDays: 30 }),
+    Promise.resolve({
+      policyVersion: 'draft-1',
+      clientMustStartWithinDays: 30,
+      clientWindowMonths: 12,
+    }),
 }));
 vi.mock('@/app/api/v1/app/reclaim/runs/service', () => ({
   createRun: mocks.createRun,
   saveRunAnswers: mocks.saveRunAnswers,
   transitionRun: mocks.transitionRun,
-  completeRun: mocks.completeRun,
   claimCoachOpening: mocks.claimCoachOpening,
 }));
 
@@ -85,6 +93,16 @@ beforeEach(() => {
   mocks.isPreviewAccount.mockResolvedValue(true);
   mocks.readConsent.mockResolvedValue({ accepted: false, policyVersion: 'draft-1' });
   mocks.createRun.mockResolvedValue({ id: 'run-1' });
+  // The account as it is the moment after provisioning: one standard audit, unused. Nothing to top up.
+  mocks.grantFindMany.mockResolvedValue([
+    {
+      tier: 'standard',
+      auditsGranted: 1,
+      auditsUsed: 0,
+      windowStartsAt: null,
+      mustStartBy: null,
+    },
+  ]);
   mocks.transitionRun.mockImplementation((_u: string, _r: string, key: string) =>
     Promise.resolve({ enteredPhaseKey: `after:${key}` })
   );
@@ -211,7 +229,7 @@ describe('fastForwardPreviewAccount — the interlock', () => {
   it('refuses an account that is not a registered test account, before any write', async () => {
     mocks.isPreviewAccount.mockResolvedValue(false);
 
-    await expect(fastForwardPreviewAccount('a-real-leader', 'completed')).rejects.toThrow(
+    await expect(fastForwardPreviewAccount('a-real-leader', 'summary')).rejects.toThrow(
       /not a test account/i
     );
 
@@ -242,8 +260,7 @@ describe('fastForwardPreviewAccount — mid-audit', () => {
       'phase-2-energy',
       'phase-3-ideal',
     ]);
-    expect(result.completed).toBe(false);
-    expect(mocks.completeRun).not.toHaveBeenCalled();
+    expect(result.atSummary).toBe(false);
   });
 
   it('writes the reflections the route would have required', async () => {
@@ -297,32 +314,46 @@ describe('fastForwardPreviewAccount — mid-audit', () => {
   });
 });
 
-describe('fastForwardPreviewAccount — completed', () => {
-  it('walks every phase and completes the run', async () => {
-    const result = await fastForwardPreviewAccount(USER, 'completed');
+describe('fastForwardPreviewAccount — at the summary', () => {
+  it('walks every phase and leaves the run in progress on the last one', async () => {
+    // The bug this replaced: the fabricator called `completeRun`, and `loadCurrentRunState` only
+    // looks for an in-progress run — so signing in as a "completed" test account opened on the
+    // invitation to begin, with the summary, the report and the sharing choices all behind it.
+    const result = await fastForwardPreviewAccount(USER, 'summary');
 
     expect(mocks.transitionRun).toHaveBeenCalledTimes(6);
-    expect(mocks.completeRun).toHaveBeenCalledWith(USER, 'run-1');
-    expect(result.completed).toBe(true);
+    expect(result.atSummary).toBe(true);
+    expect(result.reachedPhaseKey).toBe('after:phase-5-action');
   });
 
-  it('writes the analyst reading BEFORE completing, so no model is ever called', async () => {
-    // `ensureAnalystReading` runs inside `completeRun` and returns early when the column is set. The
-    // ordering is the whole mechanism: reversed, every fabricated completion would spend real money.
-    await fastForwardPreviewAccount(USER, 'completed');
+  it('writes the takeaway, so the panel opens on the summary rather than on the question', async () => {
+    // Phase 6 holds the summary back until `reclaim_reflection_p6` is answered. A run fabricated to
+    // the summary and missing it opens on the question — which is not what was asked for.
+    await fastForwardPreviewAccount(USER, 'summary');
+
+    expect(writtenSlugs()).toContain('reclaim_reflection_p6');
+  });
+
+  it('leaves the takeaway alone for a run that stops short of the last phase', async () => {
+    await fastForwardPreviewAccount(USER, 'mid-audit');
+
+    expect(writtenSlugs()).not.toContain('reclaim_reflection_p6');
+  });
+
+  it('writes the analyst reading, so no model is ever called', async () => {
+    // `ensureAnalystReading` is write-once and returns early when the column is set. Without this
+    // write, opening the summary — or finishing the audit later — would spend real money.
+    await fastForwardPreviewAccount(USER, 'summary');
 
     expect(mocks.runUpdate).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: 'run-1' } })
     );
-    const updateOrder = mocks.runUpdate.mock.invocationCallOrder[0] ?? Infinity;
-    const completeOrder = mocks.completeRun.mock.invocationCallOrder[0] ?? 0;
-    expect(updateOrder).toBeLessThan(completeOrder);
   });
 
   it('anchors the reading to areas the run actually filled in', async () => {
     // `parseAnalystReading` refuses a gap naming an area the run does not have, and refuses the whole
     // reading when it does — so a mismatch here costs the summary its entire analyst section.
-    await fastForwardPreviewAccount(USER, 'completed');
+    await fastForwardPreviewAccount(USER, 'summary');
 
     const data = mocks.runUpdate.mock.calls[0]?.[0] as {
       data: { analystReading: { gaps: { token: string }[] } };
@@ -333,10 +364,27 @@ describe('fastForwardPreviewAccount — completed', () => {
     }
   });
 
-  it('tops the account up first, so a second fast-forward is not refused', async () => {
-    // Completing consumes the account's single standard audit. Without this, the second use of the
-    // button on the same account fails the entitlement gate.
-    await fastForwardPreviewAccount(USER, 'completed');
+  it('does not top up an account that still has an audit in hand', async () => {
+    // The spare-grant bug: a freshly provisioned account already has its one standard audit, so an
+    // unconditional top-up left the operator looking at a leader who had finished an audit and could
+    // still start another. `hasAuditInHand` is what keeps the test account faithful to the gate.
+    await fastForwardPreviewAccount(USER, 'summary');
+
+    expect(mocks.grantAnotherAudit).not.toHaveBeenCalled();
+  });
+
+  it('tops the account up when its audits are spent, so a second fabrication is not refused', async () => {
+    mocks.grantFindMany.mockResolvedValue([
+      {
+        tier: 'standard',
+        auditsGranted: 1,
+        auditsUsed: 1,
+        windowStartsAt: null,
+        mustStartBy: null,
+      },
+    ]);
+
+    await fastForwardPreviewAccount(USER, 'summary');
 
     expect(mocks.grantAnotherAudit).toHaveBeenCalledWith(
       USER,
@@ -350,7 +398,7 @@ describe('fastForwardPreviewAccount — completed', () => {
   });
 
   it('records consent when the account has not accepted, because the gate runs first', async () => {
-    await fastForwardPreviewAccount(USER, 'completed');
+    await fastForwardPreviewAccount(USER, 'summary');
 
     expect(mocks.recordConsent).toHaveBeenCalledWith(USER, 'draft-1', false);
   });
@@ -358,7 +406,7 @@ describe('fastForwardPreviewAccount — completed', () => {
   it('does not record consent twice for an account that already accepted', async () => {
     mocks.readConsent.mockResolvedValue({ accepted: true, policyVersion: 'draft-1' });
 
-    await fastForwardPreviewAccount(USER, 'completed');
+    await fastForwardPreviewAccount(USER, 'summary');
 
     expect(mocks.recordConsent).not.toHaveBeenCalled();
   });

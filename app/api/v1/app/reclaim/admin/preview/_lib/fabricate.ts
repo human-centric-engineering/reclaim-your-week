@@ -9,8 +9,8 @@
  *
  * ## The rule this module is built on
  *
- * **Everything goes through the real service layer.** `createRun`, `saveRunAnswers`, `transitionRun`,
- * `completeRun` — the same functions the leader's own routes call, so a fabricated audit is not a
+ * **Everything goes through the real service layer.** `createRun`, `saveRunAnswers`, `transitionRun` —
+ * the same functions the leader's own routes call, so a fabricated audit is not a
  * second definition of what an audit is. That matters more here than anywhere else in the app: the
  * entire value of a preview account is that what an operator sees is what a leader would see, and a
  * fabricator built from raw writes would drift from the engine silently, producing states no leader
@@ -24,11 +24,25 @@
  *     produce an account labelled "mid-audit" whose journey is still sitting at phase 0, and the
  *     operator would have no way to know.
  *
- * ## What is faked, and the one thing that is not written
+ * ## Why nothing here finishes an audit
+ *
+ * `summary` stops **at** the last phase and leaves the run in progress, which is the state the operator
+ * actually asked for. The summary, the report download and every sharing choice live in the phase-6
+ * panel *before* the leader presses "finish my audit"; completion moves the summary into the history
+ * read-back, where sharing no longer exists at all. So a fabricator that called `completeRun` drove
+ * straight past the three screens it was built to show, and landed the operator on the entry screen —
+ * because `loadCurrentRunState` looks for an in-progress run and a finished one is not it.
+ *
+ * Finishing is left to the operator, on the account, by the button a leader presses. That is one click
+ * more and it is the honest one: it is also the only way to see what completion really does, including
+ * the email it sends.
+ *
+ * ## What is faked
  *
  * Only `analystReading`, which is the sole part of a finished summary a model produces. Pre-writing it
- * makes the write-once `ensureAnalystReading` a no-op inside `completeRun`, so a fabricated completion
- * costs nothing and calls no provider. The content is derived in `lib/app/programme/preview/fixtures.ts`.
+ * makes the write-once `ensureAnalystReading` a no-op when the operator does press finish, so neither
+ * the summary nor the completion costs a provider call. The content is derived in
+ * `lib/app/programme/preview/fixtures.ts`.
  *
  * **No `AiConversation` is fabricated.** A leader who used the forms and never opened the coach is a
  * real, reachable state; inventing `AiMessage` rows would put words in the coach's mouth that no model
@@ -41,8 +55,9 @@ import { logger } from '@/lib/logging';
 import { auth } from '@/lib/auth/config';
 import { RECLAIM_BUCKETS, bucketToken } from '@/lib/app/programme/content';
 import { RECLAIM_PHASE_KEYS, phaseNumber } from '@/lib/app/programme/runs/phases';
+import { grantIsLive } from '@/lib/app/programme/runs/entitlement';
 import { CHART_REVEAL_MOMENT } from '@/lib/app/programme/chart/reveal';
-import { readReclaimAccessConfig } from '@/lib/app/programme/config';
+import { readReclaimAccessConfig, type ReclaimAccessConfig } from '@/lib/app/programme/config';
 import { mintGrant, grantAnotherAudit } from '@/lib/app/programme/access/grants';
 import { recordConsent, readConsent } from '@/lib/app/programme/access/consent';
 import { isPreviewAccount, registerPreviewAccount } from '@/lib/app/programme/preview/accounts';
@@ -51,13 +66,12 @@ import {
   createRun,
   saveRunAnswers,
   transitionRun,
-  completeRun,
   claimCoachOpening,
   type RunAnswerInput,
 } from '@/app/api/v1/app/reclaim/runs/service';
 
 /** What state a test account should be left in. */
-export type PreviewState = 'fresh' | 'mid-audit' | 'completed';
+export type PreviewState = 'fresh' | 'mid-audit' | 'summary';
 
 /**
  * Where `mid-audit` stops by default.
@@ -113,7 +127,8 @@ export interface ProvisionResult {
 export interface FastForwardResult {
   runId: string;
   reachedPhaseKey: string;
-  completed: boolean;
+  /** Whether the run is sitting at the last phase, with the summary, report and sharing on screen. */
+  atSummary: boolean;
 }
 
 /**
@@ -226,6 +241,11 @@ function auditAnswers(): RunAnswerInput[] {
  * service. Skipping them would be the easy thing and the wrong one: a run sitting at phase 4 with no
  * phase-1 reflection is a state no leader can reach, and the first time the operator reloads, the phase
  * rail and the run disagree.
+ *
+ * **Phase 6's is the takeaway, and it is written only for the last phase.** The panel holds the summary
+ * back until that question is answered — deliberately, it is the beat the source asks for — so a run
+ * fabricated *to* the summary and missing it would open on the question rather than on the thing the
+ * operator asked to look at. Phases 1–5 stop short of it because a mid-audit run has not been asked.
  */
 function reflectionsUpTo(phaseIndex: number): RunAnswerInput[] {
   const answers: RunAnswerInput[] = [];
@@ -235,7 +255,28 @@ function reflectionsUpTo(phaseIndex: number): RunAnswerInput[] {
       value: 'Looking at it written down made the size of it obvious.',
     });
   }
+  if (phaseIndex >= 6) {
+    answers.push({
+      slotSlug: 'reclaim_reflection_p6',
+      value: 'That two mornings a week is a decision, not a wish.',
+    });
+  }
   return answers;
+}
+
+/**
+ * Whether this account already has an audit it could start.
+ *
+ * The one thing standing between the fabricator and a faithful test account. `grantAnotherAudit` used
+ * to run unconditionally, and a freshly provisioned account already has its one standard audit — so
+ * every first fabrication left a spare, and the operator was looking at a leader who had finished an
+ * audit and *still* had one in hand. Pressing "Begin" then worked, which is the opposite of what the
+ * entitlement gate would have told a real leader.
+ */
+async function hasAuditInHand(userId: string, config: ReclaimAccessConfig): Promise<boolean> {
+  const grants = await prisma.reclaimGrant.findMany({ where: { userId } });
+  const now = new Date();
+  return grants.some((grant) => grantIsLive(grant, now, config));
 }
 
 /**
@@ -262,15 +303,18 @@ export async function fastForwardPreviewAccount(
   const consent = await readConsent(userId, config.policyVersion);
   if (!consent.accepted) await recordConsent(userId, config.policyVersion, false);
 
-  // A previous fabrication that completed will have consumed the account's single standard audit, so
-  // a second fast-forward needs another one. Deterministic per day, so a retry within the day is free.
-  const today = new Date().toISOString().slice(0, 10);
-  await grantAnotherAudit(userId, 'standard', today, config);
+  // An audit the operator finished on a previous pass consumed the account's single standard audit, so
+  // a further fabrication needs another one. **Only then** — see `hasAuditInHand`. Deterministic per
+  // day, so a retry within the day is free.
+  if (!(await hasAuditInHand(userId, config))) {
+    const today = new Date().toISOString().slice(0, 10);
+    await grantAnotherAudit(userId, 'standard', today, config);
+  }
 
   const run = await createRun(userId, opts?.quarter ?? '2026 Q3');
 
   const targetKey =
-    state === 'completed'
+    state === 'summary'
       ? RECLAIM_PHASE_KEYS[RECLAIM_PHASE_KEYS.length - 1]
       : (opts?.toPhase ?? DEFAULT_MID_PHASE);
   const targetIndex = phaseNumber(targetKey ?? '');
@@ -299,11 +343,12 @@ export async function fastForwardPreviewAccount(
 
   if (state === 'mid-audit') {
     logger.info('Reclaim: preview run fabricated', { userId, runId: run.id, reached });
-    return { runId: run.id, reachedPhaseKey: reached, completed: false };
+    return { runId: run.id, reachedPhaseKey: reached, atSummary: false };
   }
 
-  // Written BEFORE `completeRun`, which is the whole trick: `ensureAnalystReading` returns early when
-  // the column is already set, so the completion spends nothing on a provider.
+  // Written before the operator ever opens the phase, which is the whole trick: the summary reads this
+  // column, and `ensureAnalystReading` returns early when it is already set — so neither looking at the
+  // summary nor finishing the audit afterwards spends anything on a provider.
   const reading = previewAnalystReading(
     Object.fromEntries(
       Object.keys(CURRENT_HOURS).map((token) => [
@@ -319,8 +364,6 @@ export async function fastForwardPreviewAccount(
     });
   }
 
-  await completeRun(userId, run.id);
-
-  logger.info('Reclaim: preview run fabricated and completed', { userId, runId: run.id });
-  return { runId: run.id, reachedPhaseKey: reached, completed: true };
+  logger.info('Reclaim: preview run fabricated to the summary', { userId, runId: run.id });
+  return { runId: run.id, reachedPhaseKey: reached, atSummary: true };
 }

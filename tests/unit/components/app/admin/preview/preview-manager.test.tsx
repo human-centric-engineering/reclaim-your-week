@@ -95,9 +95,10 @@ describe('PreviewManager — loading the list', () => {
 
     const row = await rowFor('mid@example.org');
     expect(row.getByText('Checking the summary')).toBeInTheDocument();
-    // The state badge, not the "Mid-audit" action button below it — same row, same text, disambiguated
-    // by element type.
-    expect(row.getByText('Mid-audit', { selector: 'span' })).toBeInTheDocument();
+    // The state badge specifically. "In progress" rather than "Mid-audit" because a run filled in to
+    // the summary is in progress too, and calling that mid-audit points at the wrong screen — and it
+    // keeps the badge from sharing a word with the "Fill in mid-audit" command in the same row.
+    expect(row.getByText('In progress', { selector: 'span' })).toBeInTheDocument();
     expect(row.getByText('Rashmir')).toBeInTheDocument();
   });
 
@@ -161,12 +162,12 @@ describe('PreviewManager — creating an account', () => {
       screen.getByLabelText(/what it is for/i, { selector: '#preview-label' }),
       'walkthrough'
     );
-    await user.selectOptions(screen.getByLabelText(/where it starts/i), 'completed');
+    await user.selectOptions(screen.getByLabelText(/where it starts/i), 'summary');
     await user.click(screen.getByRole('button', { name: /create test account/i }));
 
     await waitFor(() =>
       expect(createPreviewAccount).toHaveBeenCalledWith(
-        expect.objectContaining({ state: 'completed' })
+        expect.objectContaining({ state: 'summary' })
       )
     );
   });
@@ -301,21 +302,21 @@ describe('PreviewManager — acting on a listed account', () => {
     render(<PreviewManager />);
 
     const row = await rowFor('test@example.org');
-    await user.click(row.getByRole('button', { name: /mid-audit/i }));
+    await user.click(row.getByRole('button', { name: /fill in mid-audit/i }));
 
     expect(fastForwardPreviewAccount).toHaveBeenCalledWith('u1', { to: 'mid-audit' });
   });
 
-  it('fast-forwards to completed', async () => {
+  it('fast-forwards to the summary', async () => {
     listPreviewAccounts.mockResolvedValue([account()]);
-    fastForwardPreviewAccount.mockResolvedValue('That test account now has a completed audit.');
+    fastForwardPreviewAccount.mockResolvedValue('That test account is waiting at the summary.');
     const user = userEvent.setup();
     render(<PreviewManager />);
 
     const row = await rowFor('test@example.org');
-    await user.click(row.getByRole('button', { name: /^complete$/i }));
+    await user.click(row.getByRole('button', { name: /fill in to the summary/i }));
 
-    expect(fastForwardPreviewAccount).toHaveBeenCalledWith('u1', { to: 'completed' });
+    expect(fastForwardPreviewAccount).toHaveBeenCalledWith('u1', { to: 'summary' });
   });
 
   it('surfaces the engine’s own refusal from a fast-forward, not a generic message', async () => {
@@ -327,7 +328,7 @@ describe('PreviewManager — acting on a listed account', () => {
     render(<PreviewManager />);
 
     const row = await rowFor('test@example.org');
-    await user.click(row.getByRole('button', { name: /mid-audit/i }));
+    await user.click(row.getByRole('button', { name: /fill in mid-audit/i }));
 
     expect(await screen.findByText(/refused to leave phase-1-current/i)).toBeInTheDocument();
   });
