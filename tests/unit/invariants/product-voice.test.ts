@@ -152,6 +152,15 @@ const COACH_VOICED = [
   // a leader reads the real thing — and the point of walking a test account is to judge how the screen
   // reads. Prose that failed I2 here would be prose nobody could tell apart from a real reading.
   'lib/app/programme/preview/fixtures.ts',
+  // F19. The coach's own turns in a fabricated transcript. A tester reads these in the chat panel in
+  // exactly the position the real coach's words occupy, and an operator reads them again in the admin
+  // transcript view. If any prose in this repo is coach voice, it is the prose written as the coach.
+  'lib/app/programme/preview/conversation.ts',
+  // F19. The leader's side of a fabricated audit. Not coach voice by authorship, and held to the same
+  // rules anyway for two reasons: it renders inside the phase panels beside copy that is, and it sits
+  // in the transcript one line above coach turns. A banned term or an em dash reads as the product's
+  // wherever it lands, and nobody looking at the screen is checking who typed which line.
+  'lib/app/programme/preview/answers.ts',
   // The three emails the app authors. `welcome.tsx` is here because its absence had a cost; the other
   // two were already clean, which is luck rather than enforcement, and this is what ends the luck.
   'components/app/emails/invitation.tsx',

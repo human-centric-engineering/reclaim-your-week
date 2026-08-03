@@ -111,8 +111,13 @@ export async function transitionRun(
  *
  * Scoped to the surface conversation rather than to the run: `AiConversation` carries no run id, and
  * a leader has at most one active module-surface conversation at a time by construction.
+ *
+ * **Exported for the preview fabricator**, which opens a conversation of its own and has to leave that
+ * "at most one" true. It is the same invariant with the same one-line answer, and a second copy of
+ * this `updateMany` living next to the fabricator is how the two would drift the day the surface gains
+ * another column to key on.
  */
-async function closeSurfaceConversation(userId: string): Promise<void> {
+export async function closeSurfaceConversation(userId: string): Promise<void> {
   await prisma.aiConversation.updateMany({
     where: {
       userId,

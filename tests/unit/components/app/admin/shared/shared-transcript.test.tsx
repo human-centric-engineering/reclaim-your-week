@@ -44,6 +44,52 @@ const TRANSCRIPT = {
   ],
 };
 
+describe('SharedTranscriptView — a fabricated conversation', () => {
+  it('says so, above the words rather than under them', async () => {
+    // The condition on which F19 fabricates these rows at all. Somebody who scrolls into a made-up
+    // exchange and reads three turns before meeting a footnote has already read them as a leader's.
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: true, data: { ...TRANSCRIPT, fabricated: true } }),
+    });
+
+    render(<SharedTranscriptView userId="u1" runId="run-1" />);
+
+    const banner = await screen.findByText(/Nobody said this/);
+    expect(banner).toBeInTheDocument();
+    // Before the first turn in document order, which is what "above" means to a screen reader too.
+    expect(banner.compareDocumentPosition(screen.getByText('I think I am overcommitted.'))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
+  });
+
+  it('says nothing of the kind about a real one', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: true, data: { ...TRANSCRIPT, fabricated: false } }),
+    });
+
+    render(<SharedTranscriptView userId="u1" runId="run-1" />);
+
+    await screen.findByText('I think I am overcommitted.');
+    expect(screen.queryByText(/Nobody said this/)).not.toBeInTheDocument();
+  });
+
+  it('renders a response with no flag at all rather than refusing it', async () => {
+    // A response from a build that predates the field. An unbadged fabricated transcript is a
+    // curiosity; a leader's shared conversation that will not load is a fault.
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: true, data: TRANSCRIPT }),
+    });
+
+    render(<SharedTranscriptView userId="u1" runId="run-1" />);
+
+    expect(await screen.findByText('I think I am overcommitted.')).toBeInTheDocument();
+    expect(screen.queryByText(REFUSAL_TEXT)).not.toBeInTheDocument();
+  });
+});
+
 describe('SharedTranscriptView', () => {
   it('reads a consented transcript and requests the exact route', async () => {
     fetchMock.mockResolvedValue({

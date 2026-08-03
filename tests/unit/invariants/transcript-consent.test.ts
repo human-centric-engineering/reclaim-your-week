@@ -19,10 +19,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 
-const { findShare, findRun, findMessages } = vi.hoisted(() => ({
+const { findShare, findRun, findMessages, findConversation } = vi.hoisted(() => ({
   findShare: vi.fn(),
   findRun: vi.fn(),
   findMessages: vi.fn(),
+  findConversation: vi.fn(),
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -30,6 +31,7 @@ vi.mock('@/lib/db/client', () => ({
     reclaimReportShare: { findUnique: findShare },
     reclaimAuditRun: { findFirst: findRun },
     aiMessage: { findMany: findMessages },
+    aiConversation: { findUnique: findConversation },
   },
 }));
 
@@ -42,7 +44,9 @@ beforeEach(() => {
   findShare.mockReset();
   findRun.mockReset();
   findMessages.mockReset();
+  findConversation.mockReset();
   findRun.mockResolvedValue(RUN);
+  findConversation.mockResolvedValue({ metadata: null });
   findMessages.mockResolvedValue([
     {
       id: 'm1',
@@ -113,6 +117,37 @@ describe('a transcript is readable only with consent', () => {
     const transcript = await readSharedTranscript('admin-1', 'leader-1', 'run-1');
     expect(transcript?.turns).toHaveLength(1);
     expect(transcript?.turns[0].role).toBe('coach');
+  });
+});
+
+/**
+ * F19 fabricates a transcript for preview accounts, which it originally refused to do on exactly the
+ * grounds this describes: a reader here could not tell invented words from a leader's. Writing them
+ * became worth doing once the audit became a conversation, and the flag is the whole of what makes it
+ * acceptable. These assertions are the condition, not a nicety.
+ */
+describe('a fabricated conversation says so', () => {
+  beforeEach(() => {
+    findShare.mockResolvedValue({ transcriptConsent: true, createdAt: new Date() });
+  });
+
+  it('reports the flag the fabricator writes', async () => {
+    findConversation.mockResolvedValue({ metadata: { fabricated: true } });
+    expect((await readSharedTranscript('admin-1', 'leader-1', 'run-1'))?.fabricated).toBe(true);
+  });
+
+  it('reads a real conversation as real', async () => {
+    expect((await readSharedTranscript('admin-1', 'leader-1', 'run-1'))?.fabricated).toBe(false);
+  });
+
+  it('fails towards real when the metadata is something else entirely', async () => {
+    // `metadata` is a Json column whose runtime shape is whatever was written, including by builds
+    // that no longer exist. Badging a genuine transcript as fabricated would tell an operator to
+    // disregard a leader's actual words, which is the worse of the two mistakes by a distance.
+    for (const metadata of [null, 'fabricated', 42, {}, { fabricated: 'yes' }, []]) {
+      findConversation.mockResolvedValue({ metadata });
+      expect((await readSharedTranscript('admin-1', 'leader-1', 'run-1'))?.fabricated).toBe(false);
+    }
   });
 });
 

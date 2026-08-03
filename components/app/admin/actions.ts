@@ -405,6 +405,8 @@ export async function createPreviewAccount(input: {
   email?: string;
   name?: string;
   state: 'fresh' | 'mid-audit' | 'summary';
+  /** Where a `mid-audit` account stops. Any phase key of the map; the server validates it. */
+  toPhase?: string;
 }): Promise<PreviewCreated> {
   const res = await fetch('/api/v1/app/reclaim/admin/preview', {
     method: 'POST',

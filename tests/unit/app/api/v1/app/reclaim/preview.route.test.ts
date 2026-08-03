@@ -29,7 +29,11 @@ vi.mock('@/lib/app/programme/preview/accounts', () => ({
   registerPreviewAccount: vi.fn(),
 }));
 vi.mock('@/lib/privacy/erase-user', () => ({ eraseUser: vi.fn() }));
-vi.mock('@/app/api/v1/app/reclaim/admin/preview/_lib/fabricate', () => ({
+// `describeFabrication` is kept real. It is the one thing both routes now use to word what happened,
+// so mocking it would leave the message assertions below asserting against a stub. Its own behaviour
+// is covered directly in `preview-fabricate.test.ts`.
+vi.mock('@/app/api/v1/app/reclaim/admin/preview/_lib/fabricate', async (importActual) => ({
+  ...(await importActual<object>()),
   provisionPreviewAccount: vi.fn(),
   fastForwardPreviewAccount: vi.fn(),
 }));
@@ -84,6 +88,7 @@ beforeEach(() => {
     runId: 'run-1',
     reachedPhaseKey: 'phase-4-gap',
     atSummary: false,
+    transcript: 'written',
   });
   vi.mocked(eraseUser).mockResolvedValue({ receiptId: 'r1', erasedAt: new Date() });
 });
@@ -176,7 +181,26 @@ describe('POST preview — the state', () => {
   it.each(['mid-audit', 'summary'] as const)('fast-forwards to %s', async (state) => {
     await POST(req({ label: 'walkthrough', state }));
 
-    expect(fastForwardPreviewAccount).toHaveBeenCalledWith(PREVIEW_ID, state);
+    expect(fastForwardPreviewAccount).toHaveBeenCalledWith(PREVIEW_ID, state, {});
+  });
+
+  it('sends the phase the operator picked, so creating at phase 2 does not land on phase 4', async () => {
+    // The API accepted `toPhase` from the day it shipped and the create route never sent one, so
+    // every mid-audit account was fabricated to the fabricator's own default.
+    await POST(req({ label: 'walkthrough', state: 'mid-audit', toPhase: 'phase-2-energy' }));
+
+    expect(fastForwardPreviewAccount).toHaveBeenCalledWith(PREVIEW_ID, 'mid-audit', {
+      toPhase: 'phase-2-energy',
+    });
+  });
+
+  it('400s on a phase the audit does not have, the same as the fast-forward door', async () => {
+    const res = await POST(
+      req({ label: 'walkthrough', state: 'mid-audit', toPhase: 'phase-9-invented' })
+    );
+
+    expect(res.status).toBe(400);
+    expect(fastForwardPreviewAccount).not.toHaveBeenCalled();
   });
 
   it('defaults to fresh when no state is given', async () => {
@@ -292,7 +316,9 @@ describe('fast-forward', () => {
     expect(fastForwardPreviewAccount).toHaveBeenCalledWith(PREVIEW_ID, 'mid-audit', {
       toPhase: 'phase-2-energy',
     });
-    expect(body.data.message).toContain('phase-4-gap');
+    // The phase by its own name. "phase-4-gap" was what the operator used to be shown, back when the
+    // only stopping point was phase 4 and naming it was decoration rather than information.
+    expect(body.data.message).toContain('Gap analysis');
   });
 
   it('400s on a phase the audit does not have', async () => {
@@ -317,6 +343,7 @@ describe('fast-forward', () => {
       runId: 'run-1',
       reachedPhaseKey: 'phase-6-summary',
       atSummary: true,
+      transcript: 'written',
     });
 
     const res = await FAST_FORWARD(req({ to: 'summary' }), ctx());

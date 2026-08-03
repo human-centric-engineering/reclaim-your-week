@@ -37,40 +37,92 @@
  * more and it is the honest one: it is also the only way to see what completion really does, including
  * the email it sends.
  *
+ * ## Any phase, not three states
+ *
+ * `toPhase` names where the walk stops, and every phase of the map is a legal answer. The three-state
+ * shape this replaced (`fresh` / `mid-audit` / `completed`) could only ever show an operator two of the
+ * seven screens, and `mid-audit` always meant phase 4 because nothing sent the phase it already
+ * accepted. `summary` survives as the name for "the last phase", because stopping there is different
+ * in kind: it is the only target that writes the analyst reading.
+ *
  * ## What is faked
  *
- * Only `analystReading`, which is the sole part of a finished summary a model produces. Pre-writing it
+ * `analystReading`, which is the sole part of a finished summary a model produces. Pre-writing it
  * makes the write-once `ensureAnalystReading` a no-op when the operator does press finish, so neither
  * the summary nor the completion costs a provider call. The content is derived in
  * `lib/app/programme/preview/fixtures.ts`.
  *
- * **No `AiConversation` is fabricated.** A leader who used the forms and never opened the coach is a
- * real, reachable state; inventing `AiMessage` rows would put words in the coach's mouth that no model
- * said, and an operator reading them through `admin/transcript.ts` would have no way to tell.
+ * The answers themselves come from `preview/answers.ts`, **one phase at a time as the walk reaches
+ * it**, so a run stopped at phase 2 holds what a leader at phase 2 would hold and nothing from further
+ * on. Writing the lot up front, which is what this used to do, made every stopping point identical
+ * underneath and put a finished action plan inside a run that had not been asked for one.
+ *
+ * ## The transcript, and why it is now written
+ *
+ * **An `AiConversation` is fabricated**, from `preview/conversation.ts`. This used to be refused, on
+ * the grounds that invented `AiMessage` rows put words in the coach's mouth that no model said and an
+ * operator reading them back had no way to tell. The objection was right and the conclusion was not:
+ * the audit is the conversation now, so a test account with an empty chat cannot show the operator the
+ * screen they most need to look at.
+ *
+ * The honesty problem is answered directly instead. Every row this writes carries
+ * `metadata.fabricated`, and `readSharedTranscript` reports the flag, so the admin transcript view
+ * states plainly that the exchange came from here.
+ *
+ * Turns are written **as each phase is reached**, before the transition out of it. That is not tidiness:
+ * a phase mark is the id of the last message that existed when the phase was entered, so a transcript
+ * written in one go at the end would file the whole conversation under the final phase and every
+ * phase-scoped read-back would be wrong.
+ *
+ * A test account whose module surface has no bound public agent gets no transcript rather than a
+ * failure. That is a real deployment state (nothing seeded yet), and refusing the whole fabrication
+ * over it would take away the phase walk as well.
  */
 
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 import { logger } from '@/lib/logging';
 import { auth } from '@/lib/auth/config';
-import { RECLAIM_BUCKETS, bucketToken } from '@/lib/app/programme/content';
+import {
+  MODULE_SURFACE_CONTEXT_TYPE,
+  resolveModuleSurface,
+} from '@/lib/framework/guidance/surface';
+import { RECLAIM_MODULE_SLUG } from '@/lib/app/programme/identity';
+import { RECLAIM_PHASES } from '@/lib/app/programme/map';
 import { RECLAIM_PHASE_KEYS, phaseNumber } from '@/lib/app/programme/runs/phases';
 import { grantIsLive } from '@/lib/app/programme/runs/entitlement';
-import { CHART_REVEAL_MOMENT } from '@/lib/app/programme/chart/reveal';
+import { arrivalMomentFor } from '@/lib/app/programme/coach/opening';
+import { CHART_REVEAL_MOMENT, CHART_REVEAL_PHASE } from '@/lib/app/programme/chart/reveal';
 import { readReclaimAccessConfig, type ReclaimAccessConfig } from '@/lib/app/programme/config';
 import { mintGrant, grantAnotherAudit } from '@/lib/app/programme/access/grants';
 import { recordConsent, readConsent } from '@/lib/app/programme/access/consent';
 import { isPreviewAccount, registerPreviewAccount } from '@/lib/app/programme/preview/accounts';
 import { previewAnalystReading } from '@/lib/app/programme/preview/fixtures';
 import {
+  CURRENT_HOURS,
+  IDEAL_HOURS,
+  previewAnswersForPhase,
+} from '@/lib/app/programme/preview/answers';
+import {
+  FABRICATED_METADATA,
+  previewTurnsForPhase,
+} from '@/lib/app/programme/preview/conversation';
+import {
   createRun,
   saveRunAnswers,
   transitionRun,
   claimCoachOpening,
-  type RunAnswerInput,
+  linkRunConversation,
+  recordPhaseMark,
+  closeSurfaceConversation,
 } from '@/app/api/v1/app/reclaim/runs/service';
 
-/** What state a test account should be left in. */
+/**
+ * What state a test account should be left in.
+ *
+ * `mid-audit` carries its stopping point in `toPhase`; `summary` is the last phase and is named
+ * separately because it is the only one that writes the analyst reading.
+ */
 export type PreviewState = 'fresh' | 'mid-audit' | 'summary';
 
 /**
@@ -82,31 +134,14 @@ export type PreviewState = 'fresh' | 'mid-audit' | 'summary';
 const DEFAULT_MID_PHASE = 'phase-4-gap';
 
 /**
- * The hours a fabricated audit reports, by bucket token. Chosen to produce a chart worth looking at —
- * a clear overspend on delivery, a clear underspend on deep work, and a couple of areas roughly where
- * the leader wanted them — rather than a flat line that would render correctly and show nothing.
+ * How far apart the fabricated transcript's turns are stamped.
+ *
+ * Explicit `createdAt` values rather than the column default, because both readers order by it and
+ * several rows written inside one millisecond would come back in an arbitrary order — a conversation
+ * whose replies precede their questions on every other reload. Ninety seconds also makes the whole
+ * exchange land in the past rather than in one instant, which is what a transcript looks like.
  */
-const CURRENT_HOURS: Record<string, number> = {
-  deep_work: 4,
-  learning_development: 1,
-  strategic_planning: 3,
-  team_development: 6,
-  organisational_oversight: 9,
-  relationship_building: 5,
-  delivery_operations: 22,
-  recovery_white_space: 2,
-};
-
-const IDEAL_HOURS: Record<string, number> = {
-  deep_work: 12,
-  learning_development: 3,
-  strategic_planning: 7,
-  team_development: 8,
-  organisational_oversight: 6,
-  relationship_building: 6,
-  delivery_operations: 10,
-  recovery_white_space: 5,
-};
+const TURN_GAP_MS = 90_000;
 
 export interface ProvisionInput {
   /** What this account is for, in the operator's words. Shown on the badge wherever it appears. */
@@ -129,6 +164,15 @@ export interface FastForwardResult {
   reachedPhaseKey: string;
   /** Whether the run is sitting at the last phase, with the summary, report and sharing on screen. */
   atSummary: boolean;
+  /**
+   * Whether a transcript was written, and when it was not, why.
+   *
+   * Reported rather than logged because the operator is the one who can act on it: `no-agent` means
+   * this install has no public agent bound to the module surface, so the account they are about to
+   * sign in as will have a silent coach. Told that, they go and bind one; left to discover it on the
+   * screen, they report the chat as broken.
+   */
+  transcript: 'written' | 'no-agent';
 }
 
 /**
@@ -195,73 +239,115 @@ export async function provisionPreviewAccount(input: ProvisionInput): Promise<Pr
   return { userId: user.id, email, password };
 }
 
-/** Every answer a finished-looking audit carries, in the order a leader would give them. */
-function auditAnswers(): RunAnswerInput[] {
-  const answers: RunAnswerInput[] = [
-    { slotSlug: 'reclaim_profile_first_name', value: 'Sam' },
-    { slotSlug: 'reclaim_profile_role', value: 'Chief Executive' },
-    {
-      slotSlug: 'reclaim_profile_org_type',
-      value: 'A social enterprise of about forty people',
-    },
-    {
-      slotSlug: 'reclaim_setup_priorities',
-      value: 'Get the new programme funded and off the ground',
-    },
-    { slotSlug: 'reclaim_setup_weekly_hours', value: '52', valueJson: 52 },
-    { slotSlug: 'reclaim_setup_audit_period', value: 'last quarter' },
-  ];
+/**
+ * The one sentence both routes report back, so "what just happened" is worded once.
+ *
+ * It used to be a ternary in each route, and they had already drifted: one said "driven to mid-audit"
+ * for every phase between 0 and 5, which was the only thing an operator could be told when the only
+ * stopping point was phase 4. Naming the phase is the whole point of being able to choose it.
+ */
+export function describeFabrication(result: FastForwardResult): string {
+  const phase = RECLAIM_PHASES.find((p) => p.key === result.reachedPhaseKey);
+  const where = result.atSummary
+    ? 'The audit is filled in and waiting at the summary, which is where the report and the sharing choices are. Signing in as the account opens there, and finishing it is yours to press.'
+    : `The audit is filled in as far as ${phase?.label ?? result.reachedPhaseKey}, and is sitting there. Everything a leader would have written by that point is on it, and nothing from after it.`;
 
-  for (const bucket of RECLAIM_BUCKETS.filter((b) => !b.conditional)) {
-    const token = bucketToken(bucket.slug);
-    const current = CURRENT_HOURS[token] ?? 0;
-    const ideal = IDEAL_HOURS[token] ?? 0;
-    answers.push(
-      { slotSlug: `reclaim_current_hours__${token}`, value: String(current), valueJson: current },
-      { slotSlug: `reclaim_ideal_hours__${token}`, value: String(ideal), valueJson: ideal }
-    );
-  }
+  // Named, because the operator can fix it and cannot guess it. A silent coach on a test account
+  // reads as a broken chat, not as an install with no agent bound to the module surface.
+  const coach =
+    result.transcript === 'no-agent'
+      ? ' There is no conversation on it: this install has no public agent bound to the module surface, so bind one and fill the account in again if you want to see the coach.'
+      : ' The conversation is filled in too, and is marked as made up wherever it is read back.';
 
-  answers.push(
-    { slotSlug: 'reclaim_ideal_total_hours', value: '57', valueJson: 57 },
-    {
-      slotSlug: 'reclaim_action_chosen',
-      value: 'Two protected mornings a week for the funding bid',
-    },
-    { slotSlug: 'reclaim_action_when', value: 'From next Monday' }
-  );
-
-  return answers;
+  return `${where}${coach}`;
 }
 
 /**
- * The reflections a leader leaves behind on the way through.
+ * Open a conversation for this run's fabricated transcript, or `null` when there is nothing to open.
  *
- * Written even though `transitionRun` does not check for them — the **route** does (I9), not the
- * service. Skipping them would be the easy thing and the wrong one: a run sitting at phase 4 with no
- * phase-1 reflection is a state no leader can reach, and the first time the operator reloads, the phase
- * rail and the run disagree.
+ * `resolveModuleSurface` is what says whether the module has a **public** primary agent bound. Going
+ * through it rather than reading `AiAgent` directly is the same rule the rest of this module follows:
+ * the leader's own coach surface decides which agent a conversation belongs to that way, and a
+ * fabricated conversation attributed to some other agent would be a conversation the leader's screen
+ * could not open.
  *
- * **Phase 6's is the takeaway, and it is written only for the last phase.** The panel holds the summary
- * back until that question is answered — deliberately, it is the beat the source asks for — so a run
- * fabricated *to* the summary and missing it would open on the question rather than on the thing the
- * operator asked to look at. Phases 1–5 stop short of it because a mid-audit run has not been asked.
+ * Any conversation already active on the surface is closed first. A leader has at most one active
+ * module-surface conversation by construction (I15), and a second fabrication on the same account
+ * would otherwise leave two.
  */
-function reflectionsUpTo(phaseIndex: number): RunAnswerInput[] {
-  const answers: RunAnswerInput[] = [];
-  for (let n = 1; n <= Math.min(phaseIndex, 5); n += 1) {
-    answers.push({
-      slotSlug: `reclaim_reflection_p${n}`,
-      value: 'Looking at it written down made the size of it obvious.',
+async function openFabricatedConversation(userId: string): Promise<string | null> {
+  const surface = await resolveModuleSurface(userId, RECLAIM_MODULE_SLUG);
+  if (surface === null) return null;
+
+  await closeSurfaceConversation(userId);
+
+  const conversation = await prisma.aiConversation.create({
+    data: {
+      userId,
+      agentId: surface.agentId,
+      contextType: MODULE_SURFACE_CONTEXT_TYPE,
+      contextId: RECLAIM_MODULE_SLUG,
+      isActive: true,
+      // The one thing that keeps this honest. Read back by `readSharedTranscript`, which is how the
+      // admin transcript view knows to say the exchange was written here and not by a model.
+      metadata: FABRICATED_METADATA,
+    },
+    select: { id: true },
+  });
+  return conversation.id;
+}
+
+/**
+ * Write one phase's turns, returning the timestamp the next phase should start from.
+ *
+ * Sequential rather than `createMany` because each row needs its own `createdAt`, and small volumes
+ * (three or four turns a phase) make the round trips irrelevant. `role` is translated here and only
+ * here: the fixture speaks of a leader and a coach, the table stores `user` and `assistant`.
+ */
+async function writeTurns(conversationId: string, phaseIndex: number, from: Date): Promise<Date> {
+  let at = from;
+  for (const turn of previewTurnsForPhase(phaseIndex)) {
+    await prisma.aiMessage.create({
+      data: {
+        conversationId,
+        role: turn.role === 'leader' ? 'user' : 'assistant',
+        content: turn.text,
+        createdAt: at,
+        metadata: FABRICATED_METADATA,
+      },
     });
+    at = new Date(at.getTime() + TURN_GAP_MS);
   }
-  if (phaseIndex >= 6) {
-    answers.push({
-      slotSlug: 'reclaim_reflection_p6',
-      value: 'That two mornings a week is a decision, not a wish.',
-    });
-  }
-  return answers;
+  return at;
+}
+
+/**
+ * Where the fabricated transcript starts, so that its last turn lands about now.
+ *
+ * A conversation stamped entirely in the future, or entirely at one instant, is the sort of thing an
+ * operator notices and cannot explain. Counting the turns first and working backwards costs nothing
+ * and makes the timestamps read like a session somebody actually had.
+ */
+function transcriptStart(targetIndex: number): Date {
+  let turns = 0;
+  for (let index = 0; index <= targetIndex; index += 1) turns += previewTurnsForPhase(index).length;
+  return new Date(Date.now() - turns * TURN_GAP_MS);
+}
+
+/**
+ * Claim the coach openings a leader who reached this phase would already have had.
+ *
+ * Without this the phase would open by offering a beat the fabricated transcript has just shown: the
+ * arrival turn replayed under a conversation that already contains it, and on phase 1 a chart reveal
+ * for a chart the leader has been looking at since the transcript began (I12's gate).
+ *
+ * Best-effort by construction: `claimCoachOpening` returns `false` when the moment was already fired
+ * and there is nothing here that needs to know which it was.
+ */
+async function claimOpeningsFor(userId: string, runId: string, phaseKey: string): Promise<void> {
+  const arrival = arrivalMomentFor(phaseKey);
+  if (arrival !== null) await claimCoachOpening(userId, runId, arrival);
+  if (phaseKey === CHART_REVEAL_PHASE) await claimCoachOpening(userId, runId, CHART_REVEAL_MOMENT);
 }
 
 /**
@@ -320,17 +406,34 @@ export async function fastForwardPreviewAccount(
   const targetIndex = phaseNumber(targetKey ?? '');
   if (targetIndex === null) throw new Error(`preview: unknown phase ${String(targetKey)}`);
 
-  await saveRunAnswers(userId, run.id, [...auditAnswers(), ...reflectionsUpTo(targetIndex)]);
+  const conversationId = await openFabricatedConversation(userId);
+  if (conversationId !== null) await linkRunConversation(run.id, conversationId);
 
-  // The chart reveal is a moment the coach claims once per run. Without it the phase-1 surface would
-  // offer to reveal a chart the leader has already been shown, which no real run does.
-  await claimCoachOpening(userId, run.id, CHART_REVEAL_MOMENT);
-
+  let clock = transcriptStart(targetIndex);
   let reached = RECLAIM_PHASE_KEYS[0] ?? 'phase-0-setup';
-  for (const key of RECLAIM_PHASE_KEYS.slice(0, targetIndex)) {
+
+  for (let index = 0; index <= targetIndex; index += 1) {
+    const key = RECLAIM_PHASE_KEYS[index] ?? '';
+
+    // The phase's own answers, as it is reached. A run stopped here holds what a leader stopped here
+    // would hold, and nothing belonging to a phase they have not been asked about.
+    await saveRunAnswers(userId, run.id, previewAnswersForPhase(index));
+    await claimOpeningsFor(userId, run.id, key);
+    // Before the transition, never after: the mark written on entering the next phase is the id of the
+    // last message that exists at that moment, so turns written afterwards would fall on the wrong
+    // side of every phase boundary.
+    if (conversationId !== null) clock = await writeTurns(conversationId, index, clock);
+
+    if (index === targetIndex) break;
+
     try {
       const { enteredPhaseKey } = await transitionRun(userId, run.id, key);
       reached = enteredPhaseKey;
+      // The **route** records this on a leader's own transition, not the service, so a fabricator that
+      // drives the service directly has to do it too. Without it every phase-scoped read of the
+      // transcript falls back to the whole conversation, which is the bug `backfillPhaseMark` exists
+      // to repair one phase at a time.
+      await recordPhaseMark(userId, run.id, enteredPhaseKey);
     } catch (error) {
       // Named, and rethrown. A swallowed refusal here produces an account the API called "mid-audit"
       // whose journey never left phase 0 — a lie the operator cannot see and would report as a bug in
@@ -341,9 +444,11 @@ export async function fastForwardPreviewAccount(
     }
   }
 
-  if (state === 'mid-audit') {
-    logger.info('Reclaim: preview run fabricated', { userId, runId: run.id, reached });
-    return { runId: run.id, reachedPhaseKey: reached, atSummary: false };
+  const transcript = conversationId === null ? ('no-agent' as const) : ('written' as const);
+
+  if (state === 'mid-audit' && targetIndex !== RECLAIM_PHASE_KEYS.length - 1) {
+    logger.info('Reclaim: preview run fabricated', { userId, runId: run.id, reached, transcript });
+    return { runId: run.id, reachedPhaseKey: reached, atSummary: false, transcript };
   }
 
   // Written before the operator ever opens the phase, which is the whole trick: the summary reads this
@@ -364,6 +469,10 @@ export async function fastForwardPreviewAccount(
     });
   }
 
-  logger.info('Reclaim: preview run fabricated to the summary', { userId, runId: run.id });
-  return { runId: run.id, reachedPhaseKey: reached, atSummary: true };
+  logger.info('Reclaim: preview run fabricated to the summary', {
+    userId,
+    runId: run.id,
+    transcript,
+  });
+  return { runId: run.id, reachedPhaseKey: reached, atSummary: true, transcript };
 }

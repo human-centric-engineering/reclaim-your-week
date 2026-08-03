@@ -29,10 +29,12 @@ import { validateRequestBody } from '@/lib/api/validation';
 import { getRouteLogger } from '@/lib/api/context';
 import { prisma } from '@/lib/db/client';
 import { appUrl } from '@/lib/app/programme/urls';
+import { RECLAIM_PHASE_KEYS } from '@/lib/app/programme/runs/phases';
 import { listPreviewAccounts } from '@/lib/app/programme/admin/preview-list';
 import {
   provisionPreviewAccount,
   fastForwardPreviewAccount,
+  describeFabrication,
 } from '@/app/api/v1/app/reclaim/admin/preview/_lib/fabricate';
 
 const createSchema = z.object({
@@ -41,6 +43,14 @@ const createSchema = z.object({
   email: z.string().email().max(320).optional(),
   name: z.string().trim().min(1).max(120).optional(),
   state: z.enum(['fresh', 'mid-audit', 'summary']).default('fresh'),
+  /**
+   * Where a `mid-audit` account stops. Validated against the map's own phase keys, the same way the
+   * fast-forward route does, so the two doors into the fabricator cannot accept different phases.
+   */
+  toPhase: z
+    .string()
+    .refine((key) => RECLAIM_PHASE_KEYS.includes(key), 'Not a phase of the audit')
+    .optional(),
 });
 
 /**
@@ -84,12 +94,17 @@ export const POST = withAdminAuth(async (request, session) => {
   });
 
   const fabricated =
-    body.state === 'fresh' ? null : await fastForwardPreviewAccount(account.userId, body.state);
+    body.state === 'fresh'
+      ? null
+      : await fastForwardPreviewAccount(account.userId, body.state, {
+          ...(body.toPhase === undefined ? {} : { toPhase: body.toPhase }),
+        });
 
   // No password, here or anywhere. It exists in the response body once and is never stored.
   log.info('Reclaim preview account created', {
     userId: account.userId,
     state: body.state,
+    toPhase: body.toPhase,
     adminId: session.user.id,
   });
 
@@ -100,11 +115,9 @@ export const POST = withAdminAuth(async (request, session) => {
       signInUrl: `${appUrl()}/login`,
       run: fabricated,
       message:
-        body.state === 'fresh'
+        fabricated === null
           ? 'Test account created. Sign in with the password below to walk it from the consent gate.'
-          : body.state === 'summary'
-            ? 'Test account created, with an audit filled in and waiting at the summary. Sign in and it opens there, with the report and the sharing choices — finishing it is yours to press.'
-            : 'Test account created and driven to mid-audit.',
+          : `Test account created. ${describeFabrication(fabricated)}`,
     },
     undefined,
     { status: 201 }

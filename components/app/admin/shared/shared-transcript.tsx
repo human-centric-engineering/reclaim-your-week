@@ -33,6 +33,13 @@ const transcriptSchema = z.object({
   quarter: z.string().nullable(),
   sharedAt: z.string(),
   turns: z.array(turnSchema),
+  /**
+   * Defaulted rather than required, so a response from a build that predates the flag renders as a
+   * real conversation instead of failing the parse and showing "not available". The direction matters:
+   * an unbadged fabricated transcript is a curiosity, a transcript that will not load is a leader's
+   * shared conversation the operator cannot read.
+   */
+  fabricated: z.boolean().default(false),
 });
 
 type Transcript = z.infer<typeof transcriptSchema>;
@@ -97,6 +104,19 @@ export function SharedTranscriptView({ userId, runId }: { userId: string; runId:
           superseded by what they said later.
         </p>
       </header>
+
+      {/*
+        Above the words, not below them, and stated in full. Somebody who scrolls straight into a
+        fabricated exchange and reads three turns before meeting a footnote has already read them as a
+        leader's. This is the whole condition on which fabricating a transcript was acceptable.
+      */}
+      {transcript.fabricated && (
+        <p className="border-border bg-muted/40 text-muted-foreground rounded-md border px-4 py-3 text-sm">
+          <strong className="text-foreground font-medium">Nobody said this.</strong> It is a made-up
+          conversation, written by the Preview screen to fill out a test account. No model produced
+          it and no leader typed it, so there is nothing here to learn about anybody.
+        </p>
+      )}
 
       {transcript.turns.length === 0 ? (
         <p className="text-muted-foreground text-sm">There is nothing in this conversation yet.</p>
