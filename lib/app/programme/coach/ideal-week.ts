@@ -18,15 +18,51 @@
  * own benchmarks (which are operator-editable) or is a stated tolerance with its reasoning beside it.
  */
 
+import { RECLAIM_BUCKETS, bucketToken } from '@/lib/app/programme/content';
 import {
   buildChartData,
   buildIdealChartData,
+  truthy,
   type Answers,
 } from '@/lib/app/programme/chart/series';
 
 /** The two areas the source names by name. */
 const DELIVERY = 'delivery-operations';
 const RECOVERY = 'recovery-white-space';
+
+/**
+ * The three readings phase 3 closes on, beyond the per-area spread.
+ *
+ * The source's four questions are the total, the spread, where deep work sits, and the one protected
+ * commitment. The spread is nine slots and lives in `RECLAIM_BUCKETS`; these are the other three.
+ */
+const DESIGN_SLOTS = [
+  'reclaim_ideal_total_hours',
+  'reclaim_ideal_deep_block_when',
+  'reclaim_ideal_protected_commitment',
+] as const;
+
+/**
+ * Whether every area the leader was actually asked about now has an ideal figure.
+ *
+ * **A zero is an answer, and this used to treat it as an absence.** The check was
+ * `want.buckets.every((b) => b.hours > 0)`, read off the built series — and `chartSeries` coerces a
+ * missing slot to `0`, so "nobody has said yet" and "nought hours, deliberately" arrived at it as the
+ * same number. A leader who wants no delivery and operations at all in the week they are designing —
+ * which is a real and rather pointed answer, and one this phase is for — was therefore never
+ * complete: the picture of their week never drew, and the "suspiciously similar" challenge never
+ * fired. Presence is the honest test, and it is the one `everyVisibleAreaHasHours` already applies to
+ * the reported week for exactly the same reason.
+ *
+ * Visible does the conditional work: a leader who said fundraising is not relevant was never asked
+ * about it, so waiting for it would hold the phase open on a question nobody will ask.
+ */
+export function everyVisibleAreaHasIdealHours(answers: Answers): boolean {
+  const fundraisingRelevant = truthy(answers['reclaim_setup_fundraising_relevant']);
+  const visible = RECLAIM_BUCKETS.filter((b) => !b.conditional || fundraisingRelevant);
+  if (visible.length === 0) return false;
+  return visible.every((b) => answers[`reclaim_ideal_hours__${bucketToken(b.slug)}`] !== undefined);
+}
 
 /**
  * How close two figures have to be before the area counts as unmoved, in **hours**.
@@ -66,6 +102,17 @@ export interface UnmovedArea {
 export interface IdealWeekReading {
   /** Every visible area has an ideal figure. Nothing below this is meaningful until it is true. */
   complete: boolean;
+  /**
+   * All four of the phase's questions are answered — the spread *and* the total, the deep-work block
+   * and the one protected commitment. This is what the picture of the designed week waits for.
+   *
+   * Deliberately narrower than `complete`, and the two are not interchangeable. The challenge below
+   * belongs while the leader is still designing, so it fires on `complete`: a week that has barely
+   * moved is worth saying before they have finished committing to it. The chart is the phase's
+   * closing beat, so it waits for `designComplete` — drawn the moment the spread landed, it would sit
+   * two questions above the reflection it is meant to be read alongside.
+   */
+  designComplete: boolean;
   /** Areas whose ideal is within a whisker of what they already reported. */
   unmoved: UnmovedArea[];
   /** Delivery and operations is above its guide in both weeks — the source's first named case. */
@@ -101,7 +148,8 @@ export function readIdealWeek(
 
   // Every *visible* area, so a leader for whom fundraising is irrelevant is not held to a lane they
   // were never shown. `buildIdealChartData` has already dropped it, so the two series line up.
-  const complete = want.buckets.length > 0 && want.buckets.every((b) => b.hours > 0);
+  const complete = everyVisibleAreaHasIdealHours(answers);
+  const designComplete = complete && DESIGN_SLOTS.every((slug) => answers[slug] !== undefined);
 
   const idealTotalAnswer = figure(answers['reclaim_ideal_total_hours']);
   const reportedTotal = figure(answers['reclaim_setup_weekly_hours']) ?? now.totalHours;
@@ -110,6 +158,7 @@ export function readIdealWeek(
   if (!complete) {
     return {
       complete: false,
+      designComplete: false,
       unmoved: [],
       deliveryStaysHigh: false,
       recoveryStaysNearZero: false,
@@ -159,6 +208,7 @@ export function readIdealWeek(
 
   return {
     complete: true,
+    designComplete,
     unmoved,
     deliveryStaysHigh,
     recoveryStaysNearZero,

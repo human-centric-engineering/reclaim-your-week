@@ -801,6 +801,11 @@ function momentForPhase(
 
     // Suppressed once the phase's own reflection is recorded: the challenge belongs before the pause,
     // not after it. Free, because `reflected` is already in this function's signature.
+    //
+    // It sits above the closing beat below, and the two gates are why it can. The challenge fires on
+    // `complete` — the spread — so it is usually offered and answered while the leader is still on the
+    // last two questions, long before the picture is drawn. Where both are live in the same turn, this
+    // order is the one the coach reads them in.
     if (reading.shouldChallenge && !reflected) {
       parts.push(
         '',
@@ -816,6 +821,46 @@ function momentForPhase(
         'change felt impossible rather than undesirable, so ask what would have to be true for it to',
         'look different, and let the answer stand. If they say this is the week they want, that is a',
         'real answer and the audit carries on from it. Do not offer this twice.'
+      );
+    }
+
+    // The section's closing picture, and the order it has to run in.
+    //
+    // This phase draws the designed week over the reported one once all four of its questions are
+    // answered — the total, the spread, the deep-work block and the protected commitment. The chart is
+    // placed in the transcript under the turn it appeared on, so the reflection cannot share that
+    // turn: a coach that records the last reading and asks what stands out in the same breath puts its
+    // question above the picture the question is about. That is what a tester met, and the only thing
+    // that separates the two beats is this instruction, because the model is the one deciding where
+    // the turn ends.
+    //
+    // The first branch is guidance and never a gate. A leader who will not put a figure on one area
+    // can still close this section — the reflection's own note below says so, and holding the closing
+    // question behind a reading nobody may ever give is the deadlock that note exists to avoid.
+    if (!reading.designComplete) {
+      parts.push(
+        '',
+        'There is no picture on their screen yet. This section ends with the week they have designed',
+        'drawn over the week they described, and it appears once all four of the questions in this',
+        'section are recorded. So finish the four first, and do not ask what stands out to them',
+        'before the picture is there for them to look at.'
+      );
+    } else if (!reflected) {
+      parts.push(
+        '',
+        'The week they designed is now drawn on their screen, over the week they described, area by',
+        'area. It arrived because the last of the four readings landed, which makes this the section',
+        'closing rather than another question inside it, and it comes before anything on the capture',
+        'list below.',
+        '',
+        'Say briefly what the picture shows: the total they are aiming at, and the two or three areas',
+        'that move the most, in hours and by name. Then ask one question, close to "what stands out to',
+        'you here?", and stop. Do not interpret it for them, do not add observations of your own, and',
+        'do not move them on. Their own noticing comes first, and your reading of it comes after.',
+        '',
+        'If the reading that completed the four has only just been recorded, this is the next turn and',
+        'not that one. Confirm what they said, and let the picture arrive: a turn that records the last',
+        'answer and asks what stands out in the same breath asks about a picture they have not seen.'
       );
     }
 
@@ -1543,9 +1588,18 @@ export async function buildCoachPhaseContext(userId: string): Promise<string> {
   // opens. Every other phase gets the un-deadlockable wording instead of a threshold, because "enough
   // of the phase has been covered" is a judgement and inventing a fraction to stand in for it would
   // only move the arbitrary line rather than remove it.
+  // Phase 3 gets the same shape as phase 1 for the same reason, and it is the one other phase that
+  // can have it. Its closing beat is also a picture — the week they designed, drawn over the week they
+  // described — and that picture appears on an event rather than at a threshold: the last of the
+  // phase's four questions landing. So "the moment is here" is a fact about the run rather than a
+  // judgement, and the reflection can be told to follow it. Every other phase keeps the
+  // un-deadlockable wording below, because for them "enough has been covered" is a judgement and a
+  // fraction invented to stand in for it would only move the arbitrary line.
   const reflectionSlug = reflectionSlugForLeaving(currentPhaseKey);
   const reflectionRecorded = reflectionSlug === null ? undefined : answers[reflectionSlug];
-  const reflectionDueNow = currentPhaseKey === CHART_REVEAL_PHASE && revealed;
+  const reflectionDueNow =
+    (currentPhaseKey === CHART_REVEAL_PHASE && revealed) ||
+    (currentPhaseKey === 'phase-3-ideal' && readIdealWeek(answers, bucketLabels).designComplete);
   const reflectionNote =
     reflectionSlug === null
       ? 'This phase has no reflection pause.'

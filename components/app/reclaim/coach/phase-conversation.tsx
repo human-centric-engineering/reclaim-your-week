@@ -627,6 +627,10 @@ export function PhaseConversation({
   // moment and the beat agree on what "ready" means.
   const gapChartData = buildGapChartData(answers, labels);
   const gapChartReady = gapChartData.buckets.some((b) => b.current > 0 || b.ideal > 0);
+
+  // The designed week. Hoisted out of the beat below so the reading has a name at this level, the way
+  // `gapChartData` above it does, rather than being recomputed inside a condition.
+  const idealWeek = readIdealWeek(answers, labels);
   const openMoment =
     phaseKey === 'phase-4-gap' && !gapChartReady
       ? null
@@ -726,13 +730,20 @@ export function PhaseConversation({
     beats.push({ key: 'chart', node: picture });
   }
 
-  // Phase 3 draws the week being designed over the week they have, once every area has an ideal
-  // figure. The gate is the one `readIdealWeek` already applies to the "suspiciously similar"
-  // challenge, for the same reason it applies it there: a half-designed week is mostly zeroes, and a
-  // chart of it is a picture of the conversation not having finished rather than of anything the
-  // leader chose. Unlike Phase 1 there is no reveal ceremony — the ideal week is theirs, they have
-  // just been saying it out loud, so there is nothing here to be shown for the first time.
-  if (phaseKey === 'phase-3-ideal' && readIdealWeek(answers, labels).complete) {
+  // Phase 3 draws the week being designed over the week they have, and it draws it as the section's
+  // closing beat: once all four of the phase's questions are answered, not merely once the nine areas
+  // have figures. Unlike Phase 1 there is no reveal ceremony — the ideal week is theirs, they have
+  // just been saying it out loud, so there is nothing here to be shown for the first time. What it
+  // does share with Phase 1 is the order: the picture, and then the question about it.
+  //
+  // **`designComplete` rather than `complete`, and the difference is the whole point of the beat.**
+  // The spread lands two questions before the phase ends. A chart drawn there sits above the
+  // deep-work block and the protected commitment, and by the time the coach asks what stands out the
+  // leader is being asked about a picture that has scrolled off the top of their screen — which is
+  // what a tester met: the closing question arrived with no picture anywhere near it. `phase-context`
+  // holds the other half, telling the coach the picture is on screen and that the question follows
+  // it rather than sharing a turn with the reading that completed it.
+  if (phaseKey === 'phase-3-ideal' && idealWeek.designComplete) {
     beats.push({
       key: 'ideal-week-chart',
       node: (
