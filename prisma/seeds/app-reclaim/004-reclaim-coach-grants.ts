@@ -65,7 +65,16 @@ const unit: SeedUnit = {
     // record of what used to be there. An earlier version of this unit deleted `fill_slot` instead of
     // disabling it, so any database seeded in that window is sitting in the permissive-fallback state
     // this unit exists to prevent; ensuring the row is what repairs it.
-    const RETIRED = ['fill_slot'];
+    //
+    // The three framework reads join it for the same structural reason rather than the reason they
+    // were dropped. They were removed from the authored list because `get_state` answers from every
+    // audit the leader has ever run — it returned a previous run's reflection on a live audit — and
+    // because the briefing now holds the state they used to fetch (see `agent.ts`). But the stale
+    // sweep at the foot of this unit only disables rows that *exist*, and a fresh install seeded from
+    // the new authored list never creates one. That leaves precisely the permissive-fallback state
+    // this unit exists to prevent, and it is not theoretical here: this coach's own transcripts
+    // contain `get_state` calls from before the change, which is the sort of thing a model imitates.
+    const RETIRED = ['fill_slot', 'get_journey_state', 'get_next_steps', 'get_state'];
 
     for (const slug of RETIRED) {
       const capability = await prisma.aiCapability.findUnique({

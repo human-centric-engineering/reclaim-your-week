@@ -88,6 +88,55 @@ export interface ReclaimAgentCapabilityGrant {
 export const RECLAIM_COACH_PROVIDER = 'openai';
 export const RECLAIM_COACH_MODEL = 'gpt-4o';
 
+/**
+ * The reply length this coach is allowed to reserve, and why it is far below the platform default.
+ *
+ * **A reservation is spent whether or not it is used.** OpenAI counts a request against the
+ * per-minute token budget as input **plus `max_tokens`**, so the platform default of 4096 costs the
+ * account 4096 tokens of headroom on every single turn regardless of how short the answer is. On a
+ * key rated 30,000 tokens/minute that is an eighth of the minute, held back for output that never
+ * arrives, on each of the two-to-three calls a single leader message makes.
+ *
+ * **The measurement, taken from `AiCostLog` over this app's real coaching turns.** The longest reply
+ * the coach has ever produced was 303 output tokens; the 99th percentile was 299 and the mean 74.
+ * That is not an accident of sampling — it is the voice working as designed. This coach asks one
+ * question at a time and reflects in a few sentences, so a four-thousand-token reservation is
+ * reserving for a kind of answer the instructions forbid.
+ *
+ * 1024 is set as roughly three times the worst reply ever observed: enough that a long reflection
+ * near a phase boundary is never truncated, small enough that the reservation stops being the
+ * dominant avoidable cost in the minute. If replies are ever genuinely cut short — a `length` finish
+ * reason rather than `stop` — this is the number to raise, and the ceiling is a budget question
+ * rather than a quality one.
+ */
+export const RECLAIM_COACH_MAX_TOKENS = 1024;
+
+/**
+ * How many prior messages the coach is sent, and why this agent needs far fewer than the default.
+ *
+ * **The platform default of 50 is written for an agent whose only memory is its transcript.** This
+ * one is not that agent. Everything the audit has established reaches it as a briefing built fresh
+ * each turn from the run's own slot values — every reading, its value, whether it is confirmed, and
+ * the question to end on. That record is authoritative in a way a transcript is not: it is scoped to
+ * this run, it reflects the capture sweep, and it cannot drift the way a model's reading of its own
+ * past sentences can.
+ *
+ * So the history is doing a narrower job here than it does elsewhere — conversational texture, the
+ * thread of the last few exchanges, what the leader has just been asked. Measured on a live audit,
+ * the last 50 messages cost about 2,370 tokens and the last 16 about 700, on a key rated 30,000
+ * tokens a minute across the two-to-three calls one leader message makes.
+ *
+ * **16 rather than something smaller, and the number is about tool pairs and not about turns.** The
+ * count is of stored messages, and a single capture turn is three of them: the coach's reply, its
+ * `record_answers` call, and the tool result. So 16 messages is only about five exchanges, which is
+ * roughly the span in which "you just asked me that" is still true. Below that the coach starts
+ * losing the thread of its own last question, and the briefing does not carry conversational tone.
+ *
+ * If the coach ever repeats itself across a longer arc, this is the number to raise — but check the
+ * briefing first, because a repeat usually means a reading was captured and not reflected there.
+ */
+export const RECLAIM_COACH_MAX_HISTORY_MESSAGES = 16;
+
 /** The authored coach agent, consumed by F3 t-1's seed. */
 export interface ReclaimCoachAgentDefinition {
   slug: string;
@@ -101,6 +150,10 @@ export interface ReclaimCoachAgentDefinition {
   provider: string;
   /** The model, pinned because this coach's capture needs strong tool use. See `RECLAIM_COACH_MODEL`. */
   model: string;
+  /** The reply reservation, sized to the replies this coach actually writes. See `RECLAIM_COACH_MAX_TOKENS`. */
+  maxTokens: number;
+  /** How much transcript is sent, given the briefing carries the state. See `RECLAIM_COACH_MAX_HISTORY_MESSAGES`. */
+  maxHistoryMessages: number;
   persona: string;
   systemInstructions: string;
   guardrails: string;
@@ -219,6 +272,28 @@ export const RECLAIM_OFFER_CHOICES_SLUG = moduleCapabilitySlug(
  * redundant and strictly less safe. Removing it also retires the one grant on this agent whose
  * write target a model could influence at all.
  *
+ * **The three framework read tools have been removed too (`get_journey_state`, `get_next_steps`,
+ * `get_state`), and the reason is not economy.** They were granted before the coach had a briefing,
+ * when asking was the only way for it to know anything. The briefing now opens with the section the
+ * leader is on and lists every reading this run holds, with its value, so the reads had little left
+ * to answer — across a whole live audit they were called six times against `record_answers`' sixty
+ * three, and `get_journey_state` was never called at all.
+ *
+ * What settled it is what the two that *were* called came back with. `get_state` answers from the
+ * leader's slot values across **every** audit they have ever run, undated and unscoped: on this run
+ * it returned `reclaim_reflection_p1` and a deep-work blocker captured in a *previous* audit, days
+ * before this one began. The briefing already had to defend against exactly that — it says its own
+ * list is "from this audit and none of it from any earlier one, whatever undated values appear
+ * elsewhere in your context", and that clause exists because of this tool. A coach that reads a
+ * reflection the leader gave weeks ago and treats it as today's is the failure the run-scoped list
+ * was built to prevent, and no amount of prose reliably beats a tool result sitting in context.
+ * `get_next_steps` returned `{"journeyStarted":false,"moves":[]}` mid-audit, which is worse than
+ * nothing: it invites the model to talk about progression, which the briefing separately forbids
+ * because the leader's screen owns the way onward and the coach cannot see it.
+ *
+ * So the removal is a correctness fix that happens to be free. It also retires the last capability
+ * on this agent that could put another run's values in front of the model.
+ *
  * Still no `request_transition`. The server owns phase transitions, and the leader decides when to
  * move on.
  */
@@ -231,14 +306,13 @@ export const reclaimCoachAgent: ReclaimCoachAgentDefinition = {
   role: RECLAIM_COACH_ROLE,
   provider: RECLAIM_COACH_PROVIDER,
   model: RECLAIM_COACH_MODEL,
+  maxTokens: RECLAIM_COACH_MAX_TOKENS,
+  maxHistoryMessages: RECLAIM_COACH_MAX_HISTORY_MESSAGES,
   persona: PERSONA,
   systemInstructions: SYSTEM_INSTRUCTIONS,
   guardrails: GUARDRAILS,
   brandVoiceInstructions: BRAND_VOICE_INSTRUCTIONS,
   capabilities: [
-    { slug: 'get_journey_state' },
-    { slug: 'get_next_steps' },
-    { slug: 'get_state' },
     {
       // The only write. The run comes from the server-issued dispatch scope, which is the whole
       // reason the coach may write audit answers at all (I6), and this list is the operator-tunable

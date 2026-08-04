@@ -52,13 +52,18 @@ describe('reclaimCoachAgent authored content', () => {
 });
 
 describe('reclaimCoachAgent capability grants', () => {
-  it('grants five capabilities, one per slug (no duplicates)', () => {
+  it('grants two capabilities, one per slug (no duplicates)', () => {
     // `fill_slot` is still not among them: it was removed once `record_answers` covered the same
     // group from a server-issued run. See `agent.ts` for why the narrower tool was the less safe
-    // one. The fifth is `offer_choices`, which writes nothing at all.
+    // one. The second is `offer_choices`, which writes nothing at all.
+    //
+    // Down from five: the three framework reads (`get_journey_state`, `get_next_steps`,
+    // `get_state`) went on 2026-08-04 because they answer across *every* audit the leader has run,
+    // while the briefing that replaced them is scoped to this one. `agent-caps.test.ts` holds the
+    // I6 reasoning and asserts their absence by name.
     const slugs = reclaimCoachAgent.capabilities.map((c) => c.slug);
-    expect(slugs).toHaveLength(5);
-    expect(new Set(slugs).size).toBe(5);
+    expect(slugs).toHaveLength(2);
+    expect(new Set(slugs).size).toBe(2);
   });
 
   it('attaches an exposure config to the one write and to none of the reads', () => {

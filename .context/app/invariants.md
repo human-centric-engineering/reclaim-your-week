@@ -205,8 +205,27 @@ the guard.
 
 ## I6 — The agent never selects the run, and never transitions
 
-Granted capabilities: `get_journey_state`, `get_next_steps`, `get_state`,
-`reclaim_audit__record_answers`, `reclaim_audit__offer_choices`.
+Granted capabilities: `reclaim_audit__record_answers`, `reclaim_audit__offer_choices`.
+
+**The three framework reads were removed (2026-08-04): `get_journey_state`, `get_next_steps`,
+`get_state`.** They predate the run briefing, which now opens with the section the leader is on and
+lists every reading this run holds — so they had little left to answer, and across a whole live
+audit they were called six times against `record_answers`' sixty three.
+
+What settled it belongs in this invariant rather than in a performance note. `get_state` answers
+from the leader's slot values across **every** audit they have ever run, undated and unscoped: on a
+live run it returned `reclaim_reflection_p1` and a deep-work blocker captured in a _previous_ audit,
+days before that one began. The briefing already had to defend against it in prose — its list is
+"from this audit and none of it from any earlier one, whatever undated values appear elsewhere in
+your context" — and that clause exists because of this tool. A run-scoped record that a second tool
+can silently contradict is not run-scoped. `get_next_steps` returned `{"journeyStarted":false,
+"moves":[]}` mid-audit, which invites the model to talk about progression that the leader's screen
+owns and the coach cannot see.
+
+They are **disabled, never deleted**, for the reason the `fill_slot` note below sets out at length:
+a missing pivot row is permissive. `004-reclaim-coach-grants` lists all four in `RETIRED`, because
+the stale sweep only disables rows that exist and a fresh install would never create one — and this
+coach's own transcripts contain `get_state` calls from before the change, which a model imitates.
 
 **`fill_slot` was granted here and has been removed (2026-07-27).** The reasoning that put it there
 is kept below because it is the same reasoning that justifies `record_answers`' shape. It covered

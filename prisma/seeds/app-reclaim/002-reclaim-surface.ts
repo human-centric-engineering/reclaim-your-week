@@ -75,6 +75,14 @@ const unit: SeedUnit = {
         visibility: 'public',
         model: reclaimCoachAgent.model,
         provider: reclaimCoachAgent.provider,
+        // Sized to the replies this coach writes rather than left at the platform default, because a
+        // reply reservation is charged against the provider's per-minute budget whether or not it is
+        // used. See `RECLAIM_COACH_MAX_TOKENS`. Databases that already hold a row are moved by
+        // `006-reclaim-coach-budget`, since this half of the upsert only runs on a fresh install.
+        maxTokens: reclaimCoachAgent.maxTokens,
+        // Far below the platform default of 50, because this coach's memory is the run briefing
+        // rather than its transcript. See `RECLAIM_COACH_MAX_HISTORY_MESSAGES`.
+        maxHistoryMessages: reclaimCoachAgent.maxHistoryMessages,
         isActive: true,
         isSystem: true,
         createdBy: serviceAccount.id,
