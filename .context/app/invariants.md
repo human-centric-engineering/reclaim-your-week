@@ -407,6 +407,20 @@ live testing showed it is a hit rate however the prompt is worded: it takes a pa
 every time and drops the one-sentence answer to the question it just asked. An audit cannot be built
 on a hit rate.
 
+**A resumed turn sweeps before it generates as well** (added 2026-08-04). The sweep hangs off the
+`done` frame, so a turn the provider killed never swept at all — and the live cost of that was the
+coach asking again for something it had already been told. Asked how many hours of deep work they wanted,
+the leader said "10", the provider threw 429 before the coach spoke, and the resume built its briefing
+from a run that still held the reading as unasked. Everything downstream then worked correctly on that
+evidence and asked for the figure again, three lines under the answer. So a resume sweeps first: the
+reason for not sweeping a failed turn is that there is no settled transcript, and it is the **coach's**
+half that is missing — the leader's message is as settled as any other. The pass after `done` stays
+where it is, as the backstop for a first pass that could not run, which on a resume is a real
+possibility because a resume follows a provider that has just refused. Sweeping twice writes nothing
+twice: a reading already held is refused as `already_held`, and a superseding value identical to the
+stored one is refused as a rewrite. The pre-turn pass is awaited but never allowed to throw — capture
+is bookkeeping, and a turn is the leader's conversation.
+
 The sweep is a model call wrapped in code, and the code is the part that matters: it always runs, its
 worklist is computed from `phaseCaptureSlots` and the run's own answers, and every write goes through
 `checkSlotWrite` and `saveAnswer` exactly as the coach's do — so this invariant, I3 and I5 hold for
@@ -420,7 +434,8 @@ before the sweep existed.
 **Test:** `tests/unit/lib/app/programme/coach/capture-sweep.test.ts` (the guards, driven with the
 exchanges that were actually lost) and the sweep block in
 `tests/unit/app/api/v1/app/reclaim/coach-stream.route.test.ts` (that it runs, when, and that it
-cannot break a turn).
+cannot break a turn — including the order on a resume: sweep, drop the cached briefing, generate,
+sweep again, and a turn that still happens when the first pass throws).
 
 **Test:** `tests/unit/invariants/agent-caps.test.ts` — the grant set, the absence of
 `request_transition`, both exposure allowlists, the refused groups checked against the real slot
