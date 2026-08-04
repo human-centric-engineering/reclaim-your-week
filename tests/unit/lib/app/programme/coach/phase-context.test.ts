@@ -712,6 +712,29 @@ describe('buildCoachPhaseContext — the branches out of phase 1', () => {
     expect(block).toContain('optional');
   });
 
+  it('tells the coach to record a decline, which is what stops a second offer', async () => {
+    readRunAnswers.mockResolvedValue(everyAreaAnswered());
+
+    expect(await buildCoachPhaseContext('u1')).toContain('reclaim_calendar_declined');
+  });
+
+  it('never offers the calendar again once the leader has said no', async () => {
+    // The bug this closes: the briefing is rebuilt from the run's answers on every turn, so with
+    // nothing recording the refusal the offer branch fired again and the leader was asked twice —
+    // by a message whose own wording says it is optional and asks once.
+    readRunAnswers.mockResolvedValue({
+      ...everyAreaAnswered(),
+      reclaim_calendar_declined: { ...direct('Yes'), valueJson: true },
+    });
+
+    const block = await buildCoachPhaseContext('u1');
+
+    expect(block).not.toContain('calendar branch is offered');
+    expect(block).toContain('already been offered the calendar branch and said no');
+    // The step is not taken away, so the coach may answer honestly if the leader raises it.
+    expect(block).toContain('button on their screen');
+  });
+
   it('stops asking the two questions once they have been answered', async () => {
     readRunAnswers.mockResolvedValue({
       ...everyAreaAnswered(),

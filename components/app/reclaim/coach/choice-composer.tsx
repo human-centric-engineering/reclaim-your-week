@@ -95,9 +95,12 @@ export function ChoiceComposer({
   }, []);
 
   return (
-    // The text box's own frame: same radius, same hairline, same width. See the header for why the
-    // control keeps it rather than drawing the answers bare onto the footer.
-    <div className="border-border bg-background rounded-2xl border px-4 py-4 sm:px-5">
+    // The text box's own frame: same radius, same hairline, same width, same `muted` fill. See the
+    // header for why the control keeps it rather than drawing the answers bare onto the footer — and
+    // note that the fill is what finally makes that frame do its job, since while the control and the
+    // page were both `background` there was nothing to see. The pills inside stay on the page's own
+    // ground, so the set reads as sitting *in* the well rather than as a second flat block filling it.
+    <div className="border-border bg-muted rounded-2xl border px-4 py-4 sm:px-5">
       <div className="flex items-baseline justify-between gap-4">
         {/* The advisory. Small tracked capitals are how this app labels a section, so "choose one"
             arrives in the product's own voice instead of as a widget's caption. */}
@@ -139,7 +142,7 @@ export function ChoiceComposer({
             // switches between the two paths mid-audit does not meet two vocabularies for the same
             // choice. The hover is `accent`, the token this palette defines as barely-there teal for
             // exactly this: the brand shows as a touch rather than a wash.
-            className={`border-border hover:border-primary/50 hover:bg-accent hover:text-primary focus-visible:ring-ring/40 focus-visible:ring-offset-background rounded-full border px-5 py-2.5 text-[0.95rem] transition-all duration-300 ease-out focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none active:scale-[0.98] disabled:opacity-40 motion-reduce:transition-none ${
+            className={`border-border bg-background hover:border-primary/50 hover:bg-accent hover:text-primary focus-visible:ring-ring/40 focus-visible:ring-offset-muted rounded-full border px-5 py-2.5 text-[0.95rem] transition-all duration-300 ease-out focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none active:scale-[0.98] disabled:opacity-40 motion-reduce:transition-none ${
               settled ? 'translate-y-0 opacity-100' : 'translate-y-1 opacity-0'
             }`}
           >

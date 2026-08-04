@@ -554,8 +554,57 @@ describe('PhaseConversation — the beats of phase 1', () => {
     readAnswers.mockResolvedValue(everyArea());
     render(<PhaseConversation {...phase1} />);
 
-    const link = await screen.findByRole('link', { name: /Look at my calendar/ });
+    const link = await screen.findByRole('link', { name: /Yes, look at my calendar/ });
     expect(link).toHaveAttribute('href', '/programme/calendar');
+  });
+
+  /**
+   * The offer is made once and answered once; the step stays open for the whole section.
+   *
+   * Both halves were broken and they cost the leader the same thing twice. The card had no way to
+   * say no, so a decline was said to the coach and recorded nowhere — and the coach, whose briefing
+   * is rebuilt from the run's answers every turn, offered again a few turns later. Meanwhile the
+   * card is a beat: it scrolls away under the conversation that follows it, so someone who did want
+   * the calendar twenty minutes later had nothing to press.
+   */
+  it('records the decline when the leader says not now, and stops offering', async () => {
+    const user = userEvent.setup();
+    readAnswers.mockResolvedValue(everyArea());
+    saveAnswer.mockResolvedValue(undefined);
+    render(<PhaseConversation {...phase1} />);
+
+    await user.click(await screen.findByRole('button', { name: /Not now/ }));
+
+    expect(saveAnswer).toHaveBeenCalledWith('run-1', {
+      slotSlug: 'reclaim_calendar_declined',
+      value: 'Yes',
+      valueJson: true,
+    });
+  });
+
+  it('withdraws the card once they have declined, and keeps the way in', async () => {
+    readAnswers.mockResolvedValue({
+      ...everyArea(),
+      reclaim_calendar_declined: {
+        value: 'Yes',
+        valueJson: true,
+        sourceType: 'direct',
+        confidence: 10,
+      },
+    });
+    render(<PhaseConversation {...phase1} />);
+    await waitFor(() => expect(readAnswers).toHaveBeenCalled());
+
+    // The offer, and its "not now", are answered and gone.
+    expect(
+      screen.queryByRole('link', { name: /Yes, look at my calendar/ })
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Not now/ })).not.toBeInTheDocument();
+    // The door is not. A decline says "not this minute", not "take it away".
+    expect(screen.getByRole('link', { name: 'Look at my calendar' })).toHaveAttribute(
+      'href',
+      '/programme/calendar'
+    );
   });
 
   it('withdraws the offer once a calendar has been reconciled', async () => {

@@ -249,14 +249,27 @@ of the leader. The answer a leader taps is sent as an ordinary turn in their own
 through `record_answers` like anything else: nothing is stored because a button was drawn.
 `record_answers` therefore remains the only capability on this agent that writes.
 
-It reads the run for one thing only (added 2026-08-03): whether the named reading is being asked as
+It reads the run for two things (added 2026-08-03), and both are refusals rather than writes.
+
+The first is whether the named reading is being asked as
 half of a **two-part question**, in which case it refuses. A pair — "is your team spread across
 places, and how does that shape how you lead?" — has an open half in it, and a live audit showed the
 cost of ignoring that: the coach asked the open half and the composer drew **Yes / No** beneath it,
 because the anchor is a boolean and booleans have a set. The reading was not wrong; the question was.
 `compoundQuestionSlugs` (`coach/phase-slots.ts`) states the rule beside the definition of a pair, and
 the same rule suppresses the instruction in the capture list and stands the route's deterministic
-fallback down. The read is a read: the capability still writes nothing, and it fails **open** — a run
+fallback down.
+
+The second is whether the reading is one this audit has **settled** — answered, and carrying no flag
+saying it is owed another turn (`coach/settled-reading.ts`). A live audit asked which period was being
+audited, the leader tapped "last quarter", and in that one turn the coach recorded the answer, called
+`offer_choices` for the same reading, and asked something else: the four periods were drawn beneath
+"what stands out to you about your current situation and priorities?". The test is "settled" and not
+"answered" deliberately — the audit does go back to a reading it **inferred** rather than heard, and
+that turn keeps its buttons, because it is the turn where a leader is asked to correct something the
+audit claims they said.
+
+Both reads are reads: the capability still writes nothing, and both fail **open** — a run
 it cannot read yields an offer rather than none, because a wrong offer names its reading and can be
 dismissed, while a silently missing one leaves the leader the blank box this mechanism replaced.
 
@@ -350,14 +363,16 @@ Refused, and each for its own reason:
   leader's words may be republished. An agent that can write consent can manufacture it.
 - **`reclaim_composite`** — the reconciled lane, whose whole story (I-composite) is that it is
   computed from the calendar and the estimates. A model-derived number there makes that false.
-- **`reclaim_calendar`, except two slugs.** The lane figures stay refused for I4's reason. But the
-  group also holds six _leader self-reports_, and the wholesale refusal was written for the lanes:
+- **`reclaim_calendar`, except three slugs.** The lane figures stay refused for I4's reason. But the
+  group also holds _leader self-reports_, and the wholesale refusal was written for the lanes:
   `completeness` and `period` are the answers to two questions the source explicitly tells the coach
   to **ask**, before any file exists, and the first decides how every later figure is framed. A
   conversation that cannot record the answer to a question it was told to ask captures nothing at the
-  point that matters. The exception is a named slug list
-  (`COACH_WRITABLE_SLOTS_IN_REFUSED_GROUPS`); the other four self-reports stay refused because they
-  are asked on the review screen, after the upload, where they belong.
+  point that matters. `declined` is the answer to the third: the branch is offered **once**, and with
+  nothing recording a no the briefing — rebuilt from the run's answers every turn — offered it again,
+  which is the one thing the offer's own wording promises it will not do. The exception is a named
+  slug list (`COACH_WRITABLE_SLOTS_IN_REFUSED_GROUPS`); the other four self-reports stay refused
+  because they are asked on the review screen, after the upload, where they belong.
 
   The grant therefore permits `reclaim_calendar` and the **code** keeps the lanes shut — the two
   layers deliberately not identical. `facetSchema` is strict on `{ groups, scopes }`, so a

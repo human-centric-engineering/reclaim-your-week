@@ -26,9 +26,15 @@
  *
  * **Nothing stacks below the conversation any more.** The signpost opens it, the beats (the calendar
  * branch, the reveal, the picture) are dropped into the transcript at the moment they appear and stay
- * there while the conversation carries on below them, and the move onward sits above the composer. A
- * leader never scrolls past their own week to reach the question they are being asked — which is what
- * happened while the beats were pinned to the tail. See `CoachBeat` for why each one carries a key.
+ * there while the conversation carries on below them, and the move onward sits at the foot of the
+ * composer band. A leader never scrolls past their own week to reach the question they are being
+ * asked — which is what happened while the beats were pinned to the tail. See `CoachBeat` for why
+ * each one carries a key.
+ *
+ * **The control a leader answers into is its own surface**, filled rather than continuous with the
+ * page, and the move onward is under it rather than over it. Both of those are the same correction:
+ * the place where a leader answers had been indistinguishable from the place they read, and the
+ * first thing under a question was a button offering to leave it.
  *
  * The form panels are not replaced. A leader who would rather fill in fields can switch, and the two
  * paths write the same slots through the same server path (I3), so switching mid-phase keeps
@@ -72,6 +78,7 @@ import {
   advancePhase,
   readAnswers,
   readLabels,
+  saveAnswer,
   type RunAnswers,
 } from '@/components/app/reclaim/phase/actions';
 
@@ -511,7 +518,7 @@ export function PhaseConversation({
             : null;
 
   /**
-   * What sits beside the button when the phase is covered but not finished.
+   * What sits beside the button once the phase is open to being left.
    *
    * The threshold leaves room for one or two unanswered readings on purpose, so "you may move on"
    * and "everything here has been asked" are different states, and the button alone cannot tell them
@@ -519,11 +526,18 @@ export function PhaseConversation({
    * what they are carrying on for, and one who presses it knows what they are leaving. The coach
    * never says either of these things, because moving on is theirs to decide and this is where the
    * product says so (I6).
+   *
+   * **Both states get a sentence, which is a change.** The second one used to be silent: a phase with
+   * nothing outstanding drew the button with an empty row beside it, so the one moment a leader can
+   * move on with nothing left behind was the one moment the product said nothing about it — and a
+   * bare button reads as an instruction rather than as an offer. It is also the state a leader is
+   * most often looking at, since most phases end fully answered.
    */
-  const stillOpen =
-    canAdvance && outstanding > 0
+  const stillOpen = !canAdvance
+    ? null
+    : outstanding > 0
       ? 'We have answered most of the questions in this part, so you may move on whenever you wish, or carry on here to clarify or add anything.'
-      : null;
+      : 'That is everything this part asks about. Move on whenever you are ready, or carry on here if there is anything else you would like to add.';
 
   const advance = async () => {
     setBusy(true);
@@ -548,13 +562,55 @@ export function PhaseConversation({
 
   const chart = revealed ? buildChartData(answers, labels) : null;
 
-  // Offered once every area has a figure, and withdrawn once a calendar has been reconciled. Not
-  // gated on the reveal: a leader should be able to take the branch before seeing the picture, which
-  // is the order the source runs them in.
-  const offerCalendar =
+  /**
+   * The calendar branch: where it is on offer, and where the offer has been answered.
+   *
+   * **`offerCalendar` is the beat; `calendarInReach` is the door, and they are no longer the same
+   * thing.** They used to be, and a leader who said no paid for it twice. The card stayed up, because
+   * nothing but an upload withdrew it — and the coach asked again a few turns later, because its
+   * briefing is rebuilt from the run's answers on every turn and a decline was recorded nowhere. Two
+   * offers of an optional step, from a message that opens by saying it is optional.
+   *
+   * So the offer is made once and then answered: `reclaim_calendar_declined` withdraws the card and
+   * silences the coach's branch (`phase-context.ts`). What it deliberately does **not** do is take the
+   * step away. Someone who declines while they are mid-thought about their own week may well want it
+   * ten minutes later, and having to ask the coach to re-offer something they were told was optional
+   * is a worse trade than a quiet link in the composer band. That link is `calendarInReach`, and it
+   * outlives the decline for the whole of this phase.
+   *
+   * Neither is gated on the reveal: a leader should be able to take the branch before seeing the
+   * picture, which is the order the source runs them in.
+   */
+  const calendarInReach =
     phaseKey === CHART_REVEAL_PHASE &&
     everyVisibleAreaHasHours(answers) &&
     !truthy(answers['reclaim_calendar_uploaded']);
+  const calendarDeclined = truthy(answers['reclaim_calendar_declined']);
+  const offerCalendar = calendarInReach && !calendarDeclined;
+
+  /**
+   * "Not now", pressed — the leader's own decline, recorded as theirs.
+   *
+   * The deterministic half of the pair. The coach is also told to record a decline it hears in prose,
+   * and that is a model remembering to call a tool in the middle of a warm conversation, which
+   * `capture-sweep.ts` exists because it cannot be relied on. A button is not a hit rate: the leader
+   * presses it, the reading lands through the same leader-owned write path as every correction they
+   * make in the panel, and the card is gone by the next render.
+   */
+  const declineCalendar = useCallback(async () => {
+    // Two things about this write. The prose is "Yes" because it is the word for the boolean's own
+    // value — they did decline — and never the leader's sentence: a row reading "No" over a stored
+    // `true` is the mismatch `checkSlotWrite` normalises away on the coach's path, and this path
+    // writes straight through `saveAnswer`. And it is best-effort, because the worst case of a
+    // failure is the offer standing, which is exactly where the leader already was; an error about
+    // bookkeeping is not worth the interruption when they have just said "not now".
+    await saveAnswer(runId, {
+      slotSlug: 'reclaim_calendar_declined',
+      value: 'Yes',
+      valueJson: true,
+    }).catch(() => undefined);
+    await refresh();
+  }, [runId, refresh]);
 
   // The moment the coach opens with. Only a moment that is due and absent from the run's ledger is
   // passed down, so a phase already under way never troubles the server.
@@ -599,12 +655,31 @@ export function PhaseConversation({
             optional, your calendar file is never stored, and the audit works just as well without
             it.
           </p>
-          <Link
-            href="/programme/calendar"
-            className="border-border text-foreground mt-4 inline-block rounded-full border px-7 py-2.5 text-sm font-medium"
-          >
-            Look at my calendar
-          </Link>
+          {/* Both answers, side by side, because only one of them was ever on the card. A leader
+              who did not want this had nothing to press and had to say no to the coach instead —
+              which is a fine way to answer a person and a poor way to be sure you have been heard,
+              since nothing recorded it and the question came back. "Not now" is the quieter of the
+              two and says what it does: the link below the composer stays, for the whole of this
+              section, whichever of these is pressed. */}
+          <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-3">
+            {/* "Yes, …" rather than the bare "Look at my calendar" the footer link keeps: this one
+                is the answer to a question the coach has just asked, it sits beside the other answer,
+                and the two are told apart by name for anyone reading the page through a list of its
+                links. */}
+            <Link
+              href="/programme/calendar"
+              className="border-border text-foreground inline-block rounded-full border px-7 py-2.5 text-sm font-medium"
+            >
+              Yes, look at my calendar
+            </Link>
+            <button
+              type="button"
+              onClick={() => void declineCalendar()}
+              className="text-muted-foreground hover:text-foreground text-sm underline underline-offset-4"
+            >
+              Not now
+            </button>
+          </div>
         </div>
       ),
     });
@@ -729,29 +804,20 @@ export function PhaseConversation({
         }
         beats={beats}
         footer={
+          // One line, under the box: what this phase still owes on the left, the ways out of it on
+          // the right. It used to be a stack of three — a filled button, a paragraph beside it, and a
+          // link pushed to the far end — sitting *above* the composer, which is what made this band
+          // feel crowded: two filled pills a centimetre apart, each claiming to be the thing to press.
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-            {canAdvance ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => void advance()}
-                  disabled={busy}
-                  className="bg-primary text-primary-foreground rounded-full px-6 py-2 text-sm font-medium disabled:opacity-40"
-                >
-                  {busy ? 'Saving…' : 'Continue to the next section'}
-                </button>
-                {/* Runs to the end of the row rather than to a fixed measure, so it takes the same
-                    width as the composer below it and settles on two lines beside the button. The
-                    basis is what makes it wrap onto its own line instead of squeezing when the row
-                    is too narrow to hold both. */}
-                {stillOpen !== null && (
-                  <p className="text-muted-foreground min-w-0 flex-1 basis-64 text-xs leading-relaxed">
-                    {stillOpen}
-                  </p>
-                )}
-              </>
-            ) : (
-              <p className="text-muted-foreground text-xs leading-relaxed">{waitingOn}</p>
+            {/* Whichever of the two applies. They are the same sentence in different moods — why the
+                move is not offered yet, or what taking it would leave — so they take the same place
+                and the same voice rather than being laid out differently. It runs to the end of the
+                row rather than to a fixed measure, and the basis is what makes it wrap onto its own
+                line instead of squeezing when the row is too narrow to hold both. */}
+            {(canAdvance ? stillOpen : waitingOn) !== null && (
+              <p className="text-muted-foreground min-w-0 flex-1 basis-64 text-xs leading-relaxed">
+                {canAdvance ? stillOpen : waitingOn}
+              </p>
             )}
 
             {error !== null && (
@@ -760,18 +826,60 @@ export function PhaseConversation({
               </p>
             )}
 
-            {/* The panel has no column of its own below `xl`, so it is one tap away instead. */}
-            <button
-              type="button"
-              onClick={() => setPanelOpen(true)}
-              className="text-muted-foreground hover:text-foreground ml-auto text-xs underline underline-offset-4 xl:hidden"
-            >
-              {/* Counted over what this leader will actually be asked, which is what the panel this
-                  button opens counts too. A denominator that included readings ruled out by an
-                  earlier answer would sit here saying "18 of 19" beside a panel saying "18 of 18",
-                  and the missing one would read as a question the coach had skipped. */}
-              {applicableCaptured} of {applicable.length} noted
-            </button>
+            <div className="ml-auto flex shrink-0 items-center gap-4">
+              {/* The calendar step, kept within reach for the whole of this section rather than only
+                  at the moment it is offered. The card above is a beat: it appears once, is answered
+                  once, and then scrolls away under the conversation that follows it — so a leader who
+                  said "not now" and changed their mind twenty minutes later had no way back to a
+                  step they were told was optional and open to them. This is that way back, and it
+                  survives the decline on purpose. It disappears the moment an upload is reconciled,
+                  because then there is nothing left to offer. */}
+              {calendarInReach && (
+                <Link
+                  href="/programme/calendar"
+                  className="text-muted-foreground hover:text-foreground text-xs underline underline-offset-4"
+                >
+                  Look at my calendar
+                </Link>
+              )}
+
+              {/* The panel has no column of its own below `xl`, so it is one tap away instead. */}
+              <button
+                type="button"
+                onClick={() => setPanelOpen(true)}
+                className="text-muted-foreground hover:text-foreground text-xs underline underline-offset-4 xl:hidden"
+              >
+                {/* Counted over what this leader will actually be asked, which is what the panel this
+                    button opens counts too. A denominator that included readings ruled out by an
+                    earlier answer would sit here saying "18 of 19" beside a panel saying "18 of 18",
+                    and the missing one would read as a question the coach had skipped. */}
+                {applicableCaptured} of {applicable.length} noted
+              </button>
+
+              {/* **Outlined, where Send is filled**, and the hierarchy is the whole reason. Two solid
+                  teal pills in one band say "press me" twice and leave the leader to work out which;
+                  the filled one is what to do now, and this is what you may do instead. It is not
+                  quiet — it is the only bordered thing in the band, it takes the brand ink, and it
+                  fills on hover, so pointing at it turns it into the primary button it becomes the
+                  moment you mean it. The arrow says which way the phase goes and is hidden from
+                  screen readers, so the name the tests and a screen reader hear is still the words. */}
+              {canAdvance && (
+                <button
+                  type="button"
+                  onClick={() => void advance()}
+                  disabled={busy}
+                  className="group border-primary/40 text-primary hover:border-primary hover:bg-primary hover:text-primary-foreground focus-visible:ring-ring/40 focus-visible:ring-offset-background inline-flex items-center gap-2 rounded-full border px-5 py-2 text-sm font-medium transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:opacity-40 motion-reduce:transition-none"
+                >
+                  {busy ? 'Saving…' : 'Continue to the next section'}
+                  <span
+                    aria-hidden="true"
+                    className="transition-transform duration-200 group-hover:translate-x-0.5 motion-reduce:transition-none"
+                  >
+                    →
+                  </span>
+                </button>
+              )}
+            </div>
           </div>
         }
       />

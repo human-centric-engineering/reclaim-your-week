@@ -298,10 +298,14 @@ export function Phase1Panel({
       {everyVisibleAreaHasHours(liveAnswers) &&
         !truthy(liveAnswers['reclaim_calendar_uploaded']) && (
           <div className="border-border/70 border-t pt-8">
+            {/* A leader who declined the branch in conversation gets the door and not the offer
+                again. The step stays open — this panel is where it has always lived — but the
+                paragraph that makes the case for it has had its answer, and repeating it here would
+                be the form asking a question the conversation has already closed. */}
             <p className="text-foreground text-[1.02rem] leading-relaxed text-balance">
-              If you would like, you can reality-check this against your actual calendar. It is
-              optional, your calendar file is never stored, and the audit works just as well without
-              it.
+              {truthy(liveAnswers['reclaim_calendar_declined'])
+                ? 'The calendar step is still here whenever you would like it.'
+                : 'If you would like, you can reality-check this against your actual calendar. It is optional, your calendar file is never stored, and the audit works just as well without it.'}
             </p>
             <Link
               href="/programme/calendar"

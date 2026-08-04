@@ -24,20 +24,27 @@
  * an answer this audit cannot store. So the argument list is one slug, the options come from
  * `choicesFor`, and there is no argument that can make them come out differently.
  *
- * The slug itself is checkable rather than trusted, and it is checked four ways: the slot must exist,
+ * The slug itself is checkable rather than trusted, and it is checked five ways: the slot must exist,
  * it must have an authored answer set, it must belong to the section the leader is actually on —
- * which comes from the server-issued dispatch scope, not from the model (I6) — and the question it is
- * for must be a question on its own rather than half of a pair. A refusal says which of the four
- * failed, because the result is fed back into the same turn and the coach can still ask the question
- * properly with no offer attached.
+ * which comes from the server-issued dispatch scope, not from the model (I6) — the question it is for
+ * must be a question on its own rather than half of a pair, and it must be a question this audit is
+ * still asking. A refusal says which of the five failed, because the result is fed back into the same
+ * turn and the coach can still ask the question properly with no offer attached.
  *
- * The fourth check is the one paid for in a database read, and it was added after a live audit asked
+ * The last two are the ones paid for in a database read. The pairing check was added after a live audit asked
  * "with a team split between two locations, how does having a distributed team shape your leadership?"
  * and put **Yes / No** underneath it. Nothing the other three check was wrong: the reading exists, it
  * is a boolean, and it was in section 0. What was wrong is that the reading is the *anchor* of a pair
  * whose second half is answered in the leader's own words, so the question actually on screen was the
  * pair and the buttons answered a question nobody had asked. `compoundQuestionSlugs` in
  * `../phase-slots.ts` states the rule and explains why it lives beside the definition of a pair.
+ *
+ * The fifth was added after the same audit went one further: told to end the turn on the period being
+ * audited, and handed that period by the leader, the coach recorded it, offered its answers, and
+ * asked something else. The four periods were then drawn under "what stands out to you about your
+ * current situation and priorities?". `readingIsSettled` in `../settled-reading.ts` states that rule,
+ * and explains why the test is "settled" rather than "answered": the audit really does go back to
+ * readings it holds but has not had confirmed, and those turns keep their buttons.
  *
  * The context builder already decides which reading the turn should end on
  * (`nextQuestionFor` in `../phase-context.ts`) and now tells the coach when that reading has a set.
@@ -65,6 +72,7 @@ import { slotDefinitionFor } from '@/lib/app/programme/coach/writable-slots';
 import { PHASE_SLOT_GROUPS, slotLabel } from '@/lib/app/programme/coach/phase-slots';
 import { choicesFor } from '@/lib/app/programme/coach/slot-choices';
 import { asksInsideCompoundQuestion } from '@/lib/app/programme/coach/compound-question';
+import { readingIsSettled } from '@/lib/app/programme/coach/settled-reading';
 
 const offerChoicesSchema = z.object({
   slotSlug: z.string().trim().min(1).max(120),
@@ -91,7 +99,7 @@ export class ReclaimOfferChoicesCapability extends BaseCapability<
     // Overwritten with the namespaced slug by `namespaceModuleCapability`; the three must match.
     name: 'offer_choices',
     description:
-      'Show the leader the answers to pick from, for a question whose answers are a fixed set. Call it in the same turn as the question, straight after asking, and name the reading the question is about. The answers themselves come from the audit, not from you, so there is nothing to supply beyond the reading. Ask the question in your own words exactly as you otherwise would, and do not list the options in your reply: they appear on screen under it, and reading them out as well is the same question asked twice. Use it only when the answers really are a fixed set, which your context tells you. Never for a question about what something is like, what stands out, or anything the leader answers in their own words. Never when you are asking two readings as one question either, even if one of them has a set: the leader is reading a two-part question, and a set of buttons under it answers only half of it. The leader can always type something else instead, so an offer never closes a question.',
+      'Show the leader the answers to pick from, for a question whose answers are a fixed set. Call it in the same turn as the question, straight after asking, and name the reading the question is about. The answers themselves come from the audit, not from you, so there is nothing to supply beyond the reading. Ask the question in your own words exactly as you otherwise would, and do not list the options in your reply: they appear on screen under it, and reading them out as well is the same question asked twice. Use it only when the answers really are a fixed set, which your context tells you. Never for a question about what something is like, what stands out, or anything the leader answers in their own words. Never when you are asking two readings as one question either, even if one of them has a set: the leader is reading a two-part question, and a set of buttons under it answers only half of it. Never for a reading you have just recorded, or one this audit already holds and is not going back to: the offer belongs to the question you are asking now, not to the one they have finished answering. The leader can always type something else instead, so an offer never closes a question.',
     parameters: {
       type: 'object',
       properties: {
@@ -166,7 +174,28 @@ export class ReclaimOfferChoicesCapability extends BaseCapability<
       );
     }
 
-    // The last check, and the only one that needs the run: a reading asked as half of a two-part
+    // An offer belongs to a question, and a reading this audit has answered and left is not one. The
+    // failure this closes is the coach recording the leader's answer and offering that same reading's
+    // buttons in the same breath, which puts four answers to a settled question under whatever it
+    // asked next. Refused rather than dropped silently, because the coach is mid-turn and what it
+    // needs to know is that the question moved on, not that a tool happened to return nothing.
+    //
+    // Fails open on an unreadable run, for the reason `asksInsideCompoundQuestion` does below.
+    if (
+      context.userId !== null &&
+      (await readingIsSettled({
+        userId: context.userId,
+        runId: scope.runId,
+        slotSlug: args.slotSlug,
+      }))
+    ) {
+      return this.error(
+        `The leader has already answered "${args.slotSlug}" in this audit and nothing about it is outstanding, so there is no question here for them to pick an answer to. Ask whatever you are actually asking now, with no offer attached. If they raise this reading again themselves, take what they say in their own words.`,
+        'already_answered'
+      );
+    }
+
+    // The last check, and the other one that needs the run: a reading asked as half of a two-part
     // question has no answer set to offer, because the question the leader is reading is the pair.
     // Refused with the reason stated plainly, so the coach's next iteration knows it may still ask —
     // it is the *offer* that is wrong here, never the question.

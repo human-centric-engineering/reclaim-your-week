@@ -76,10 +76,11 @@ describe('offer_choices', () => {
   });
 
   it('derives yes and no for a boolean reading, so no list has to be kept in step', async () => {
-    // Held already, so the coach is going back to confirm it rather than asking it with its partner.
-    // A lone yes-or-no keeps its buttons — see the compound-question tests below for the other case.
+    // The *follower* is what this run holds, which leaves the yes-or-no outstanding and standing on
+    // its own: a pair is a compound question only while both halves are open. See the
+    // compound-question tests below for the case where it is not.
     readRunAnswers.mockResolvedValue({
-      reclaim_setup_in_transition: recorded('Yes', true),
+      reclaim_setup_transition_detail: recorded('a merger', null),
     });
 
     const result = await capability.execute(
@@ -149,6 +150,69 @@ describe('offer_choices', () => {
 
     expect(result.success).toBe(true);
     expect(result.data?.options).toEqual(['Yes', 'No']);
+  });
+
+  it('refuses a reading this audit has answered and left, so the buttons cannot outlive the question', async () => {
+    // The bug as a leader met it. Asked which period the audit covers, they tapped "last quarter";
+    // the coach recorded it, called this tool for the same reading in the same turn, and asked
+    // something else. The four periods were then drawn under "what stands out to you about your
+    // current situation and priorities?", inviting them to answer a settled question underneath an
+    // unrelated one.
+    readRunAnswers.mockResolvedValue({
+      reclaim_setup_audit_period: recorded('last quarter', null),
+    });
+
+    const result = await capability.execute(
+      { slotSlug: 'reclaim_setup_audit_period' },
+      contextIn('phase-0-setup')
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error?.code).toBe('already_answered');
+    // Fed back mid-turn, so it has to leave the coach able to finish the turn it is in rather than
+    // simply told no.
+    expect(result.error?.message).toContain('no offer attached');
+  });
+
+  it('still offers a reading the coach inferred and has never had confirmed', async () => {
+    // The distinction the guard turns on, and the reason it is not "already answered". A reading the
+    // coach worked out rather than heard is offered back for the leader to put right, and that is the
+    // turn the buttons matter most on: the audit currently claims something they never said, and the
+    // set is the shortest way for them to correct it.
+    readRunAnswers.mockResolvedValue({
+      reclaim_setup_audit_period: {
+        value: 'last month',
+        valueJson: null,
+        sourceType: 'inferred',
+        confidence: 5,
+      },
+    });
+
+    const result = await capability.execute(
+      { slotSlug: 'reclaim_setup_audit_period' },
+      contextIn('phase-0-setup')
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.data?.options).toEqual(['last week', 'last month', 'last quarter', 'last year']);
+  });
+
+  it('treats a recorded yes-or-no as settled, because a typed reading carries no flag', async () => {
+    // `answerFlag` exempts every typed reading unconditionally, so a boolean this run holds is
+    // settled the moment it lands. That is the right reading of it: its two buttons answer a question
+    // that has been answered, and there is no "not yet confirmed" state for them to sit in.
+    readRunAnswers.mockResolvedValue({
+      reclaim_setup_in_transition: recorded('Yes', true),
+      reclaim_setup_transition_detail: recorded('a merger', null),
+    });
+
+    const result = await capability.execute(
+      { slotSlug: 'reclaim_setup_in_transition' },
+      contextIn('phase-0-setup')
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error?.code).toBe('already_answered');
   });
 
   it('offers rather than refuses when the run cannot be read at all', async () => {

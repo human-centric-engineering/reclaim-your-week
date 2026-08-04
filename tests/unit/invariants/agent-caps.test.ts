@@ -36,6 +36,7 @@ import {
   COACH_REFUSED_GROUPS,
   COACH_WRITABLE_GROUPS,
   COACH_WRITABLE_SLOTS_IN_REFUSED_GROUPS,
+  slotDefinitionFor,
 } from '@/lib/app/programme/coach/writable-slots';
 
 const grants = reclaimCoachAgent.capabilities;
@@ -210,13 +211,36 @@ describe('I6 — record_answers takes its run from the server, so it may write t
     }
   });
 
-  it('permits the two questions the coach is told to ask before an upload', () => {
+  it('permits the leader-answered slugs inside the refused calendar group', () => {
     // `completeness` decides how every later figure is framed, and a conversation that cannot record
     // the answer to a question it was told to ask captures nothing at the point that matters.
+    // `declined` is the same argument about the other answer: the branch is offered once, and
+    // without somewhere to put a "no" the coach asks again.
+    //
+    // The typed value follows the slot's own data type, which is the point of reading the definition
+    // rather than passing `undefined`: a boolean exception that arrived with prose alone would be
+    // refused by the typed-value rule, and this test would be asserting the group check while
+    // silently passing for the wrong reason.
     for (const slug of COACH_WRITABLE_SLOTS_IN_REFUSED_GROUPS) {
       expect(facetAllowsWrite(write, 'reclaim_calendar')).toBe(true);
-      const check = checkSlotWrite(slug, undefined);
+      const definition = slotDefinitionFor(slug);
+      expect(definition, `${slug} must be a registered slot`).toBeDefined();
+      const typed = definition?.dataType === 'boolean' ? true : undefined;
+      const check = checkSlotWrite(slug, typed);
       expect(check.ok, `${slug} must be writable`).toBe(true);
+    }
+  });
+
+  it('records a declined calendar offer as the leader-facing "No"', () => {
+    // The prose is what the leader is shown beside the conversation, and a boolean whose sentence
+    // disagreed with its typed value is the failure `checkSlotWrite` normalises away. Pinned here
+    // because this slug is what stops a second offer: a row reading "Yes" over a stored `false`
+    // would leave the leader unable to see what the audit thinks they said.
+    const check = checkSlotWrite('reclaim_calendar_declined', true, { value: 'Not now' });
+    expect(check.ok).toBe(true);
+    if (check.ok) {
+      expect(check.accepted.valueJson).toBe(true);
+      expect(check.accepted.value).toBe('Yes');
     }
   });
 

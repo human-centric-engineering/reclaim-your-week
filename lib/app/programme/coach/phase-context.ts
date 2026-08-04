@@ -595,6 +595,7 @@ function momentForPhase(
     // whichever way the branch went. So both are assembled here rather than one returning early.
     const parts: string[] = [];
     const uploaded = truthy(answers['reclaim_calendar_uploaded']);
+    const declined = truthy(answers['reclaim_calendar_declined']);
     const completeness = answers['reclaim_calendar_completeness'];
     const everyAreaAnswered = everyVisibleAreaHasHours(answers);
 
@@ -628,6 +629,24 @@ function momentForPhase(
           );
         }
       }
+    } else if (declined) {
+      // The offer has been made and answered, and this is what "offered once" costs to keep true.
+      //
+      // The instruction below has always said "if they decline do not return to it", and the coach
+      // could not obey it: this briefing is rebuilt from the run's answers on every turn, so a
+      // decline that nothing recorded left the offer branch firing again a few turns later. A leader
+      // who had already said no was asked a second time, by a message whose own wording promises it
+      // is optional. The decline is now a reading (`reclaim_calendar_declined`), written either by
+      // the coach hearing the no or by the leader pressing "Not now" on the card, and this is the
+      // branch it buys.
+      parts.push(
+        '',
+        'They have already been offered the calendar branch and said no. That is a complete answer.',
+        'Do not offer it again, do not check whether they have changed their mind, and do not refer to',
+        'it in passing. If they raise it themselves, the way in is a button on their screen and they can',
+        'take it whenever they like; say so plainly and briefly, and carry on with the audit as it is.',
+        'What they estimated is the picture, and it is worth as much without a calendar behind it.'
+      );
     } else if (everyAreaAnswered) {
       // Gated on the data rather than on the model's sense of "have we finished", so the offer can
       // never arrive halfway through the areas.
@@ -637,6 +656,9 @@ function momentForPhase(
         'it once, close to these words, take no for an answer without persuading, and if they decline',
         'do not return to it:',
         RECLAIM_CALENDAR_OFFER,
+        'If they say no, or not now, record reclaim_calendar_declined as true with the boolean in',
+        'valueJson before you say anything else, and then let it go warmly. That reading is the whole of',
+        'what stops them being asked a second time, so it matters more than anything you would say next.',
         'It is optional and the audit is worth doing without it, so say so. If they say yes, ask two',
         'things before anything else: how much their calendar reflects their actual working life, and',
         'what period they would like analysed. Record both as reclaim_calendar_completeness and',
@@ -1204,13 +1226,23 @@ function nextQuestionLines(next: NextQuestion[]): string[] {
     // pointer says the phase is finished and offers a way onward it cannot see. Both are forbidden a
     // few paragraphs above, and it said them anyway, because a rule about what not to do is no use to
     // a model that has nothing left to do instead.
+    //
+    // "Nothing else that belonged to it" is the second half, and it was written after a live audit
+    // took this branch correctly and still got the screen wrong: handed the period it had asked for,
+    // the coach recorded it, asked the fallback question, and called `offer_choices` for the period
+    // anyway, because the instruction to offer sits a few lines above under the reading it named. The
+    // leader met four periods to choose from under a question about what stands out to them. The
+    // capability now refuses that outright (`settled-reading.ts`) and this is the prose that stops it
+    // being attempted, which is worth having as well: a refusal costs the coach an iteration it can
+    // spend on the turn instead.
     ...(second === undefined
       ? []
       : [
           '',
           'And if that one is what they have just answered in the message you are replying to, which is',
           'likely, because it is the question you last asked: record what they said, do not ask it again,',
-          'and let the turn end on this instead:',
+          'and do not offer its answers either, because the question they belonged to is over.',
+          'Then let the turn end on this instead:',
           namedQuestion(second),
           ...howToAsk(second),
         ]),

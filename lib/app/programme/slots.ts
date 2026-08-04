@@ -1,5 +1,5 @@
 /**
- * The 106 `reclaim-audit` slot definitions (F2 t-2).
+ * The 107 `reclaim-audit` slot definitions (F2 t-2).
  *
  * The canonical source is `.context/app/slot-spec.md` — **every slug is fixed there**;
  * this file must not invent, rename, or "improve" one. Downstream features read slots
@@ -217,8 +217,9 @@ const currentSlots: SlotDefinitionInput[] = [
 ];
 
 /**
- * Group `reclaim_calendar` (21) — Phase 1 optional branch, per run. Nine per-bucket totals plus
- * twelve fixed structural metrics. No meeting titles are ever persisted — per-bucket totals only.
+ * Group `reclaim_calendar` (22) — Phase 1 optional branch, per run. Nine per-bucket totals plus
+ * thirteen fixed members: twelve structural metrics and the record of a leader who was offered the
+ * branch and said no. No meeting titles are ever persisted — per-bucket totals only.
  */
 const calendarSlots: SlotDefinitionInput[] = [
   ...perBucket((b) => ({
@@ -234,6 +235,20 @@ const calendarSlots: SlotDefinitionInput[] = [
     group: 'reclaim_calendar',
     visibility: 'hidden',
     description: 'Whether the calendar-analysis branch was taken.',
+    dataType: 'boolean',
+    sensitivity: 'standard',
+  },
+  {
+    // The other half of `uploaded`, and the reason it exists: the branch is offered **once**
+    // (`RECLAIM_CALENDAR_OFFER`), and nothing recorded a no. The coach's briefing is rebuilt every
+    // turn from the run's answers, so "offer it, take no for an answer, do not return to it" was an
+    // instruction with no memory behind it — a leader who declined was asked again a few turns later,
+    // which is the one thing the offer's own wording promises not to do.
+    slug: 'reclaim_calendar_declined',
+    group: 'reclaim_calendar',
+    visibility: 'hidden',
+    description:
+      'Whether the leader was offered the calendar branch and said no, so it is never offered again.',
     dataType: 'boolean',
     sensitivity: 'standard',
   },
@@ -617,7 +632,7 @@ const shareSlots: SlotDefinitionInput[] = [
 ];
 
 /**
- * All 106 slot definitions, in group order. Assembled from the per-group arrays above; the
+ * All 107 slot definitions, in group order. Assembled from the per-group arrays above; the
  * per-bucket groups are generated from `BUCKETS` so the nine tokens can never drift apart.
  */
 export const reclaimSlotDefinitions: SlotDefinitionInput[] = [
