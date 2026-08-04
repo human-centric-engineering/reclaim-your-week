@@ -71,6 +71,7 @@ import { ReclaimOfferChoicesCapability } from '@/lib/app/programme/coach/capabil
 import { RECLAIM_OFFER_CHOICES_SLUG } from '@/lib/app/programme/agent';
 import {
   COACH_OPENING_MOMENTS,
+  COACH_RESUME_TRIGGER,
   openingBelongsToPhase,
   openingTriggerFor,
 } from '@/lib/app/programme/coach/opening';
@@ -84,11 +85,16 @@ import {
 import type { ChatEvent } from '@/types/orchestration';
 
 /**
- * A turn is either the leader speaking or the coach opening a moment.
+ * A turn is the leader speaking, the coach opening a moment, or a lost reply asked for again.
  *
  * **The client sends the moment; it never sends the phase.** The phase comes from the journey below,
  * and a moment that does not belong to it is refused. That keeps both halves of the dispatch scope
  * server-derived, which is the whole reason the coach may write audit answers at all (I6).
+ *
+ * **`resume` carries nothing at all**, and that is the point: it asks for the turn the leader was
+ * owed, not for a message they might send. The trigger is chosen here (`COACH_RESUME_TRIGGER`), the
+ * conversation it resumes is the run's own, and the last thing in that conversation is whatever the
+ * leader actually said. Nothing the client sends can influence any of it.
  *
  * A body with no `kind` is read as a leader turn, so a browser still running the previous build keeps
  * working across a deploy: nobody should lose a sentence they were part-way through because the
@@ -109,6 +115,9 @@ const coachTurnSchema = z.preprocess(
     z.object({
       kind: z.literal('opening'),
       moment: z.enum(COACH_OPENING_MOMENTS),
+    }),
+    z.object({
+      kind: z.literal('resume'),
     }),
   ])
 );
@@ -295,10 +304,25 @@ export const POST = withAuth<{ runId: string }>(async (request, session, { param
   // Ownership, in-progress, and the phase — all before a single token is generated.
   const target = await loadCoachTurnTarget(session.user.id, runId);
 
+  // A resume is a request for a turn that was already owed, so there has to be a conversation for it
+  // to have been owed *in*. A run with none has never had a turn at all, and the honest answer is the
+  // opening the client should be asking for instead.
+  if (body.kind === 'resume' && target.conversationId === undefined) {
+    return errorResponse('There is nothing here to pick up yet.', {
+      code: 'NOTHING_TO_RESUME',
+      status: 409,
+    });
+  }
+
   // An opening turn is the coach speaking first, so two things are checked here that a leader turn
   // does not need: that the moment belongs to the phase the leader is actually on (the client sends
   // the moment, the server owns the phase), and that this run has not already had it.
-  let message = body.kind === 'leader' ? body.message : openingTriggerFor(body.moment);
+  let message =
+    body.kind === 'leader'
+      ? body.message
+      : body.kind === 'resume'
+        ? COACH_RESUME_TRIGGER
+        : openingTriggerFor(body.moment);
   if (body.kind === 'opening') {
     if (!openingBelongsToPhase(body.moment, target.phaseKey)) {
       return errorResponse('That moment does not belong to this phase.', {
@@ -373,11 +397,16 @@ export const POST = withAuth<{ runId: string }>(async (request, session, { param
   /**
    * The deterministic half of capture (`coach/capture-sweep.ts`).
    *
-   * Only on a leader turn: an opening is the coach speaking into a silence the leader has not filled,
-   * so there is nothing in it to record and a sweep would only re-read the turn before.
+   * Every turn but an opening: an opening is the coach speaking into a silence the leader has not
+   * filled, so there is nothing in it to record and a sweep would only re-read the turn before.
+   *
+   * **A resume is swept, and has to be.** The leader's words are in the conversation and the turn
+   * that should have read them died before its `done` frame, so nothing has ever swept them. Skipping
+   * it here would mean a leader whose turn was interrupted quietly gets the one exchange in their
+   * audit that only the model's own recording covered.
    */
   const sweep = async (): Promise<void> => {
-    if (body.kind !== 'leader') return;
+    if (body.kind === 'opening') return;
     const result = await runCaptureSweep({
       userId: session.user.id,
       runId,

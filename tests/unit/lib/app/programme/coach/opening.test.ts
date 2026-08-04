@@ -13,6 +13,7 @@ import {
   COACH_OPENING_MOMENTS,
   COACH_OPENING_PHASES,
   COACH_OPENING_TRIGGER,
+  COACH_RESUME_TRIGGER,
   COACH_SYNTHETIC_MESSAGES,
   arrivalMomentFor,
   isArrivalMoment,
@@ -105,6 +106,37 @@ describe('the synthetic trigger', () => {
       expect(trigger.startsWith('(')).toBe(true);
       expect(trigger).toContain('has not spoken yet');
     }
+    // The resume trigger is a stage direction too, but about a different silence: not a leader who
+    // has yet to speak, one who spoke and was not answered.
+    expect(COACH_RESUME_TRIGGER.startsWith('(')).toBe(true);
+    expect(COACH_RESUME_TRIGGER).toContain('have not spoken again');
+  });
+
+  it('tells the coach to take the lost turn without apologising for it', () => {
+    // The screen has already told the leader what happened, in the app's own voice. A coach opening
+    // with an apology for a provider error is the audit talking about itself at the exact moment the
+    // leader is waiting to be answered — and asking them to repeat themselves would undo the whole
+    // point, which is that their words were kept.
+    expect(COACH_RESUME_TRIGGER).toContain('from their last message');
+    expect(COACH_RESUME_TRIGGER).toContain('Do not apologise');
+    expect(COACH_RESUME_TRIGGER).toContain('do not ask them to repeat themselves');
+  });
+
+  it('keeps the resumed turn out of the leader’s own transcript', () => {
+    // The whole reason it can be a message at all. It is sent as `role: 'user'` because `streamChat`
+    // has no other way to make the coach speak, so both surfaces have to filter it back out.
+    expect(COACH_SYNTHETIC_MESSAGES).toContain(COACH_RESUME_TRIGGER);
+    expect(isCoachSyntheticMessage('user', COACH_RESUME_TRIGGER)).toBe(true);
+    expect(isCoachSyntheticMessage('user', `\n${COACH_RESUME_TRIGGER}  `)).toBe(true);
+    expect(isCoachSyntheticMessage('assistant', COACH_RESUME_TRIGGER)).toBe(false);
+  });
+
+  it('never sends the same trigger for two different jobs', () => {
+    // A duplicate would make `openingTriggerFor` and the resume path indistinguishable in a
+    // transcript, and the filters would still pass — so nothing else would ever catch it.
+    const all = [COACH_OPENING_TRIGGER, COACH_ARRIVAL_TRIGGER, COACH_RESUME_TRIGGER];
+    expect(new Set(all).size).toBe(all.length);
+    expect(new Set(COACH_SYNTHETIC_MESSAGES).size).toBe(COACH_SYNTHETIC_MESSAGES.length);
   });
 
   it('keeps a leader’s own transcript clear of every trigger, not only the first one', () => {

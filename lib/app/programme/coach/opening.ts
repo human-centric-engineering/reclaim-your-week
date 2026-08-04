@@ -190,6 +190,33 @@ export const COACH_ARRIVAL_TRIGGER =
   '(The leader has just arrived at this phase and has not spoken yet. You speak first. Say briefly why this part of the audit is worth their time and what to expect from it, without restating the card already on their screen. Then open the phase the way your context describes, end on your first question, and stop. Do not wait for them to begin.)';
 
 /**
+ * The text sent in the leader's place when a turn that had already reached the conversation is asked
+ * for again.
+ *
+ * **The failure this exists for, observed on a live audit.** The leader answered, the server wrote
+ * their message, and the provider returned a 429 before the model said a word. Nothing in the chat
+ * path retries: `chatStream` opens the provider stream without the backoff `withRetry` gives the
+ * non-streaming path, and the handler's only recovery is failing over to a *different* provider,
+ * which a single-provider install does not have. So the turn ended with the leader's sentence in the
+ * conversation, no reply under it, and a line telling them to ask the coach to pick it up. The one
+ * thing they could not do was press a button.
+ *
+ * They cannot simply say it again: the words are already persisted, and re-sending them would put the
+ * same sentence in the audit twice and invite the coach to record the reading twice with it. So this
+ * asks for the turn that was lost rather than the message that produced it, and it is a stage
+ * direction for the same three reasons `COACH_OPENING_TRIGGER` is: it stays in the model's history
+ * for the rest of the run, it never reaches the leader's screen (both surfaces filter it), and
+ * anybody reading the row in a database can tell what it is.
+ *
+ * **It says not to mention the interruption**, which is a product decision rather than a stylistic
+ * one. The screen has already told the leader what happened, in the app's own voice; a coach opening
+ * with an apology for a provider error would be the audit talking about itself at exactly the moment
+ * the leader is waiting to be answered.
+ */
+export const COACH_RESUME_TRIGGER =
+  '(Your reply to the leader was lost before it reached them: the connection dropped after they spoke and nothing you said arrived. They have seen no answer and have not spoken again. Take that turn now, from their last message, exactly as you would have. Do not apologise, do not mention the interruption, and do not ask them to repeat themselves.)';
+
+/**
  * Every trigger string this app has ever shipped.
  *
  * A list rather than a constant because the filters have to keep working on transcripts written by
@@ -200,6 +227,7 @@ export const COACH_ARRIVAL_TRIGGER =
 export const COACH_SYNTHETIC_MESSAGES: readonly string[] = [
   COACH_OPENING_TRIGGER,
   COACH_ARRIVAL_TRIGGER,
+  COACH_RESUME_TRIGGER,
 ];
 
 /** Which trigger a moment is opened with. Arrivals introduce the phase; the rest open a beat. */

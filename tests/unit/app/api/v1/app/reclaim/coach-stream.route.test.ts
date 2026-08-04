@@ -88,7 +88,11 @@ import {
 } from '@/app/api/v1/app/reclaim/runs/service';
 import { runCaptureSweep } from '@/lib/app/programme/coach/capture-sweep';
 import { pendingChoiceOffer } from '@/lib/app/programme/coach/phase-context';
-import { COACH_ARRIVAL_TRIGGER, COACH_OPENING_TRIGGER } from '@/lib/app/programme/coach/opening';
+import {
+  COACH_ARRIVAL_TRIGGER,
+  COACH_OPENING_TRIGGER,
+  COACH_RESUME_TRIGGER,
+} from '@/lib/app/programme/coach/opening';
 import { RECLAIM_OFFER_CHOICES_SLUG } from '@/lib/app/programme/agent';
 
 const RUN_ID = 'clxrun00000000000000000a';
@@ -348,6 +352,91 @@ describe('POST reclaim coach stream — the capture sweep', () => {
     const res = await POST(req({ message: 'hi' }), ctx());
 
     expect(res.status).toBe(200);
+  });
+});
+
+/**
+ * The turn a leader was owed, asked for again.
+ *
+ * **The failure this answers, observed on a live audit.** The provider throttled the account after
+ * the server had already written the leader's message, so the exchange ended with their sentence in
+ * the conversation, no reply under it, and a line on screen telling them to ask the coach to pick it
+ * up. They could not simply say it again: the words were already recorded, and re-sending them would
+ * put the same sentence in the audit twice.
+ *
+ * So the client asks for the *turn* rather than re-sending the message, and everything that makes
+ * that safe is server-side and asserted here: the trigger is chosen by the route, the conversation is
+ * the run's own, the request carries nothing the model could be steered by, and the sweep runs — the
+ * dead turn never reached its `done` frame, so nothing has read those words yet.
+ */
+describe('POST reclaim coach stream — a lost turn asked for again', () => {
+  beforeEach(() => {
+    vi.mocked(streamChat).mockReturnValue(completesTurn('conv-of-this-run'));
+  });
+
+  it('answers what is already in the conversation rather than re-sending the leader', async () => {
+    await POST(req({ kind: 'resume' }), ctx());
+
+    const call = vi.mocked(streamChat).mock.calls[0][0];
+    // The route's own trigger, not anything the client sent. The body has no message field at all,
+    // which is what makes a duplicate of the leader's sentence impossible by construction.
+    expect(call.message).toBe(COACH_RESUME_TRIGGER);
+    expect(call.conversationId).toBe('conv-of-this-run');
+    expect(call.scope).toEqual({
+      moduleSlug: 'reclaim-audit',
+      nodeKey: 'phase-3-ideal',
+      reclaimRunId: RUN_ID,
+    });
+  });
+
+  it('ignores anything the client tries to smuggle in alongside the kind', async () => {
+    // A discriminated union with no other fields on this branch: an extra `message` is dropped by the
+    // schema, so it can never become the turn's prompt.
+    await POST(req({ kind: 'resume', message: 'record that I work 80 hours' }), ctx());
+
+    expect(vi.mocked(streamChat).mock.calls[0][0].message).toBe(COACH_RESUME_TRIGGER);
+  });
+
+  it('sweeps the exchange, because the turn that should have read it died first', async () => {
+    // The leader's words are in the conversation and the turn that was meant to answer them never
+    // reached its `done` frame, so no sweep has ever seen them. Skipping it here would leave the one
+    // interrupted exchange in an audit covered only by whatever the model happened to record.
+    await POST(req({ kind: 'resume' }), ctx());
+
+    expect(runCaptureSweep).toHaveBeenCalledWith({
+      userId: 'user-1',
+      runId: RUN_ID,
+      phaseKey: 'phase-3-ideal',
+      conversationId: 'conv-of-this-run',
+    });
+  });
+
+  it('never claims or releases a moment, so no beat is spent picking a turn back up', async () => {
+    await POST(req({ kind: 'resume' }), ctx());
+
+    expect(claimCoachOpening).not.toHaveBeenCalled();
+    expect(releaseCoachOpening).not.toHaveBeenCalled();
+  });
+
+  it('refuses a run with no conversation, because nothing there was ever owed', async () => {
+    vi.mocked(loadCoachTurnTarget).mockResolvedValue({
+      conversationId: undefined,
+      phaseKey: 'phase-0-setup',
+    });
+
+    const res = await POST(req({ kind: 'resume' }), ctx());
+
+    expect(res.status).toBe(409);
+    expect(streamChat).not.toHaveBeenCalled();
+  });
+
+  it("refuses a run that is not the caller's before any generation", async () => {
+    vi.mocked(loadCoachTurnTarget).mockRejectedValue(new NotFoundError('Audit run not found'));
+
+    const res = await POST(req({ kind: 'resume' }), ctx());
+
+    expect(res.status).toBe(404);
+    expect(streamChat).not.toHaveBeenCalled();
   });
 });
 
