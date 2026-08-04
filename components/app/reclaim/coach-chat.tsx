@@ -277,21 +277,35 @@ export function CoachChat({
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   /**
-   * Whether the failed turn left the leader owed a reply they cannot ask for again by speaking.
+   * What a failed turn left behind, which is what decides both the sentence and the way out.
    *
-   * The two failures need different words, and telling them apart is the difference between an
-   * accurate instruction and a guess. If nothing was persisted the leader's sentence is back in the
-   * composer and pressing send is the whole recovery. If it *was* persisted, their words are in the
-   * conversation and only the reply is missing, so re-sending would say the same thing twice.
+   * These need different words, and telling them apart is the difference between an accurate
+   * instruction and a guess. It used to be one boolean — "owed or not" — and the `else` of that
+   * boolean said "your message is back in the box below, just as you wrote it". An **opening** turn
+   * lands in that `else`, because there is nothing to owe a leader who has not spoken yet. So a
+   * throttled phase-opener told a leader their message was in the box, under an empty column, beside
+   * an empty box, when they had not written one. Reported from a live audit, and it is the reason
+   * this is four states rather than two.
    *
-   * That second case is what this names, and it is also what `resume` below exists to answer: a turn
-   * that is owed can be asked for without the leader writing anything, so it gets a button rather
-   * than an instruction. A resume that itself fails is owed all over again, which is why this is not
-   * simply "the leader spoke this turn".
+   * - `owed` — the server wrote their words down and only the reply is missing, so re-sending would
+   *   say the same thing twice. `resume` below asks for the reply instead, which is why this is not
+   *   simply "the leader spoke this turn": a resume that fails is owed all over again.
+   * - `returned` — nothing was persisted and the composer was empty, so their sentence is back in it
+   *   and pressing send is the whole recovery.
+   * - `unsent` — the same, except the leader had started writing something else while they waited.
+   *   Their words cannot go back into a box that is occupied, so they are held here instead of being
+   *   dropped on the floor.
+   * - `unopened` — the coach was opening the phase and did not manage it. Nothing of the leader's is
+   *   at stake; what is missing is the beat, and only the coach can give it.
    */
-  const [owedTurn, setOwedTurn] = useState(false);
+  const [aftermath, setAftermath] = useState<
+    | { kind: 'owed' | 'returned' }
+    | { kind: 'unsent'; text: string }
+    | { kind: 'unopened'; partial: boolean }
+    | null
+  >(null);
   /**
-   * Whether an owed turn is about to be asked for again without the leader doing anything.
+   * Whether the turn is about to be asked for again without the leader doing anything.
    *
    * Named on screen rather than left to happen silently. A reply appearing several seconds after a
    * failure, with no explanation, reads as the app having lied about the failure.
@@ -365,6 +379,11 @@ export function CoachChat({
    * ones it started with.
    */
   const turnsRef = useRef<Turn[]>([]);
+  /**
+   * What is in the composer, for the same reason: a turn that fails has to know whether the box it
+   * would put the leader's words back into is free.
+   */
+  const draftRef = useRef('');
 
   /**
    * The in-flight coach turn, released at a readable pace.
@@ -467,10 +486,13 @@ export function CoachChat({
     []
   );
 
-  // What is on screen, and the turn function, where code that runs after a fetch can read them.
+  // What is on screen, and what is in the box, where code that runs after a fetch can read them.
   useEffect(() => {
     turnsRef.current = turns;
   }, [turns]);
+  useEffect(() => {
+    draftRef.current = draft;
+  }, [draft]);
 
   // Hand the cursor back when the coach finishes, so a reply can be typed without reaching for the
   // mouse. Only on the streaming→idle edge: focusing on every render would steal it mid-scroll.
@@ -490,7 +512,7 @@ export function CoachChat({
   const runTurn = useCallback(
     async (body: Record<string, unknown>, leaderText: string | null) => {
       setError(null);
-      setOwedTurn(false);
+      setAftermath(null);
       setRetrying(false);
       setStatus(null);
       // Whatever this turn is, it supersedes an automatic retry that has not fired yet: a leader who
@@ -499,6 +521,12 @@ export function CoachChat({
       if (owedTimerRef.current !== null) {
         clearTimeout(owedTimerRef.current);
         owedTimerRef.current = null;
+      }
+      // And a leader who speaks supersedes a pending opening, rather than having the phase's scripted
+      // opener arrive on top of the hello they gave it in its absence.
+      if (body.kind !== 'opening' && retryTimerRef.current !== null) {
+        clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = null;
       }
       if (body.kind !== 'resume') retriedOwedRef.current = false;
       // The previous turn's answers, cleared before this one can produce any, along with the
@@ -622,45 +650,81 @@ export function CoachChat({
         if (controller.signal.aborted) return; // unmounted / superseded — leave state untouched
         setError(e instanceof Error ? e.message : 'Something interrupted the conversation.');
 
+        // Whether a second identical attempt could plausibly do better. Everything absent from the
+        // set is a state the request itself is wrong for, and retrying buys another failure.
+        const worthRetrying = failure !== null && RETRIABLE_FAILURES.has(failure);
+
         // **Is the leader owed a turn they cannot ask for by speaking?**
         //
         // For a turn they spoke, that is exactly whether the server wrote it down. For a resume it is
         // always: the message that turn was answering is still in the conversation, and a resume that
-        // fails leaves it as unanswered as the one before. An opening is neither — it has its own
-        // retry above, and a leader who was never spoken to is not owed a reply to anything.
+        // fails leaves it as unanswered as the one before. An opening is neither — a leader who was
+        // never spoken to is not owed a reply to anything, and its recovery is below.
         const owed = leaderText !== null ? persisted : body.kind === 'resume';
-        setOwedTurn(owed);
 
-        // One automatic ask, for the failures that mean "not now" rather than "not this". Everything
-        // else waits for the button, which is drawn for any owed turn whatever went wrong.
-        if (
-          owed &&
-          !retriedOwedRef.current &&
-          failure !== null &&
-          RETRIABLE_FAILURES.has(failure)
-        ) {
-          retriedOwedRef.current = true;
-          setRetrying(true);
-          owedTimerRef.current = setTimeout(() => {
-            owedTimerRef.current = null;
-            resumeRef.current?.();
-          }, OWED_TURN_RETRY_MS);
-        }
-
-        // **The turn failed before the server wrote anything, so give the leader their words back.**
-        //
-        // This is the whole of the fix. `send()` used to clear the composer before opening the
-        // stream, so a turn that failed left "you can try again" beside an empty box and a sentence
-        // the leader would have to retype from memory. Restoring the draft is safe *only* when the
-        // message was never persisted, which is exactly what `persisted` tracks: re-sending one the
-        // server already holds would put it in the conversation twice.
-        //
-        // The optimistic line goes with it. It was drawn on the assumption the turn would work, and
-        // leaving it there beside a refilled composer would show the leader their sentence twice and
-        // make sending it look like a duplicate.
-        if (!persisted && leaderText !== null) {
+        if (owed) {
+          setAftermath({ kind: 'owed' });
+          // One automatic ask, for the failures that mean "not now" rather than "not this". Everything
+          // else waits for the button, which is drawn for any owed turn whatever went wrong.
+          if (!retriedOwedRef.current && worthRetrying) {
+            retriedOwedRef.current = true;
+            setRetrying(true);
+            owedTimerRef.current = setTimeout(() => {
+              owedTimerRef.current = null;
+              resumeRef.current?.();
+            }, OWED_TURN_RETRY_MS);
+          }
+        } else if (leaderText !== null) {
+          // **The turn failed before the server wrote anything, so give the leader their words back.**
+          //
+          // Restoring the draft is safe *only* when the message was never persisted, which is exactly
+          // what `persisted` tracks: re-sending one the server already holds would put it in the
+          // conversation twice.
+          //
+          // The optimistic line goes with it. It was drawn on the assumption the turn would work, and
+          // leaving it there beside a refilled composer would show the leader their sentence twice and
+          // make sending it look like a duplicate.
+          //
+          // The box can be occupied — somebody who kept typing while they waited — and words cannot
+          // go back into a box that is full. Then they are held in the notice instead, which is the
+          // one thing that is certainly not losing them.
           setTurns((t) => t.slice(0, -2));
-          setDraft((current) => (current.trim().length > 0 ? current : leaderText));
+          if (draftRef.current.trim().length === 0) {
+            setDraft(leaderText);
+            setAftermath({ kind: 'returned' });
+          } else {
+            setAftermath({ kind: 'unsent', text: leaderText });
+          }
+        } else {
+          // **The coach was opening the phase and did not manage it.**
+          //
+          // `persisted` divides this one too, and into two different screens. Without a `start` frame
+          // nothing was generated and nothing was said: the empty placeholder goes, because an
+          // unfilled coach bubble is an answer that looks like it is still coming, and what is left is
+          // a signpost card over an empty column. That beat is the coach's to give and nobody else's,
+          // so this asks for it again rather than telling the leader to write their way past it.
+          // `openingGaveUp` stops the column promising an opener that is not on its way; a pending
+          // retry *is* on its way, so it says so instead.
+          //
+          // Past the `start` frame the opener was part-said, and what is on screen stays: the turn's
+          // words are committed below, asking again would open the phase twice, and a leader with
+          // half a beat in front of them can simply carry on.
+          setAftermath({ kind: 'unopened', partial: persisted });
+          if (!persisted) {
+            setTurns((t) =>
+              t.length > 0 && t[t.length - 1].role === 'coach' ? t.slice(0, -1) : t
+            );
+            if (!retriedOpeningRef.current && worthRetrying) {
+              retriedOpeningRef.current = true;
+              setRetrying(true);
+              retryTimerRef.current = setTimeout(() => {
+                retryTimerRef.current = null;
+                runTurnRef.current?.(body, null);
+              }, OWED_TURN_RETRY_MS);
+            } else {
+              setOpeningGaveUp(true);
+            }
+          }
         }
       } finally {
         if (!controller.signal.aborted) {
@@ -717,6 +781,22 @@ export function CoachChat({
   useEffect(() => {
     resumeRef.current = resume;
   }, [resume]);
+
+  /**
+   * Ask the coach to open this phase again, after a turn that generated nothing.
+   *
+   * The counterpart to `resume`, for the failure at the other end of a phase. It is safe to ask twice
+   * because the server does not take the ledger's word for it: a moment whose claim outlived a turn
+   * that never spoke is checked against the transcript and opened again (`coachOpeningWentUnspoken`),
+   * and a moment that really was had answers "already opened" and leaves the screen alone.
+   *
+   * Only offered where nothing arrived. A part-said opener asked for again would open the phase twice.
+   */
+  const reopen = useCallback(() => {
+    if (streaming || openMoment === null) return;
+    setRetrying(false);
+    void runTurn({ kind: 'opening', moment: openMoment }, null);
+  }, [streaming, openMoment, runTurn]);
 
   const send = useCallback(async () => {
     const message = draft.trim();
@@ -955,7 +1035,7 @@ export function CoachChat({
               <p className="text-muted-foreground text-sm">{error}</p>
               {/* Two different situations, and they used to share one sentence: "You can try again",
                   beside an empty composer, with no way to try. */}
-              {owedTurn ? (
+              {aftermath?.kind === 'owed' ? (
                 <>
                   <p className="text-muted-foreground mt-1 text-sm">
                     What you said was recorded, so there is no need to write it again.{' '}
@@ -978,11 +1058,53 @@ export function CoachChat({
                     Try again
                   </button>
                 </>
-              ) : (
+              ) : aftermath?.kind === 'returned' ? (
                 <p className="text-muted-foreground mt-1 text-sm">
                   Your message is back in the box below, just as you wrote it.
                 </p>
-              )}
+              ) : aftermath?.kind === 'unsent' ? (
+                <>
+                  {/* Their sentence never reached the server and cannot go back into a box they have
+                      since written in, so it is put in front of them to keep. Anything else discards
+                      words a leader wrote. */}
+                  <p className="text-muted-foreground mt-1 text-sm">
+                    This did not send, and the box below has since been written in — so here it is,
+                    to copy if you want it:
+                  </p>
+                  <p className="border-border text-foreground mt-2 border-l-2 pl-3 text-sm whitespace-pre-wrap">
+                    {aftermath.text}
+                  </p>
+                </>
+              ) : aftermath?.kind === 'unopened' ? (
+                <>
+                  {/* The failure this screen used to lie about. Nothing of the leader's is at stake
+                      here — the coach was opening the phase and they had not spoken yet — so the one
+                      sentence never to say is that their message is safe in the box.
+
+                      What it does say is deliberately not "the coach did not manage to open this
+                      part": once the attempts are spent, the empty column says exactly that, and a
+                      notice repeating it underneath is the app telling somebody twice. This carries
+                      the part the column cannot — nothing of theirs was lost, and the beat can be
+                      asked for again. */}
+                  <p className="text-muted-foreground mt-1 text-sm">
+                    {aftermath.partial
+                      ? 'The coach did not finish opening this part. Carry on below and it will pick things up from there.'
+                      : retrying
+                        ? 'Nothing you have written is affected. Trying again for you in a moment.'
+                        : 'Nothing you have written is affected — this part had not begun yet.'}
+                  </p>
+                  {!aftermath.partial && openMoment !== null && (
+                    <button
+                      type="button"
+                      onClick={reopen}
+                      disabled={streaming}
+                      className="border-border text-foreground hover:border-primary/60 mt-3 rounded-full border px-4 py-1.5 text-sm transition-colors disabled:opacity-40"
+                    >
+                      Try again
+                    </button>
+                  )}
+                </>
+              ) : null}
             </div>
           )}
         </div>
