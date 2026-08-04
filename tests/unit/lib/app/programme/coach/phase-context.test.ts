@@ -1909,10 +1909,33 @@ describe('buildCoachPhaseContext — the reading to fall to when the named one h
       'Your first name (reclaim_profile_first_name), which nobody has asked in this audit yet.'
     );
     // The second is the next one nobody has asked, and it arrives with the condition attached.
-    expect(block).toContain('what they have just answered in the message you are replying to');
+    expect(block).toContain('what they have already answered');
     expect(block).toContain('Your role (reclaim_profile_role), which nobody has asked');
     // And the fallback carries its own instructions, including the answers on screen.
     expect(block).toContain('call offer_choices for reclaim_profile_role');
+  });
+
+  /**
+   * The condition points at the leader's last message, not at the message being replied to.
+   *
+   * **The failure this answers, observed on a live audit.** Asked how many hours of deep work they
+   * wanted, the leader said "10". The provider threw 429 before the coach spoke, and the client picked
+   * the turn back up. Nothing had swept the "10" — a turn that dies never reaches the `done` frame the
+   * sweep hangs off — so this block named deep work again, and the condition below did not fire,
+   * because on a resumed turn the message being replied to is `COACH_RESUME_TRIGGER` and not an answer
+   * to anything. The coach asked, word for word, for a figure already in the transcript above it.
+   *
+   * The route now sweeps before it resumes, which is the half of the fix that does not depend on a
+   * model reading anything correctly. This is the half that still holds when that sweep could not run
+   * — which, on a resume that follows a provider refusal, is exactly when it could not.
+   */
+  it('points the condition at the leader’s last message, so a resumed turn is covered too', async () => {
+    readRunAnswers.mockResolvedValue({});
+
+    const block = await buildCoachPhaseContext('u1');
+
+    expect(block).toContain('Read their last message to decide that, not only');
+    expect(block).toContain('a turn you are picking back up is answered by the message before');
   });
 
   it('falls to a thin reading when everything that applies has been asked', async () => {

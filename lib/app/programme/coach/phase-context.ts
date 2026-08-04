@@ -1235,13 +1235,25 @@ function nextQuestionLines(next: NextQuestion[]): string[] {
     // capability now refuses that outright (`settled-reading.ts`) and this is the prose that stops it
     // being attempted, which is worth having as well: a refusal costs the coach an iteration it can
     // spend on the turn instead.
+    //
+    // It says "their last message" rather than "the message you are replying to", and the difference
+    // is a live audit. Asked how much deep work they wanted, the leader said "10"; the provider threw
+    // 429 before the coach spoke, and the client picked the turn back up. Nothing had swept the "10" —
+    // a turn that dies has no `done` frame to sweep from — so this block named deep work again, and
+    // the escape hatch below did not fire, because on a resumed turn the message being replied to is a
+    // stage direction (`COACH_RESUME_TRIGGER`) and not an answer to anything. The coach asked for a
+    // figure that was three lines above it in the transcript. The route now sweeps before it resumes,
+    // which is the half of the fix that does not depend on prose; this is the half that still holds
+    // when that sweep could not run, which after a provider refusal is exactly when it could not.
     ...(second === undefined
       ? []
       : [
           '',
-          'And if that one is what they have just answered in the message you are replying to, which is',
-          'likely, because it is the question you last asked: record what they said, do not ask it again,',
-          'and do not offer its answers either, because the question they belonged to is over.',
+          'And if that one is what they have already answered, which is likely, because it is the question',
+          'you last asked: record what they said, do not ask it again, and do not offer its answers either,',
+          'because the question they belonged to is over. Read their last message to decide that, not only',
+          'the message you are replying to: a turn you are picking back up is answered by the message before',
+          'the one that asked you to pick it up.',
           'Then let the turn end on this instead:',
           namedQuestion(second),
           ...howToAsk(second),

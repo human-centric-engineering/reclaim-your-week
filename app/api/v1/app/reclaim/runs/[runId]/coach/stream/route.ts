@@ -377,19 +377,6 @@ export const POST = withAuth<{ runId: string }>(async (request, session, { param
     userId: session.user.id,
   });
 
-  const events = streamChat({
-    message,
-    agentSlug: surface.agentSlug,
-    userId: session.user.id,
-    conversationId: target.conversationId,
-    contextType: MODULE_SURFACE_CONTEXT_TYPE,
-    contextId: RECLAIM_MODULE_SLUG,
-    scope: buildCoachScope({ runId, phaseKey: target.phaseKey }),
-    requestId: await getRequestId(),
-    visitorId: await getVisitorId(),
-    signal: request.signal,
-  });
-
   // The run's conversation, for the sweep. Known already on a resumed turn; on the first turn of a
   // run it arrives on the `start` frame, so it is captured there and read when the sweep fires.
   let conversationId = target.conversationId;
@@ -404,6 +391,13 @@ export const POST = withAuth<{ runId: string }>(async (request, session, { param
    * that should have read them died before its `done` frame, so nothing has ever swept them. Skipping
    * it here would mean a leader whose turn was interrupted quietly gets the one exchange in their
    * audit that only the model's own recording covered.
+   *
+   * A resume is in fact swept **twice** — once below, before the turn is generated, and once here on
+   * the way past `done`. The first pass is what stops the coach asking again for what it was already
+   * told; this one is the backstop for a first pass that could not run, which on a resume is a real
+   * possibility, because a resume follows a provider that has just refused. The second pass is not a
+   * duplicate write: a reading already held is refused as `already_held`, and a superseding value
+   * identical to the stored one is refused as a rewrite (`capture-sweep.ts`).
    */
   const sweep = async (): Promise<void> => {
     if (body.kind === 'opening') return;
@@ -436,6 +430,60 @@ export const POST = withAuth<{ runId: string }>(async (request, session, { param
       });
     }
   };
+
+  /**
+   * A resume sweeps **before** it generates, as well as after.
+   *
+   * **The failure this exists for, observed on a live audit.** The leader was asked how many hours of
+   * deep work they wanted, answered "10", and the provider threw 429 before the coach said a word.
+   * The client picked the turn back up, and the coach asked the same question again, word for word.
+   *
+   * Every part of that was the machinery working as written. The lost turn never reached its `done`
+   * frame, so `sweepingCapture` never fired and nothing recorded the "10". The resume then built the
+   * coach's briefing from a run that still held the reading as unasked, so `nextQuestionFor` named it
+   * as the question to end on — correctly, on the evidence it had. The one guard that would have
+   * caught it, the fallback in `nextQuestionLines`, is worded for a leader turn: it asks whether the
+   * named reading is what they answered *in the message you are replying to*, and on a resume the
+   * message being replied to is a stage direction. So the pointer was spent, nothing said so, and the
+   * leader was asked for a figure that was already in the transcript above.
+   *
+   * Sweeping here is the half of the fix that does not depend on a model reading anything correctly.
+   * The reason the route gives for not sweeping a failed turn — no settled transcript — is about the
+   * coach's half of the exchange, and it is the coach's half that is missing. The leader's message is
+   * as settled as any other. Recording it now, and dropping the cached briefing with it, means the
+   * resume is generated against a run that knows what it has been told, and the question it ends on is
+   * the next one rather than the last one.
+   *
+   * It runs before `streamChat` rather than beside it because the briefing is built as the turn opens,
+   * and a sweep racing that build is a sweep that does not exist.
+   *
+   * **It is allowed to fail, and often will.** A resume follows a provider that has just refused, and
+   * this is another call to the same provider. `runCaptureSweep` returns rather than throws and this
+   * does not take its word for it: a capture pass is bookkeeping, a turn is the leader's conversation.
+   * The sweep after the turn stays exactly where it was, as the backstop for the pass that could not
+   * run here, and the widened prose in `nextQuestionLines` covers the turn in between.
+   */
+  if (body.kind === 'resume') {
+    await sweep().catch((error: unknown) => {
+      log.warn('Reclaim pre-resume capture sweep threw; picking the turn up regardless', {
+        runId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+  }
+
+  const events = streamChat({
+    message,
+    agentSlug: surface.agentSlug,
+    userId: session.user.id,
+    conversationId: target.conversationId,
+    contextType: MODULE_SURFACE_CONTEXT_TYPE,
+    contextId: RECLAIM_MODULE_SLUG,
+    scope: buildCoachScope({ runId, phaseKey: target.phaseKey }),
+    requestId: await getRequestId(),
+    visitorId: await getVisitorId(),
+    signal: request.signal,
+  });
 
   /**
    * The answers for this turn's question, when the coach did not put them up itself.

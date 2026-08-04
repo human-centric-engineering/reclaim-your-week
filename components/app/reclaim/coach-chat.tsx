@@ -1068,8 +1068,8 @@ export function CoachChat({
                       since written in, so it is put in front of them to keep. Anything else discards
                       words a leader wrote. */}
                   <p className="text-muted-foreground mt-1 text-sm">
-                    This did not send, and the box below has since been written in — so here it is,
-                    to copy if you want it:
+                    This did not send, and the box below has since been written in, so here it is to
+                    copy if you want it:
                   </p>
                   <p className="border-border text-foreground mt-2 border-l-2 pl-3 text-sm whitespace-pre-wrap">
                     {aftermath.text}
@@ -1091,7 +1091,7 @@ export function CoachChat({
                       ? 'The coach did not finish opening this part. Carry on below and it will pick things up from there.'
                       : retrying
                         ? 'Nothing you have written is affected. Trying again for you in a moment.'
-                        : 'Nothing you have written is affected — this part had not begun yet.'}
+                        : 'Nothing you have written is affected. This part had not begun yet.'}
                   </p>
                   {!aftermath.partial && openMoment !== null && (
                     <button

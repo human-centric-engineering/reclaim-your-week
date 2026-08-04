@@ -411,6 +411,85 @@ describe('POST reclaim coach stream — a lost turn asked for again', () => {
     });
   });
 
+  /**
+   * **The failure this answers, observed on a live audit.** Asked how many hours of deep work they
+   * wanted, the leader said "10"; the provider threw 429 before the coach spoke; the client picked the
+   * turn back up; and the coach asked the same question again, word for word.
+   *
+   * Every part of that was the machinery working as written. The dead turn had no `done` frame, so
+   * nothing swept the "10". The resume then built the coach's briefing from a run that still held the
+   * reading as unasked, and was pointed at it. Sweeping *before* generating is what breaks the loop:
+   * the reading lands, the cached briefing is dropped with it, and the turn is generated against a run
+   * that knows what it has been told.
+   */
+  it('sweeps before it generates, so the resumed turn is not pointed at what it was already told', async () => {
+    const order: string[] = [];
+    vi.mocked(runCaptureSweep).mockImplementation(async () => {
+      order.push('sweep');
+      return { recorded: ['reclaim_ideal_deep_work'], refused: [] };
+    });
+    vi.mocked(streamChat).mockImplementation(() => {
+      order.push('generate');
+      return completesTurn('conv-of-this-run');
+    });
+
+    await POST(req({ kind: 'resume' }), ctx());
+
+    // Before, then again on the way past `done` as the backstop for a first pass that could not run.
+    expect(order).toEqual(['sweep', 'generate', 'sweep']);
+  });
+
+  it('drops the cached briefing before generating, so the pointer it reads is the swept one', async () => {
+    // The briefing is cached for sixty seconds per (type, id, user). A resume that swept and then read
+    // a stale entry would be asked for the reading it had just recorded — the whole failure again, one
+    // layer down.
+    const order: string[] = [];
+    vi.mocked(runCaptureSweep).mockImplementation(async () => {
+      order.push('sweep');
+      return { recorded: ['reclaim_ideal_deep_work'], refused: [] };
+    });
+    vi.mocked(invalidateContext).mockImplementation(() => {
+      order.push('invalidate');
+    });
+    vi.mocked(streamChat).mockImplementation(() => {
+      order.push('generate');
+      return completesTurn('conv-of-this-run');
+    });
+
+    await POST(req({ kind: 'resume' }), ctx());
+
+    expect(order.slice(0, 3)).toEqual(['sweep', 'invalidate', 'generate']);
+  });
+
+  it('picks the turn up anyway when the sweep before it throws', async () => {
+    // A resume follows a provider that has just refused, and the sweep is another call to the same
+    // provider. Bookkeeping must never cost a leader the turn they are already owed.
+    vi.mocked(runCaptureSweep).mockRejectedValue(new Error('provider down'));
+
+    const res = await POST(req({ kind: 'resume' }), ctx());
+
+    expect(res.status).toBe(200);
+    expect(streamChat).toHaveBeenCalled();
+  });
+
+  it('does not sweep a leader turn before generating, only after it', async () => {
+    // A leader turn's words arrive *with* the request and are read by the turn itself. Sweeping first
+    // would spend a provider call re-reading the exchange before it, every turn of the audit.
+    const order: string[] = [];
+    vi.mocked(runCaptureSweep).mockImplementation(async () => {
+      order.push('sweep');
+      return { recorded: [], refused: [] };
+    });
+    vi.mocked(streamChat).mockImplementation(() => {
+      order.push('generate');
+      return completesTurn('conv-of-this-run');
+    });
+
+    await POST(req({ message: 'ten hours' }), ctx());
+
+    expect(order).toEqual(['generate', 'sweep']);
+  });
+
   it('never claims or releases a moment, so no beat is spent picking a turn back up', async () => {
     await POST(req({ kind: 'resume' }), ctx());
 
