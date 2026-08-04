@@ -1772,7 +1772,7 @@ export async function buildCoachPhaseContext(userId: string): Promise<string> {
           'it. So you may say that moving on is available whenever they are ready, once, plainly, and',
           'only after your question. Do not press it and do not repeat it on later turns: the offer is',
           'on the screen and it is theirs to take. Do not tell them the phase is finished or that you',
-          'have gathered enough — what is still open is still worth asking for, and the button does not',
+          'have gathered enough. What is still open is still worth asking for, and the button does not',
           'mean the conversation is over.',
         ]
       : [

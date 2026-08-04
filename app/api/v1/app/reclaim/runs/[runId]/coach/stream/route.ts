@@ -66,6 +66,7 @@ import {
 import { RECLAIM_MODULE_SLUG } from '@/lib/app/programme/identity';
 import { buildCoachScope } from '@/lib/app/programme/coach/scope';
 import { runCaptureSweep } from '@/lib/app/programme/coach/capture-sweep';
+import { sweepActionOptions } from '@/lib/app/programme/coach/action-options';
 import { pendingChoiceOffer } from '@/lib/app/programme/coach/phase-context';
 import { ReclaimOfferChoicesCapability } from '@/lib/app/programme/coach/capabilities/offer-choices';
 import { RECLAIM_OFFER_CHOICES_SLUG } from '@/lib/app/programme/agent';
@@ -399,8 +400,47 @@ export const POST = withAuth<{ runId: string }>(async (request, session, { param
    * duplicate write: a reading already held is refused as `already_held`, and a superseding value
    * identical to the stored one is refused as a rewrite (`capture-sweep.ts`).
    */
+  /**
+   * The one thing an opening turn leaves behind that is worth recording.
+   *
+   * `sweep` skips openings because an opening is the coach speaking into a silence the leader has
+   * not filled, so there is nothing of *theirs* in it. The phase-5 opening is the exception: its
+   * whole job is to put three named ways in front of the leader, and the briefing asks the coach to
+   * record them as a structured value in the same breath. Observed live, it did neither — it went
+   * straight to the chosen action, and the audit lost the menu the summary is meant to show.
+   *
+   * So this reads the opening the coach has just spoken and writes down the options it actually
+   * offered. It never invents one, and a turn that offered fewer than three writes nothing, which is
+   * the honest record of an opening that did not do its job. See `coach/action-options.ts`.
+   *
+   * Its failures are its own, like every other pass here: a leader's turn is their conversation.
+   */
+  const optionsSweep = async (): Promise<void> => {
+    const result = await sweepActionOptions({
+      userId: session.user.id,
+      runId,
+      phaseKey: target.phaseKey,
+      ...(conversationId !== undefined ? { conversationId } : {}),
+    });
+    if (result.recorded) {
+      log.info('Reclaim action options recorded from the coach opening', { runId });
+      // The briefing is cached for sixty seconds per `(type, id, userId)` and this wrote through a
+      // path that dropped nothing, exactly as the capture sweep does. Without this the coach's next
+      // turn would still read the options as outstanding.
+      invalidateContext(MODULE_SURFACE_CONTEXT_TYPE, RECLAIM_MODULE_SLUG, {
+        userId: session.user.id,
+      });
+    } else if (result.skipped !== 'wrong_phase' && result.skipped !== 'already_held') {
+      log.info('Reclaim action options not recorded', {
+        runId,
+        skipped: result.skipped,
+        ...(result.offered !== undefined ? { offered: result.offered } : {}),
+      });
+    }
+  };
+
   const sweep = async (): Promise<void> => {
-    if (body.kind === 'opening') return;
+    if (body.kind === 'opening') return optionsSweep();
     const result = await runCaptureSweep({
       userId: session.user.id,
       runId,
