@@ -14,7 +14,7 @@
  * tidy-up somebody does on a Friday.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { reclaimSlotDefinitions } from '@/lib/app/programme/slots';
 import { RECLAIM_BUCKETS, bucketToken } from '@/lib/app/programme/content';
 import {
@@ -171,6 +171,62 @@ describe('previewAnswersForPhase — what is left out on purpose', () => {
     // The sharing choices are the thing an operator goes to phase 6 to look at. Answering them would
     // hand back a screen with the decision already made.
     expect(allAnswers().filter((a) => a.slotSlug.startsWith('reclaim_share_'))).toEqual([]);
+  });
+
+  it('writes an area the fixture has never heard of, rather than skipping it', async () => {
+    /**
+     * The state this guards is a future one, and it arrives quietly: somebody adds a tenth area to
+     * `RECLAIM_BUCKETS` — a real product change, made in `content.ts` by whoever owns the areas — and
+     * has no reason to know a preview fixture two directories away keys its hours by bucket token.
+     *
+     * What must not happen then is a preview run whose chart has a gap in it, because
+     * `everyVisibleAreaHasHours` is what opens the chart reveal (I12) and one missing figure holds the
+     * whole preview at "not yet". So the hours fall back to `0` — a figure, drawn as an empty bar,
+     * which is exactly what a leader who has that area and spends no time on it would report — while
+     * the *detail* is simply left unwritten, because prose invented for an area nobody has described
+     * would be the fixture answering for a leader.
+     *
+     * Mocked at the module boundary and re-imported, so the assertion is about the fixture's
+     * behaviour on a bucket list it does not control, which is the whole of the risk.
+     */
+    vi.resetModules();
+    vi.doMock('@/lib/app/programme/content', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('@/lib/app/programme/content')>();
+      return {
+        ...actual,
+        RECLAIM_BUCKETS: [
+          ...actual.RECLAIM_BUCKETS,
+          { ...actual.RECLAIM_BUCKETS[0], slug: 'board-governance', conditional: false },
+        ],
+      };
+    });
+
+    try {
+      const { previewAnswersForPhase: withNewArea } =
+        await import('@/lib/app/programme/preview/answers');
+
+      const phase1 = withNewArea(1);
+      const phase3 = withNewArea(3);
+
+      expect(phase1).toContainEqual({
+        slotSlug: 'reclaim_current_hours__board_governance',
+        value: '0',
+        valueJson: 0,
+      });
+      expect(phase3).toContainEqual({
+        slotSlug: 'reclaim_ideal_hours__board_governance',
+        value: '0',
+        valueJson: 0,
+      });
+      // No detail, and no empty string standing in for one — an unwritten slot is a box the leader
+      // left blank, which is a state a real audit reaches; `value: ''` is not.
+      expect(phase1.map((a) => a.slotSlug)).not.toContain(
+        'reclaim_current_detail__board_governance'
+      );
+    } finally {
+      vi.doUnmock('@/lib/app/programme/content');
+      vi.resetModules();
+    }
   });
 
   it('does not answer a question the audit would not have asked', () => {

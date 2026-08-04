@@ -93,6 +93,38 @@ describe('readingIsSettled', () => {
     );
   });
 
+  it('treats a slug the registry does not know as prose, so the flag rules still apply to it', async () => {
+    // `slotDefinitionFor` returns nothing for a slug that has been renamed or retired, and the run can
+    // still hold an answer under the old name. The fallback is `text` rather than a typed value on
+    // purpose: `answerFlag` exempts every typed reading unconditionally, so falling the other way
+    // would call an unrecognised, unconfirmed reading settled and take its buttons away — the one
+    // outcome this guard exists to prevent, arrived at through a slug nobody was looking at.
+    readRunAnswers.mockResolvedValue({
+      reclaim_setup_retired_reading: {
+        value: 'last month',
+        valueJson: null,
+        sourceType: 'inferred',
+        confidence: 5,
+      },
+    });
+
+    expect(await readingIsSettled({ ...asked, slotSlug: 'reclaim_setup_retired_reading' })).toBe(
+      false
+    );
+  });
+
+  it('settles an unknown slug the leader answered outright, rather than refusing on principle', async () => {
+    // The other half of the same fallback: an unrecognised slug is not automatically suspect. Stated
+    // by the leader and carrying no flag, it is as finished as any reading the registry knows.
+    readRunAnswers.mockResolvedValue({
+      reclaim_setup_retired_reading: stated('last quarter'),
+    });
+
+    expect(await readingIsSettled({ ...asked, slotSlug: 'reclaim_setup_retired_reading' })).toBe(
+      true
+    );
+  });
+
   it('says nothing is settled when the run cannot be read', async () => {
     // Fails open, exactly as `asksInsideCompoundQuestion` does. A wrong offer names the reading it is
     // for and sits beside a way to type instead; an offer withheld from every leader for the length
