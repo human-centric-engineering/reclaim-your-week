@@ -127,6 +127,17 @@ export interface ReclaimCoachContent {
   questioning: ReclaimConfig['questioning'];
   /** Whether the strategy mirror is live for this leader. Resolved, not the raw mode. */
   strategyMirror: boolean;
+  /**
+   * The operator's coverage threshold, so the briefing can work out whether the way onward is
+   * currently offered and tell the coach the truth about it.
+   *
+   * The screen has always decided this for itself (`coach/coverage.ts`, via the same number served to
+   * the client). The coach was told it could not see the answer and forbidden from mentioning the
+   * move at all — and then said "whenever you're ready, you can move on to the next section" beside a
+   * screen offering nothing. It is here so that both surfaces answer the question from the same
+   * figure rather than one of them guessing.
+   */
+  phaseCoveredPercent: number;
 }
 
 /**
@@ -151,6 +162,7 @@ export async function readReclaimCoachContent(userId: string): Promise<ReclaimCo
     },
     questioning: config.questioning,
     strategyMirror: await resolveStrategyMirror(config, userId),
+    phaseCoveredPercent: config.phaseCoveredPercent,
   };
 }
 

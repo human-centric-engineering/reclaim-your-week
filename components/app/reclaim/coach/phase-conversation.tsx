@@ -56,11 +56,8 @@ import {
   type CoachOpeningMoment,
 } from '@/lib/app/programme/coach/opening';
 import { readIdealWeek } from '@/lib/app/programme/coach/ideal-week';
-import {
-  phaseCaptureSlots,
-  slotApplies,
-  type PhaseSlot,
-} from '@/lib/app/programme/coach/phase-slots';
+import { phaseCaptureSlots, type PhaseSlot } from '@/lib/app/programme/coach/phase-slots';
+import { phaseCoverage } from '@/lib/app/programme/coach/coverage';
 import { reflectionSlugForLeaving } from '@/lib/app/programme/runs/phases';
 import type { PhaseSignpost } from '@/lib/app/programme/runs/signposts';
 import type { PhaseMarks } from '@/lib/app/programme/runs/phase-marks';
@@ -128,32 +125,6 @@ function openMomentFor(
 }
 
 /**
- * How much of a phase has to be covered before the way onward is offered, when the operator's own
- * number has not arrived.
- *
- * Not all of it, and the shortfall is the point. A phase whose every applicable reading must land
- * would be held open by one question a leader would rather not answer, and there is no way for them
- * to say so: the coach cannot record a decline. Leaving room for roughly one in ten means the common
- * case — a leader who has genuinely been through the phase and left one thing — is not a hostage.
- *
- * The live value is `Module.config.phaseCoveredPercent`, edited on the content screen and served
- * through `GET /api/v1/app/reclaim/config`. This is the fallback for the moment before it lands and
- * for a read that failed, and it is deliberately the same number the config defaults to: a leader
- * whose config fetch missed should meet the shipped behaviour, not a stricter or looser one.
- */
-const PHASE_COVERED = 0.9;
-
-/**
- * At or below this, an inferred reading is the coach's guess and not the leader's answer.
- *
- * The same number the captured panel uses to decide what to offer back for checking, and the same
- * band `answer-quality.ts` calls `unconfirmed`. A guess counts towards the picture but not towards
- * "this phase has happened": a phase whose coverage was made of inferences is a phase where the
- * coach filled in the leader's audit for them.
- */
-const GUESS_CONFIDENCE = 6;
-
-/**
  * The drawer's closed width, its default open width, and how far a drag may take it.
  *
  * `NARROW` is a reading width and it is the **only** closed width: the list of readings, scanned,
@@ -188,10 +159,6 @@ function widestDrawer(): number {
   // the constant is the honest answer there, and a real drag only ever happens in a real window.
   const viewport = typeof window === 'undefined' ? Infinity : window.innerWidth;
   return Math.max(DRAWER_NARROW, Math.min(DRAWER_MAX, viewport - KEEP_FOR_TALK));
-}
-
-function isAGuess(answer: RunAnswers[string]): boolean {
-  return answer.sourceType === 'inferred' && answer.confidence <= GUESS_CONFIDENCE;
 }
 
 export interface PhaseConversationProps {
@@ -466,12 +433,14 @@ export function PhaseConversation({
   // way are not outstanding, they are finished — `slotApplies` answers that from the run's own data,
   // so a leader with no fundraising in their role is not held behind a question about their
   // development team.
-  const applicable = captureSlots.filter((s) => slotApplies(s.askOnlyIf, answers) !== false);
+  //
+  // The gate itself lives in `coach/coverage.ts` so that the briefing can ask the same question and
+  // get the same answer — the coach used to be told it could not see this, and told leaders they
+  // could move on while the screen offered nothing. See that module for the full reasoning, for why
+  // `authoredByCoach` readings are excluded alongside the ruled-out ones, and for why the proportion
+  // rounds down.
+  const { applicable, settled, covered } = phaseCoverage(captureSlots, answers, coveredPercent);
   const applicableCaptured = applicable.filter((s) => answers[s.slug] !== undefined).length;
-  const settled = applicable.filter((s) => {
-    const answer = answers[s.slug];
-    return answer !== undefined && !isAGuess(answer);
-  }).length;
   const outstanding = applicable.length - settled;
 
   // I12, the reveal as an event rather than a running total. `revealing` folds in the click that has
@@ -498,11 +467,12 @@ export function PhaseConversation({
   // still open is said beside the button rather than left to be guessed at, and the form panel is one
   // click away and writes the same slots. If a leader still gets stuck, the fix is to let them record
   // a decline, not to lower this back to one.
-  // The operator's number, or the shipped one. Clamped rather than trusted: this arrives over HTTP,
-  // and a nought would offer the way out of an empty phase while a figure above one would hold every
-  // phase open for ever.
-  const threshold = Math.min(1, Math.max(0.5, (coveredPercent ?? PHASE_COVERED * 100) / 100));
-  const covered = applicable.length > 0 && settled >= Math.ceil(applicable.length * threshold);
+  //
+  // **All four of those were claims, and two of them were false, and a leader got stuck.** The
+  // rounding made the slack vanish on every phase shorter than ten readings, and phase 5's sixth
+  // reading was one the form panel cannot write because only the coach can author it. Both are fixed
+  // in `coach/coverage.ts`, which is where `covered` now comes from; the paragraph above is true as
+  // written for the first time.
   const canAdvance = covered && reflected && (revealState === null || revealed);
 
   /** Why the move is not offered yet, in one sentence, because a dimmed button explains nothing. */

@@ -338,12 +338,12 @@ describe('buildCoachPhaseContext', () => {
 
     expect(block).toContain('reclaim_reflection_p2');
     expect(block).toContain('what stands out to you here?');
-    // The two rules that replaced the blanket refusal: it is theirs to say, and it is theirs to
-    // leave. The second is now stated as a prohibition rather than as a hand-off, because "leave the
-    // move to them" was read as "tell them they may move", and the coach cannot see whether the
-    // screen is offering it.
+    // The reflection is theirs to say, and the move onward is theirs to take. The second used to be
+    // restated here as a blanket prohibition; it is now settled in one place, from what the screen
+    // is actually offering, so this note defers rather than repeating a rule that is conditional.
     expect(block).toContain('Never infer it');
-    expect(block).toContain('do not invite them to move on');
+    expect(block).toContain('do not announce that the phase is done');
+    expect(block).toContain('settled below, from what their screen is actually offering');
   });
 
   it('stops asking for a reflection this run already holds', async () => {
@@ -474,13 +474,17 @@ describe('buildCoachPhaseContext — who speaks first, and how a turn ends', () 
     expect(block).toContain('Never end on an');
   });
 
-  it('refuses the open invitation and the announcement that a phase is done', async () => {
+  it('refuses the open invitation, and refuses the move onward while the screen withholds it', async () => {
+    // This fixture's run has barely started, so the way onward is not offered and the briefing says
+    // so as fact rather than as a rule the coach is asked to keep. The prohibition used to rest on
+    // "you cannot see that", and the coach announced the move anyway — see `coach/coverage.ts`.
     const block = await buildCoachPhaseContext('u1');
 
     expect(block).toContain('anything else they');
     expect(block).toContain('ask for it by name');
+    expect(block).toContain('is not offering the way onward yet');
     expect(block).toContain('do not tell them the phase is finished');
-    expect(block).toContain('their screen offers it at the moment it becomes true');
+    expect(block).not.toContain('you may say that moving on is available');
   });
 
   it('says that a sentence about recording is not a recording', async () => {

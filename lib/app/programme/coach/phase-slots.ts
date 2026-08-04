@@ -64,7 +64,36 @@ export interface PhaseSlot {
   pairedTo?: string;
   /** The condition under which this reading applies at all. Absent means it always does. */
   askOnlyIf?: SlotCondition;
+  /**
+   * This reading is something the **coach produces**, not something the leader is asked.
+   *
+   * Everything else on a capture list is a question: the coach asks it, the leader answers, and the
+   * answer is theirs. `reclaim_action_options` is the other kind. The coach offers three ways in and
+   * records what it offered, so the summary can show what was on the table — the leader is never
+   * asked for it and has no way to supply it. The form panel reflects that already: every other
+   * phase-5 slot has a field in `phase5-panel.tsx` and this one does not, because there is nothing
+   * for a person to type.
+   *
+   * **Marking it matters because the coverage gate counts questions.** That gate asks whether the
+   * leader has been taken through the phase, and a reading only the coach can author answers nothing
+   * about that. Counted anyway it did real harm: a live audit reached phase 5 with all five of the
+   * leader's readings settled, and the way onward stayed shut behind the one the coach had never
+   * offered — with the form panel, the documented escape from exactly that, unable to write it
+   * either. The reading is still recorded, still shown, and still worth having. It is just not
+   * evidence about the leader, so it is not counted as though it were.
+   */
+  authoredByCoach?: true;
 }
+
+/**
+ * Readings the coach produces rather than asks for. See `PhaseSlot.authoredByCoach`.
+ *
+ * A set rather than a property on the slot definitions, because this is a fact about how a reading
+ * is *obtained* in conversation, not about the shape of the value — `reclaim_action_options` is
+ * json-typed, but so could a leader-answered reading be one day, and keying the gate on `dataType`
+ * would then silently stop counting a question the leader really was asked.
+ */
+const COACH_AUTHORED_SLOTS: ReadonlySet<string> = new Set(['reclaim_action_options']);
 
 /** "Only ask this when that other reading came back a particular way." */
 export interface SlotCondition {
@@ -358,6 +387,7 @@ export function phaseCaptureSlots(phaseKey: string, options: PhaseSlotOptions = 
           ...(followers.length > 0 ? { pairedWith: followers } : {}),
           ...(anchor !== undefined && onThisPhase(anchor) ? { pairedTo: anchor } : {}),
           ...(condition !== undefined ? { askOnlyIf: condition } : {}),
+          ...(COACH_AUTHORED_SLOTS.has(definition.slug) ? { authoredByCoach: true as const } : {}),
         };
       })
   );

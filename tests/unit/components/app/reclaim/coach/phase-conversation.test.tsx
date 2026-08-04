@@ -275,13 +275,33 @@ describe('PhaseConversation — when the way onward is offered', () => {
   });
 
   it('counts the last one down in the singular, because "1 things" is the product not reading it', async () => {
-    // Phase 2, where two readings are asked as one question, so one of them outstanding is a real
-    // state. On a fifteen-reading phase it is not: the threshold leaves room for exactly one, so the
-    // last one outstanding is already the phase being covered.
+    // An operator on 100%, which is the only setting where one reading outstanding is still a phase
+    // held open. At the shipped 90% the proportion rounds down, so the last one outstanding is
+    // already the phase being covered on every phase length — see `coach/coverage.ts`. Phase 2 is
+    // used because its two readings are asked as one question, so a single one left is a real state
+    // rather than a contrived one.
     readAnswers.mockResolvedValue(allOf(['reclaim_energy_peak_description']));
-    render(<PhaseConversation {...props} />);
+    render(<PhaseConversation {...props} coveredPercent={100} />);
 
     expect(await screen.findByText(/is one thing still to cover/i)).toBeInTheDocument();
+  });
+
+  it('rounds the proportion down, so a short phase gets the slack the long ones always had', async () => {
+    // The regression this exists for, observed live on phase 5. `Math.ceil(n × 0.9) === n` for every
+    // n up to nine, so the three short phases demanded every reading while the code beside them
+    // promised "room for one or two unanswered". A leader sat on five of six with the coach telling
+    // them they could move on and no button beside it.
+    //
+    // Phase 2 has two readings, where the old arithmetic needed both and this needs one. The
+    // reflection is answered because it is a separate hard gate (I9) and this is about coverage.
+    readAnswers.mockResolvedValue(
+      allOf(['reclaim_energy_peak_description', 'reclaim_reflection_p2'])
+    );
+    render(<PhaseConversation {...props} />);
+
+    expect(
+      await screen.findByRole('button', { name: /Continue to the next section/ })
+    ).toBeInTheDocument();
   });
 
   it('offers it with one still outstanding, so a leader is not held behind a single question', async () => {
