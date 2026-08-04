@@ -13,7 +13,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useEffect } from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 
 /*
  * The bar's two corner controls stand in as nothing here. Both reach for a provider this suite has no
@@ -87,6 +87,11 @@ vi.mock('@/components/app/reclaim/phase/phase5-panel', () => ({
   Phase5Panel: () => <div data-testid="panel-phase-5-action" />,
 }));
 vi.mock('@/components/app/reclaim/repeat/trend-lines', () => ({ TrendLines: () => null }));
+// A finished phase opened again has its own suite. Here it stands in as a marker naming the phase it
+// was given, which is what the tests about going back to a section are actually asserting on.
+vi.mock('@/components/app/reclaim/phase-review', () => ({
+  PhaseReview: ({ phaseKey }: { phaseKey: string }) => <div data-testid={`review-${phaseKey}`} />,
+}));
 vi.mock('@/components/app/reclaim/begin-audit', () => ({
   BeginAudit: ({ onStarted }: { onStarted: () => void }) => (
     <div data-testid="begin-audit">
@@ -402,5 +407,135 @@ describe('ProgrammeShell — the frame around a run', () => {
 
     expect(await screen.findByText(/not available just now/i)).toBeInTheDocument();
     expect(screen.queryByTestId('conversation')).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * The register: sections the leader has stood in stay open to them.
+ *
+ * Both rails render (CSS picks one), and the compact strip is the one with an explicit label per
+ * section, so that is what these press. They are the same component with the same handler.
+ */
+describe('ProgrammeShell — sections the leader has already reached', () => {
+  it('goes back to a finished section and returns to the live one', async () => {
+    respond(runState());
+    render(<ProgrammeShell />);
+    await screen.findByTestId('conversation');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Go to section 1, Current reality' }));
+    expect(await screen.findByTestId('review-phase-1-current')).toBeInTheDocument();
+    expect(screen.getByText('Section 1 · Current reality')).toBeInTheDocument();
+
+    // The way back lands on the live conversation, not on a read-only copy of it.
+    await userEvent.click(screen.getByRole('button', { name: 'Go to section 2, Energy' }));
+    expect(await screen.findByTestId('conversation')).toBeInTheDocument();
+    expect(screen.getByText('Section 2 · Energy')).toBeInTheDocument();
+  });
+
+  it('keeps a reached section open when a later read says the audit is behind', async () => {
+    // The reported defect, from the leader's side: continue to section 2, look back at section 1,
+    // and section 2 has gone inert because the copy of the run on screen is behind. What the run
+    // says can go backwards; what the leader has been through cannot.
+    respond(runState());
+    render(<ProgrammeShell />);
+    await screen.findByTestId('conversation');
+
+    respond(
+      runState({
+        currentPhaseKey: 'phase-1-current',
+        phases: PHASES.map((phase) =>
+          phase.key === 'phase-1-current'
+            ? { ...phase, status: 'active' as const }
+            : phase.key === 'phase-2-energy'
+              ? { ...phase, status: 'upcoming' as const }
+              : phase
+        ),
+      })
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'advance' }));
+    await waitFor(() =>
+      expect(screen.getByText('Section 1 · Current reality')).toBeInTheDocument()
+    );
+
+    // Still a door rather than a row of text, because the register saw the leader there.
+    const energy = screen.getByRole('button', { name: 'Go to section 2, Energy' });
+
+    // And taking it re-reads the run rather than opening a read-only review of a live phase.
+    respond(runState());
+    await userEvent.click(energy);
+    await waitFor(() => expect(screen.getByText('Section 2 · Energy')).toBeInTheDocument());
+    expect(screen.getByTestId('conversation')).toBeInTheDocument();
+  });
+
+  it('offers no section the leader has never been in', async () => {
+    // The register only ever remembers where the audit has been seen to get to. Moving it on is the
+    // button at the foot of the conversation, and the server owns that gate (I9).
+    respond(runState());
+    render(<ProgrammeShell />);
+    await screen.findByTestId('conversation');
+
+    expect(
+      screen.queryByRole('button', { name: 'Go to section 3, Ideal week' })
+    ).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * Two reads of the run in flight at once, which is ordinary rather than exotic: the conversation
+ * re-reads after every coach turn, and the leader presses "continue" seconds later.
+ */
+describe('ProgrammeShell — overlapping reads', () => {
+  it('lets the last read asked for win, so a slow one cannot walk the audit back', async () => {
+    const atPhase1 = runState({
+      currentPhaseKey: 'phase-1-current',
+      phases: PHASES.map((phase) =>
+        phase.key === 'phase-1-current'
+          ? { ...phase, status: 'active' as const }
+          : phase.key === 'phase-2-energy'
+            ? { ...phase, status: 'upcoming' as const }
+            : phase
+      ),
+    });
+
+    /** Each `/runs/current` call, held open until the test says what it answers and when. */
+    const inFlight: Array<(state: unknown) => void> = [];
+    fetchMock.mockImplementation((url: string) => {
+      if (String(url).includes('/runs/current')) {
+        return new Promise((resolve) => {
+          inFlight.push((state) =>
+            resolve({ ok: true, json: async () => ({ success: true, data: state }) })
+          );
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ success: true, data: { strategyMirror: false, phaseSignposts: [] } }),
+      });
+    });
+
+    render(<ProgrammeShell />);
+    await waitFor(() => expect(inFlight).toHaveLength(1));
+    inFlight[0](atPhase1);
+    await screen.findByTestId('conversation');
+
+    // The read after a coach turn, still in flight when the leader moves on.
+    await userEvent.click(screen.getByRole('button', { name: 'advance' }));
+    await waitFor(() => expect(inFlight).toHaveLength(2));
+    // The read after the move, asked for second and answering first.
+    await userEvent.click(screen.getByRole('button', { name: 'advance' }));
+    await waitFor(() => expect(inFlight).toHaveLength(3));
+    inFlight[2](runState());
+    expect(await screen.findByText('Section 2 · Energy')).toBeInTheDocument();
+
+    // The older read finally lands, carrying the run as it was before the move. Settled inside
+    // `act`, so what follows is looking at the state after it rather than racing it.
+    await act(async () => {
+      inFlight[1](atPhase1);
+    });
+
+    // It is dropped. Left to win, it would have put the leader back in section 1 without their
+    // having asked to go anywhere, which is how the whole defect presented.
+    expect(screen.getByText('Section 2 · Energy')).toBeInTheDocument();
+    expect(screen.getByTestId('conversation')).toBeInTheDocument();
   });
 });

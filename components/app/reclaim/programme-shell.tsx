@@ -26,7 +26,7 @@
  * where the reasoning for leaving `(protected)` is written down.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocalStorage } from '@/lib/hooks/use-local-storage';
 import {
   currentRunStateSchema,
@@ -86,6 +86,21 @@ export function ProgrammeShell() {
    * `null` by the way out, and by selecting the current phase in the spine.
    */
   const [reviewingKey, setReviewingKey] = useState<string | null>(null);
+  /**
+   * How far this session has seen the audit get, and the run it was seen on.
+   *
+   * **The register the spine reads, and it exists because "where the run is" and "where the leader
+   * has been" are not the same question.** The spine offers a phase the run has reached; that comes
+   * from the last read of `GET /runs/current`, and a read can be behind — a slow one landing late, a
+   * response that never came back. When it is, a phase the leader has stood in goes inert: they moved
+   * on, looked back at an earlier section, and then could not return to the one they had just left.
+   *
+   * So this remembers, monotonically. It only ever moves forward, it never lets a later read take a
+   * section away, and it is held in memory rather than in storage on purpose: a reload asks the
+   * server, and the server is the authority on where the audit got to. This is a session's memory of
+   * having been there, not a second copy of the run.
+   */
+  const [reached, setReached] = useState<{ runId: string; index: number } | null>(null);
 
   /**
    * Read the run state.
@@ -105,8 +120,18 @@ export function ProgrammeShell() {
    *
    * Only the very first read has nothing to show. Every later one keeps what is on screen and swaps
    * the data underneath it.
+   *
+   * **The last read to be asked for wins, not the last to answer**, and that ordering is the whole
+   * of `reads`. These fire on top of each other in ordinary use: the conversation re-reads the run
+   * after *every* coach turn, and a leader presses "continue to the next section" seconds later, so
+   * a read issued before the move can easily land after it. Last-response-wins then walked the audit
+   * back to the section it had just left — and a section the run has not reached is inert in the
+   * spine, so the leader was returned to the phase behind and could not get forward again without
+   * reloading the page. Which is exactly how it was reported.
    */
+  const reads = useRef(0);
   const load = useCallback(async (quiet = false) => {
+    const read = ++reads.current;
     if (!quiet) {
       setLoading(true);
       setFailed(false);
@@ -117,7 +142,11 @@ export function ProgrammeShell() {
       const data = json !== null && typeof json === 'object' && 'data' in json ? json.data : null;
       const parsed = currentRunStateSchema.safeParse(data);
       if (!res.ok || !parsed.success) throw new Error('bad response');
-      setState(parsed.data);
+      // Superseded: a later read has already been asked for, and its answer is the current one
+      // whether it has arrived yet or not. Only the data is dropped; the loading and failure flags
+      // below still resolve, or a loud read overtaken by a quiet one would leave the shell on
+      // "Gathering your audit…" for good.
+      if (read === reads.current) setState(parsed.data);
     } catch {
       if (!quiet) setFailed(true);
     } finally {
@@ -128,6 +157,18 @@ export function ProgrammeShell() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Every read of the run adds to the register, and none of them takes anything away. A different run
+  // starts a fresh one: the leader's second audit has not been anywhere yet.
+  useEffect(() => {
+    if (state === null || state.run === null) return;
+    const runId = state.run.id;
+    const index = state.phases.findIndex((p) => p.key === state.currentPhaseKey);
+    if (index < 0) return;
+    setReached((was) =>
+      was !== null && was.runId === runId && was.index >= index ? was : { runId, index }
+    );
+  }, [state]);
 
   // Once per mount: the cards do not change while a leader is in a phase, and a failure is not worth
   // surfacing because the component falls back to the shipped defaults.
@@ -225,6 +266,33 @@ export function ProgrammeShell() {
   const headingIndex = reviewing !== null ? reviewIndex : currentIndex;
   const headingPhase = reviewing ?? currentPhase;
 
+  // How far this session has seen the audit get, which is at least as far as the read on screen says.
+  const furthestIndex =
+    reached !== null && reached.runId === state.run.id
+      ? Math.max(reached.index, currentIndex)
+      : currentIndex;
+
+  /**
+   * Open a section from the spine.
+   *
+   * Two of the three cases are ordinary: a finished section opens as a review, and the section the
+   * run is on is "not reviewing" rather than a review of itself, which is what returns the leader to
+   * the live conversation instead of a read-only copy of it.
+   *
+   * The third is the register's. A row **ahead** of where this copy of the run says the leader is can
+   * only have been offered because the register saw them there, which means the shell is behind
+   * rather than the leader wrong. So it re-reads and goes to wherever the audit actually is, instead
+   * of opening a read-only review of a phase that is very probably live.
+   */
+  const openPhase = (phaseKey: string) => {
+    if (state.phases.findIndex((p) => p.key === phaseKey) > currentIndex) {
+      setReviewingKey(null);
+      void load(true);
+      return;
+    }
+    setReviewingKey(phaseKey === state.currentPhaseKey ? null : phaseKey);
+  };
+
   return (
     <>
       <ProgrammeChrome here={`Section ${headingIndex} · ${headingPhase.label}`} />
@@ -237,7 +305,8 @@ export function ProgrammeShell() {
             phases={state.phases}
             currentPhaseKey={state.currentPhaseKey}
             viewingPhaseKey={reviewing?.key ?? state.currentPhaseKey}
-            onSelect={setReviewingKey}
+            furthestPhaseKey={state.phases[furthestIndex]?.key}
+            onSelect={openPhase}
           />
         </aside>
 
@@ -247,7 +316,8 @@ export function ProgrammeShell() {
               phases={state.phases}
               currentPhaseKey={state.currentPhaseKey}
               viewingPhaseKey={reviewing?.key ?? state.currentPhaseKey}
-              onSelect={setReviewingKey}
+              furthestPhaseKey={state.phases[furthestIndex]?.key}
+              onSelect={openPhase}
               variant="compact"
             />
           </div>

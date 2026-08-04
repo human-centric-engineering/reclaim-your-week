@@ -38,6 +38,7 @@
  * through the run-scoped answers route (I3), which carries no phase at all.
  */
 
+import { ChevronRight } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { buildChartData } from '@/lib/app/programme/chart/series';
 import { CHART_REVEAL_PHASE, chartRevealReady } from '@/lib/app/programme/chart/reveal';
@@ -162,7 +163,7 @@ export function PhaseReview({
   return (
     <div className="flex min-h-0 flex-1">
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl space-y-8 px-4 py-10 sm:px-6">
+        <div className="mx-auto max-w-3xl space-y-8 px-4 pt-10 pb-0 sm:px-6">
           {/* The way back sits above everything, because it is the one thing this screen is certain
               to be wanted for. Named rather than "back", so it says where it goes. */}
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -227,13 +228,22 @@ export function PhaseReview({
             {revealAt === -1 && picture}
           </div>
 
-          <button
-            type="button"
-            onClick={onReturn}
-            className="bg-primary text-primary-foreground rounded-full px-8 py-3 text-[0.95rem] font-medium"
-          >
-            Back to {returnLabel}
-          </button>
+          {/* The way back, pinned to the foot of the conversation rather than filed at the end of
+              it. It was at the end: a leader who opened section 1 to check one thing had to scroll
+              past the whole of that section's transcript to find the button that takes them back to
+              where they were, and the link at the top is a line of small type they have already
+              scrolled away from. Sticky inside this column, so it is on screen for the whole visit
+              and the conversation passes underneath it. */}
+          <div className="bg-background border-border/60 sticky bottom-0 -mx-4 flex justify-end border-t px-4 py-4 sm:-mx-6 sm:px-6">
+            <button
+              type="button"
+              onClick={onReturn}
+              className="bg-primary text-primary-foreground inline-flex items-center gap-2 rounded-full px-8 py-3 text-[0.95rem] font-medium transition-opacity hover:opacity-90"
+            >
+              Back to {returnLabel}
+              <ChevronRight aria-hidden className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       </div>
 

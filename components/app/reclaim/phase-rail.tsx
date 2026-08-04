@@ -18,6 +18,13 @@
  * the server enforces it (I9): a phase cannot be left until its reflection exists. Making a future
  * phase clickable would offer a door that only ever refuses.
  *
+ * **`furthestPhaseKey` is what keeps a phase the leader has stood in from becoming one of those.**
+ * The two other tests both read the last response from the server, and a response can be behind: one
+ * that landed late, or one that never came. When that happened the phase the leader had just left
+ * went inert underneath them, so going back to read section 1 was a trip with no way home. The caller
+ * remembers where the audit has been seen to get to and passes it here; everything up to it opens,
+ * whatever a given read of the run happens to say.
+ *
  * `onSelect` is optional. Without it the spine is exactly what it was, which is what the compact strip
  * in the summary chrome and any read-only rendering want.
  *
@@ -30,15 +37,24 @@
 import { useEffect, useState } from 'react';
 import type { PhaseView } from '@/components/app/reclaim/types';
 
-/** Whether this phase can be opened: one already finished, or the one the leader is on. */
-function isReachable(phase: PhaseView, currentPhaseKey: string | null): boolean {
-  return phase.status === 'completed' || phase.key === currentPhaseKey;
+/**
+ * Whether this phase can be opened: one already finished, the one the leader is on, or one this
+ * session has seen them reach whatever the latest read of the run says.
+ */
+function isReachable(
+  phase: PhaseView,
+  index: number,
+  currentPhaseKey: string | null,
+  furthestIndex: number
+): boolean {
+  return phase.status === 'completed' || phase.key === currentPhaseKey || index <= furthestIndex;
 }
 
 export function PhaseRail({
   phases,
   currentPhaseKey,
   viewingPhaseKey,
+  furthestPhaseKey,
   onSelect,
   variant = 'vertical',
 }: {
@@ -53,6 +69,13 @@ export function PhaseRail({
    * the run's position, and the phase being read is the one marked as the current page.
    */
   viewingPhaseKey?: string;
+  /**
+   * The furthest phase the caller has seen this audit reach, if it is keeping count.
+   *
+   * Everything up to it opens. Omitted leaves the spine reading the run alone, which is what a
+   * finished audit and any read-only rendering want.
+   */
+  furthestPhaseKey?: string;
   /** Open a phase. Omit to render the spine as a display of progress and nothing more. */
   onSelect?: (phaseKey: string) => void;
   /**
@@ -64,6 +87,11 @@ export function PhaseRail({
 }) {
   const [shown, setShown] = useState(false);
   useEffect(() => setShown(true), []);
+
+  // `-1` when the caller keeps no register, or names a phase that is not in this journey: no row is
+  // opened by it, and the two tests that read the run stand alone as they always did.
+  const furthestIndex =
+    furthestPhaseKey === undefined ? -1 : phases.findIndex((p) => p.key === furthestPhaseKey);
 
   if (variant === 'compact') {
     const current = phases.find((p) => p.key === currentPhaseKey);
@@ -87,7 +115,8 @@ export function PhaseRail({
                 }`}
               />
             );
-            const reachable = onSelect !== undefined && isReachable(phase, currentPhaseKey);
+            const reachable =
+              onSelect !== undefined && isReachable(phase, i, currentPhaseKey, furthestIndex);
             return (
               <li key={phase.key}>
                 {reachable ? (
@@ -129,7 +158,8 @@ export function PhaseRail({
         {phases.map((phase, i) => {
           const current = phase.key === currentPhaseKey;
           const done = phase.status === 'completed';
-          const reachable = onSelect !== undefined && isReachable(phase, currentPhaseKey);
+          const reachable =
+            onSelect !== undefined && isReachable(phase, i, currentPhaseKey, furthestIndex);
           const viewing = phase.key === viewingPhaseKey;
           const Row = reachable ? 'button' : 'span';
           return (

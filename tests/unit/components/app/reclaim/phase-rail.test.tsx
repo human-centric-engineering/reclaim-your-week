@@ -102,6 +102,35 @@ describe('PhaseRail — going back', () => {
     }
   });
 
+  /**
+   * The register. A read of the run can be behind the leader; a phase they have stood in must not
+   * close behind them because of it.
+   */
+  it('opens a phase the caller has seen the leader reach, whatever this read says', async () => {
+    const onSelect = vi.fn();
+    // The run as a stale read describes it: back on phase 1, with phase 2 not yet entered.
+    const behind: PhaseView[] = phases.map((phase) =>
+      phase.key === 'phase-1-current'
+        ? { ...phase, status: 'active' }
+        : phase.key === 'phase-2-energy'
+          ? { ...phase, status: 'upcoming' }
+          : phase
+    );
+    render(
+      <PhaseRail
+        phases={behind}
+        currentPhaseKey="phase-1-current"
+        furthestPhaseKey="phase-2-energy"
+        onSelect={onSelect}
+      />
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /Energy/ }));
+    expect(onSelect).toHaveBeenCalledWith('phase-2-energy');
+    // And it opens no further than the register goes.
+    expect(screen.queryByRole('button', { name: /Ideal week/ })).not.toBeInTheDocument();
+  });
+
   it('stays a display of progress when no one is listening', () => {
     render(<PhaseRail phases={phases} currentPhaseKey="phase-2-energy" />);
 
