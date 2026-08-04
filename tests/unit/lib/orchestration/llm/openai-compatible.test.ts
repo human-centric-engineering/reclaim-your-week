@@ -635,6 +635,71 @@ describe('chatStream', () => {
     expect(err).toMatchObject({ message: 'auth failed' });
   });
 
+  /**
+   * The failure these two exist for, observed on a live audit.
+   *
+   * A provider 429 on the opening of a streamed turn went straight to the leader as "The AI
+   * provider is throttling requests right now", on a request a second of backoff would have
+   * cleared. `withRetry` had always treated 429 as retriable, but only the non-streaming `chat()`
+   * asked for it, and the SDK's own retry is off (`maxRetries: 0`) precisely because retry policy
+   * is meant to live in `withRetry`. So the streamed path — the one every conversation uses — was
+   * the single path with no retry at all.
+   *
+   * The pair below pins both halves of the fix: the open is retried, and the iteration is not.
+   */
+  it('retries a 429 thrown when the stream is opened, then streams the successful attempt', async () => {
+    // Arrange — first open is throttled, second succeeds.
+    const throttled = Object.assign(new Error('rate limited'), { status: 429 });
+    chatCreateMock
+      .mockRejectedValueOnce(throttled)
+      .mockResolvedValueOnce(
+        toAsyncIterable([makeChunk({ content: 'recovered' }), makeChunk({ finishReason: 'stop' })])
+      );
+
+    // Act
+    const provider = makeProvider();
+    const collected: unknown[] = [];
+    for await (const chunk of provider.chatStream([{ role: 'user', content: 'hi' }], {
+      model: 'gpt-4o',
+    })) {
+      collected.push(chunk);
+    }
+
+    // Assert — the leader saw the reply, not the rate-limit notice.
+    expect(chatCreateMock).toHaveBeenCalledTimes(2);
+    expect(collected).toContainEqual({ type: 'text', content: 'recovered' });
+  });
+
+  it('does not retry a failure raised after the stream has started yielding', async () => {
+    // Arrange — the open succeeds; the break happens mid-flight, after a token has reached the
+    // caller. Replaying from the start here would repeat text the leader has already read, so this
+    // failure belongs to the fallback-provider path above, which emits `content_reset` first.
+    async function* breaksAfterFirstChunk() {
+      yield makeChunk({ content: 'partial' });
+      throw Object.assign(new Error('mid-stream 429'), { status: 429 });
+    }
+    chatCreateMock.mockReturnValue(breaksAfterFirstChunk());
+
+    // Act
+    const provider = makeProvider();
+    const err = await (async () => {
+      try {
+        for await (const _chunk of provider.chatStream([{ role: 'user', content: 'x' }], {
+          model: 'gpt-4o',
+        })) {
+          // consume
+        }
+        return null;
+      } catch (e) {
+        return e;
+      }
+    })();
+
+    // Assert — surfaced, and opened exactly once.
+    expect(err).toMatchObject({ message: 'mid-stream 429' });
+    expect(chatCreateMock).toHaveBeenCalledTimes(1);
+  });
+
   it('wraps SDK error thrown during stream iteration via toProviderError', async () => {
     // Arrange — async iterable throws mid-stream
     async function* throwingStream() {
