@@ -422,16 +422,16 @@ describe('a number reading is stored as prose a leader can read', () => {
  * application to a column on the run, never to a slot: a slot value is what the *leader* said, and
  * writing the tool's own prose there would make every consumer that treats a slot as testimony wrong.
  */
-describe('I6 — the analyst is not a second writer', () => {
+describe('I6 — the report agent is not a second writer', () => {
   it('declares no capabilities at all', async () => {
-    const { reclaimAnalystAgent } = await import('@/lib/app/programme/analyst/agent');
+    const { reclaimReportAgent } = await import('@/lib/app/programme/report/agent');
     // Not "no write capability" — no capability field whatsoever. There is nothing to widen.
-    expect('capabilities' in reclaimAnalystAgent).toBe(false);
+    expect('capabilities' in reclaimReportAgent).toBe(false);
   });
 
   it('is seeded internal, so it can never resolve as a surface a leader could chat to', async () => {
     const seed = await import('node:fs').then((fs) =>
-      fs.readFileSync('prisma/seeds/app-reclaim/005-reclaim-analyst.ts', 'utf8')
+      fs.readFileSync('prisma/seeds/app-reclaim/007-reclaim-report.ts', 'utf8')
     );
     expect(seed).toContain("visibility: 'internal'");
     expect(seed).not.toContain("visibility: 'public'");
@@ -442,10 +442,10 @@ describe('I6 — the analyst is not a second writer', () => {
 
   it('never reaches a slot write path', async () => {
     const fs = await import('node:fs');
-    const dir = 'lib/app/programme/analyst';
+    const dir = 'lib/app/programme/report';
     for (const file of fs.readdirSync(dir)) {
       const code = fs.readFileSync(`${dir}/${file}`, 'utf8');
-      expect(code, `${file} writes slots — the analyst's output is not testimony`).not.toMatch(
+      expect(code, `${file} writes slots — the report agent's output is not testimony`).not.toMatch(
         /\bsaveAnswer\b|\bappendSlotValue\b|\bsaveRunAnswer\b/
       );
       // `streamChat` would persist an AiMessage, putting a non-conversational pass into the

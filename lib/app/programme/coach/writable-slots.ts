@@ -291,7 +291,8 @@ export interface SlotWriteRefusal {
     | 'typed_value_required'
     | 'reflection_wrong_phase'
     | 'reflection_not_inferred'
-    | 'not_an_answer';
+    | 'not_an_answer'
+    | 'points_at_an_answer';
   message: string;
 }
 
@@ -371,6 +372,66 @@ const REPORTS_AN_ABSENCE =
  * leader who types "N/A" into a field has said "N/A", and the audit keeps it. The rule is about a
  * writer reporting on the record, and only a model writes that way.
  */
+/**
+ * An answer that only points at one, rather than being one.
+ *
+ * ## The failure, from a live audit
+ *
+ * The coach offered three ways in. The leader typed **"1"**. `reclaim_action_chosen` was recorded as
+ * `"1"`, and every reader downstream inherited it: the report's "What you will start" panel, the PDF a
+ * leader keeps, the email, and now the report agent, which was asked to write a chapter about what
+ * this person had decided to do and given the digit 1 to write it from.
+ *
+ * "1" was a true record of the keystroke and a useless record of the answer. The option's own words
+ * were on the leader's screen one line above, and the audit stored the pointer instead of the thing
+ * pointed at.
+ *
+ * ## Why this is not the tool putting words in anybody's mouth
+ *
+ * This is the rule `numberProse` already applies to figures, said about text: *a naked "5" under a
+ * label is the audit making the leader do the reading.* Same argument, same fix.
+ *
+ * It resolves a **reference**, and it never interprets a **meaning**. "1" becomes the option the
+ * coach itself offered, in the coach's own words. "Yes" becomes the proposition the leader agreed to,
+ * which is the question that was just asked. Neither is the tool deciding what somebody meant, which
+ * is what I6's "never inferred" forbids; both are the tool writing down what was said in a form that
+ * still says it when read on its own six months later, in a document with no conversation around it.
+ *
+ * ## What it deliberately does not catch
+ *
+ * **A bare "no" or "none".** `PLACEHOLDER_VALUES` explains why and the reasoning holds here: asked
+ * what they would drop, "none" is a complete answer with content in it. A bare *affirmative* never
+ * is — "yes" carries none of the thing agreed to — which is the asymmetry this list encodes.
+ *
+ * **Anything with a sentence around it.** "1, the protected mornings" is self-contained enough. Every
+ * pattern below matches the **whole** value, like every other rule in this file.
+ *
+ * **Booleans and numbers.** They have their own repairs above and "Yes" is the correct stored prose
+ * for a yes-or-no. This applies to text slots only.
+ */
+const POINTS_AT_AN_OPTION: readonly RegExp[] = [
+  // A bare index, with or without the words that usually dress one: "1", "2.", "option 3", "no. 2".
+  /^\s*(?:option|number|no\.?|#)?\s*\d{1,2}\s*[.):]?\s*$/i,
+  // A positional reference: "the first", "second one", "the last one".
+  /^\s*(?:the\s+)?(?:first|second|third|fourth|last)(?:\s+one)?\s*[.]?\s*$/i,
+  // A demonstrative standing in for the thing: "that one", "this one", "that".
+  /^\s*(?:that|this|it)(?:\s+one)?\s*[.]?\s*$/i,
+  // A bare affirmative. It agrees to something and carries none of it.
+  /^\s*(?:yes|yeah|yep|yup|ya|sure|ok|okay|k|correct|right|true|agreed|i\s+agree|absolutely|definitely|exactly|indeed|please|go\s+ahead)\s*[.!]?\s*$/i,
+];
+
+/**
+ * Whether this prose points at an answer instead of being one.
+ *
+ * Text slots only — the caller checks the data type. Exported so the rule can be asserted directly
+ * against every text slot in the audit rather than only through one code path.
+ */
+export function pointsAtAnAnswer(value: string): boolean {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return false;
+  return POINTS_AT_AN_OPTION.some((pattern) => pattern.test(trimmed));
+}
+
 export function isNotAnAnswer(value: string): boolean {
   const trimmed = value.trim();
   if (trimmed.length === 0) return true;
@@ -512,7 +573,21 @@ export function checkSlotWrite(
   }
 
   const dataType = definition.dataType ?? SLOT_DATA_TYPE.text;
-  if (dataType === SLOT_DATA_TYPE.text) return { ok: true, accepted: { slotSlug } };
+  if (dataType === SLOT_DATA_TYPE.text) {
+    // A pointer is not an answer. The refusal names what to do instead, because the coach is the one
+    // holding the thing being pointed at: it offered the options, and it asked the question the
+    // leader said yes to.
+    if (conditions.value !== undefined && pointsAtAnAnswer(conditions.value)) {
+      return {
+        ok: false,
+        refusal: {
+          code: 'points_at_an_answer',
+          message: `"${conditions.value.trim()}" points at an answer instead of being one. Record what it refers to, in a sentence that still says something on its own: the words of the option they picked, or the thing they just agreed to. This reading is shown to the leader under its own name and goes into the report they keep, where there is no conversation around it to explain what "${conditions.value.trim()}" meant.`,
+        },
+      };
+    }
+    return { ok: true, accepted: { slotSlug } };
+  }
 
   // The typed form the caller sent, or the one its own prose plainly is. The fallback is why a coach
   // that answered "25" in the only field it had for the count no longer loses the reading over which

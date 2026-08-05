@@ -82,9 +82,9 @@ async function main(): Promise<void> {
     await write('reclaim_action_chosen', 'Two protected mornings a week');
     console.log('[2] a run written through the real write path');
 
-    // ── 3. Renders with no analyst reading, which is the common case ──
+    // ── 3. Renders with no report reading, which is the common case ──
     const plain = await buildSummary(uid, run.id);
-    if (plain.analyst !== null) fail('a fresh run already carries an analyst reading');
+    if (plain.report !== null) fail('a fresh run already carries a report reading');
     if (plain.current.buckets.length === 0) fail('the summary carries no areas');
     const withoutReading = await renderSummaryPdf(plain);
     if (withoutReading.subarray(0, 4).toString('latin1') !== '%PDF') {
@@ -98,14 +98,14 @@ async function main(): Promise<void> {
       data: { analystReading: READING },
     });
     const enriched = await buildSummary(uid, run.id);
-    if (enriched.analyst === null) {
+    if (enriched.report === null) {
       fail(
         'the stored reading did not survive the round trip into buildSummary. Either JSONB came ' +
-          'back in a shape parseAnalystReading refuses, or the run-scoped token set does not ' +
+          'back in a shape parseReportReading refuses, or the run-scoped token set does not ' +
           'contain the areas the reading names.'
       );
     }
-    if (enriched.analyst.gaps.length !== READING.gaps.length) {
+    if (enriched.report.gaps.length !== READING.gaps.length) {
       fail('the reading lost a gap between the database and the summary');
     }
     const withReading = await renderSummaryPdf(enriched);

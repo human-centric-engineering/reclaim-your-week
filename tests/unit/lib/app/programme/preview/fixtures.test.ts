@@ -1,7 +1,7 @@
 /**
  * The canned analyst reading for fabricated audits (F19). Pure — no mocks.
  *
- * The assertion that matters is the last group: the output survives `parseAnalystReading` with the
+ * The assertion that matters is the last group: the output survives `parseReportReading` with the
  * token set a real run would supply, and is **refused** when a token is missing. That second half is
  * what proves the derivation is doing real work rather than decorating a hard-coded list — a fixture
  * naming areas the run does not have would lose the whole analyst section to a silent refusal, showing
@@ -9,10 +9,10 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { previewAnalystReading } from '@/lib/app/programme/preview/fixtures';
-import { parseAnalystReading } from '@/lib/app/programme/analyst/reading';
+import { previewReportReading } from '@/lib/app/programme/preview/fixtures';
+import { parseReportReading } from '@/lib/app/programme/report/reading';
 import { RECLAIM_BANNED_LEXICON } from '@/lib/app/programme/agent';
-import { ANALYST_IMPERATIVE_OPENERS } from '@/lib/app/programme/analyst/agent';
+import { REPORT_IMPERATIVE_OPENERS } from '@/lib/app/programme/report/agent';
 
 const HOURS = {
   deep_work: { current: 4, ideal: 12 },
@@ -23,18 +23,18 @@ const HOURS = {
 
 const tokensOf = (hours: Record<string, unknown>) => new Set(Object.keys(hours));
 
-describe('previewAnalystReading — which areas it names', () => {
+describe('previewReportReading — which areas it names', () => {
   it('names the two largest gaps, not an arbitrary two', () => {
     // Same job the real analyst is given. A fabricated summary that picked the wrong areas would be a
     // worse artefact than one that picked the right ones — the point of the screen is judging whether
     // it reads coherently against the chart beside it.
-    const reading = previewAnalystReading(HOURS);
+    const reading = previewReportReading(HOURS);
 
     expect(reading?.gaps.map((g) => g.token)).toEqual(['delivery_operations', 'deep_work']);
   });
 
   it('describes an underspend and an overspend differently', () => {
-    const reading = previewAnalystReading(HOURS);
+    const reading = previewReportReading(HOURS);
     const byToken = new Map(reading?.gaps.map((g) => [g.token, g.observation]));
 
     expect(byToken.get('deep_work')).toContain('against the twelve you wanted');
@@ -50,8 +50,8 @@ describe('previewAnalystReading — which areas it names', () => {
       gamma_area: { current: 5, ideal: 5 },
     };
 
-    const first = previewAnalystReading(tied);
-    const second = previewAnalystReading(tied);
+    const first = previewReportReading(tied);
+    const second = previewReportReading(tied);
 
     expect(first).toEqual(second);
     expect(first?.gaps.map((g) => g.token)).toEqual(['alpha_area', 'beta_area']);
@@ -59,13 +59,13 @@ describe('previewAnalystReading — which areas it names', () => {
 
   it('returns null rather than padding when there is too little to say', () => {
     // Better an honest "not generated" state than two invented areas.
-    expect(previewAnalystReading({ deep_work: { current: 4, ideal: 8 } })).toBeNull();
-    expect(previewAnalystReading({})).toBeNull();
+    expect(previewReportReading({ deep_work: { current: 4, ideal: 8 } })).toBeNull();
+    expect(previewReportReading({})).toBeNull();
   });
 });
 
-describe('previewAnalystReading — the prose rules', () => {
-  const reading = previewAnalystReading(HOURS);
+describe('previewReportReading — the prose rules', () => {
+  const reading = previewReportReading(HOURS);
   const strings = [
     ...(reading?.gaps.map((g) => g.observation) ?? []),
     ...(reading?.pathway.flatMap((s) => [s.step, s.difference]) ?? []),
@@ -89,16 +89,16 @@ describe('previewAnalystReading — the prose rules', () => {
     // leader, which is the register I1 exists to keep out of the product.
     for (const step of reading?.pathway ?? []) {
       const lower = step.step.toLowerCase();
-      expect(ANALYST_IMPERATIVE_OPENERS.filter((o) => lower.startsWith(o))).toEqual([]);
+      expect(REPORT_IMPERATIVE_OPENERS.filter((o) => lower.startsWith(o))).toEqual([]);
     }
   });
 });
 
-describe('previewAnalystReading — it survives the real parser', () => {
+describe('previewReportReading — it survives the real parser', () => {
   it('parses cleanly against the tokens the run actually has', () => {
-    // The whole reason this is derived. `parseAnalystReading` is whole-or-nothing: one bad field and
+    // The whole reason this is derived. `parseReportReading` is whole-or-nothing: one bad field and
     // the entire reading is refused, leaving the summary with no analyst section at all.
-    const parsed = parseAnalystReading(previewAnalystReading(HOURS), tokensOf(HOURS));
+    const parsed = parseReportReading(previewReportReading(HOURS), tokensOf(HOURS));
 
     expect(parsed).not.toBeNull();
     expect(parsed?.gaps).toHaveLength(2);
@@ -108,9 +108,9 @@ describe('previewAnalystReading — it survives the real parser', () => {
   it('is refused when the run does not have the areas it names', () => {
     // Proves the derivation is load-bearing: a hard-coded token list would fail exactly this way, and
     // would do it silently in production the day somebody changed the fabricator's hour map.
-    const reading = previewAnalystReading(HOURS);
+    const reading = previewReportReading(HOURS);
 
-    expect(parseAnalystReading(reading, new Set(['something_else']))).toBeNull();
+    expect(parseReportReading(reading, new Set(['something_else']))).toBeNull();
   });
 
   it('parses for any pair of areas a fabricator might write', () => {
@@ -128,16 +128,16 @@ describe('previewAnalystReading — it survives the real parser', () => {
     ];
 
     for (const hours of pairs) {
-      expect(parseAnalystReading(previewAnalystReading(hours), tokensOf(hours))).not.toBeNull();
+      expect(parseReportReading(previewReportReading(hours), tokensOf(hours))).not.toBeNull();
     }
   });
 });
 
-describe('previewAnalystReading — hours read as prose, not as data', () => {
+describe('previewReportReading — hours read as prose, not as data', () => {
   it('never mixes words and digits in one sentence', () => {
     // The seam this closes: "holds 22 hours, where ten was the intention" is two registers in one
     // line. Any hours a week can hold have a word form.
-    const reading = previewAnalystReading({
+    const reading = previewReportReading({
       big_area: { current: 55, ideal: 21 },
       other_area: { current: 40, ideal: 3 },
     });
@@ -146,10 +146,10 @@ describe('previewAnalystReading — hours read as prose, not as data', () => {
   });
 
   it('stays within the observation cap at the wordiest end', () => {
-    // Word forms are longer than digits, and `parseAnalystReading` refuses an observation over 220
+    // Word forms are longer than digits, and `parseReportReading` refuses an observation over 220
     // characters outright. The longest plausible area name with the longest hour words is the worst
     // case, and it has to fit.
-    const reading = previewAnalystReading({
+    const reading = previewReportReading({
       organisational_oversight: { current: 77, ideal: 38 },
       relationship_building: { current: 66, ideal: 27 },
     });

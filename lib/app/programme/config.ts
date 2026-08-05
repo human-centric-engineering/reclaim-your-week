@@ -68,6 +68,43 @@ export async function readReclaimCalendarExports(): Promise<ReclaimCalendarExpor
   return (await readReclaimConfig()).calendarExportSteps;
 }
 
+/**
+ * The subset the **report** needs in its prompt, and the supply its own header already promised.
+ *
+ * `report/agent.ts` says in as many words that "the governing frame, the nine areas and the footnote
+ * are not restated here: they reach the call through `Module.config` at runtime (I11)". Nothing
+ * supplied them. `runReport` composed two messages, the authored system prompt and the brief, and
+ * neither carried a word of Rashmir's content — so the agent writing the document a leader keeps had
+ * the leader's figures and no idea what any of them meant. It could see twenty two hours against
+ * delivery and had never been told the ceiling is ten to fifteen per cent, still less that above it
+ * "is often a signal of under-delegation or difficulty letting go of an earlier identity as a
+ * practitioner". This is the same defect the coach carried for ten features and for the same reason:
+ * I11 forbids restating her content in authored prose, and forbidding is not supplying.
+ *
+ * The area **descriptions** are the part that matters most here and the part a summariser would have
+ * dropped. They are not labels. Each one carries her reading of what time in that area tends to mean
+ * for a leader, which is the whole of what turns a chart into a report.
+ *
+ * Read from the stored row, so a rewording reaches the report the same way it reaches the screen. No
+ * `userId`, because nothing in it resolves per leader.
+ */
+export interface ReclaimReportContent {
+  governingFrame: string;
+  buckets: ReclaimConfig['buckets'];
+  deepWorkNote: string;
+  hourBands: ReclaimConfig['hourBands'];
+}
+
+export async function readReclaimReportContent(): Promise<ReclaimReportContent> {
+  const config = await readReclaimConfig();
+  return {
+    governingFrame: config.governingFrame,
+    buckets: config.buckets,
+    deepWorkNote: config.deepWorkNote,
+    hourBands: config.hourBands,
+  };
+}
+
 /** The subset the entitlement gate and consent gate need (F8). */
 export interface ReclaimAccessConfig {
   clientWindowMonths: number;
@@ -270,4 +307,18 @@ export async function readReclaimAdminConfig(): Promise<ReclaimAdminConfig> {
     abandonedAfterDays: config.abandonedAfterDays,
     aggregateMinimumCohort: config.aggregateMinimumCohort,
   };
+}
+
+/**
+ * The consultation address alone, for a reader that wants nothing else.
+ *
+ * Separate from `readReclaimUiConfig` and `readReclaimCoachContent` because both of those resolve
+ * `repeat_only` with a database read per call, and the report needs one string. Same shape as
+ * `readReclaimSignposts` above and there for the same reason.
+ *
+ * Read rather than imported from `content.ts` so an operator changing it on the config form changes
+ * what a leader's downloaded report tells them, without a deploy.
+ */
+export async function readReclaimConsultationEmail(): Promise<string> {
+  return (await readReclaimConfig()).consultationEmail;
 }

@@ -36,9 +36,11 @@
  * the place where a leader answers had been indistinguishable from the place they read, and the
  * first thing under a question was a button offering to leave it.
  *
- * The form panels are not replaced. A leader who would rather fill in fields can switch, and the two
- * paths write the same slots through the same server path (I3), so switching mid-phase keeps
- * everything already captured.
+ * **There is no way out to a form any more.** This used to carry "I would rather fill this in myself"
+ * under the panel, and it was the only door into the form panels for phases 0 to 5. It is gone: the
+ * conversation is the way through, and a link offering to leave it sat on every phase saying otherwise.
+ * The panels still exist and still write the same slots through the same server path (I3); nothing
+ * routes a leader to them.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -185,8 +187,6 @@ export interface PhaseConversationProps {
   coveredPercent?: number;
   /** Re-read the run state after the phase advances, or after a moment fires. */
   onAdvanced: () => void;
-  /** Switch this phase to its form panel. */
-  onSwitchToForm: () => void;
 }
 
 export function PhaseConversation({
@@ -200,7 +200,6 @@ export function PhaseConversation({
   phaseMarks,
   coveredPercent,
   onAdvanced,
-  onSwitchToForm,
 }: PhaseConversationProps) {
   const [answers, setAnswers] = useState<RunAnswers>({});
   const [labels, setLabels] = useState<Record<string, string>>({});
@@ -462,17 +461,17 @@ export function PhaseConversation({
   // why it lives here rather than in the transition route.
   //
   // **The risk it introduces, named rather than hidden.** A threshold can strand a leader who will
-  // not answer something. Four things keep that from being a trap: inapplicable readings are
-  // excluded rather than waited for, the threshold leaves room for one or two unanswered, what is
-  // still open is said beside the button rather than left to be guessed at, and the form panel is one
-  // click away and writes the same slots. If a leader still gets stuck, the fix is to let them record
-  // a decline, not to lower this back to one.
+  // not answer something. Three things keep that from being a trap: inapplicable readings are
+  // excluded rather than waited for, the threshold leaves room for one or two unanswered, and what is
+  // still open is said beside the button rather than left to be guessed at. If a leader still gets
+  // stuck, the fix is to let them record a decline, not to lower this back to one.
   //
-  // **All four of those were claims, and two of them were false, and a leader got stuck.** The
-  // rounding made the slack vanish on every phase shorter than ten readings, and phase 5's sixth
-  // reading was one the form panel cannot write because only the coach can author it. Both are fixed
-  // in `coach/coverage.ts`, which is where `covered` now comes from; the paragraph above is true as
-  // written for the first time.
+  // **There used to be a fourth: the form panel, one click away, writing the same slots.** That link
+  // is gone, so this list is shorter than it was and the decline is the only remaining answer to a
+  // leader who will not answer. Of the claims that remain, two were once false and a leader got stuck
+  // on them: the rounding made the slack vanish on every phase shorter than ten readings, and phase
+  // 5's sixth reading was one only the coach can author. Both are fixed in `coach/coverage.ts`, which
+  // is where `covered` now comes from.
   const canAdvance = covered && reflected && (revealState === null || revealed);
 
   /** Why the move is not offered yet, in one sentence, because a dimmed button explains nothing. */
@@ -741,23 +740,14 @@ export function PhaseConversation({
   }
 
   const panel = (
-    <div className="space-y-6">
-      <CapturedPanel
-        runId={runId}
-        phaseKey={phaseKey}
-        answers={answers}
-        bucketLabels={labels}
-        onSaved={() => void refresh()}
-        onDiscuss={discuss}
-      />
-      <button
-        type="button"
-        onClick={onSwitchToForm}
-        className="text-muted-foreground hover:text-foreground text-xs underline underline-offset-4"
-      >
-        I would rather fill this in myself
-      </button>
-    </div>
+    <CapturedPanel
+      runId={runId}
+      phaseKey={phaseKey}
+      answers={answers}
+      bucketLabels={labels}
+      onSaved={() => void refresh()}
+      onDiscuss={discuss}
+    />
   );
 
   return (

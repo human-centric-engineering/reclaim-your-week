@@ -201,8 +201,8 @@ export interface CoachChatProps {
    *
    * A run has one conversation across all seven phases, so without these the transcript is drawn
    * whole on every phase and a leader on phase 2 reads the Phase 2 card sitting on top of the whole
-   * of phase 0 and 1. Omitted (phase 6's close, a test) draws everything, which is what it did
-   * before.
+   * of phase 0 and 1. Omitted draws everything, which is what it did before — every caller in the
+   * app now passes them, including both of phase 6's conversations, so only tests take that path.
    */
   phaseKey?: string;
   phaseMarks?: PhaseMarks;

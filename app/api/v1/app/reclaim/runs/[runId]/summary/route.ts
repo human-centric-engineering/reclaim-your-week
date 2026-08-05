@@ -11,7 +11,7 @@ import { withAuth } from '@/lib/auth/guards';
 import { successResponse } from '@/lib/api/responses';
 import { ValidationError } from '@/lib/api/errors';
 import { cuidSchema } from '@/lib/validations/common';
-import { ensureAnalystReading, loadOwnedRun } from '@/app/api/v1/app/reclaim/runs/service';
+import { ensureReportReading, loadOwnedRun } from '@/app/api/v1/app/reclaim/runs/service';
 import { buildSummary } from '@/lib/app/programme/summary';
 
 export const GET = withAuth<{ runId: string }>(async (_request, session, { params }) => {
@@ -33,7 +33,7 @@ export const GET = withAuth<{ runId: string }>(async (_request, session, { param
   // and neither should be the thing that first spends money — a token-holder who is not the leader
   // must never trigger a billed call, and a twenty-second model call inside a download is a broken
   // download. Those surfaces render whatever is stored, including nothing.
-  await ensureAnalystReading(session.user.id, runId);
+  await ensureReportReading(session.user.id, runId);
 
   return successResponse(await buildSummary(session.user.id, runId));
 });

@@ -5,12 +5,11 @@
  * where the leader is, and the phase itself. Loads the current run + progress in one enriched read
  * (`GET /runs/current`) and resumes there.
  *
- * **The conversation is the way through a phase; the form is the alternative.** Phases 0 to 5 open as
- * a coaching conversation, which is what the tool was designed to be. The form panels F6/F7 built are
- * intact and one click away, for a leader who would rather type into fields, and because the two paths
- * write the same slots through the same server path (I3) the choice can be changed mid-phase without
- * losing anything. The preference is remembered locally, per leader, so it does not have to be made
- * again at every phase.
+ * **The conversation is the way through a phase — the only way.** Phases 0 to 5 open as a coaching
+ * conversation, which is what the tool was designed to be, and there is no longer a link out of it to
+ * the form panels. The panels F6/F7 built still exist and still write the same slots through the same
+ * server path (I3), but nothing in the shell routes a leader to them: the choice was offered at every
+ * phase and it was the wrong thing to keep offering beside the thing you are meant to do.
  *
  * Phase 6 has no conversational form: its content is the summary the leader takes away and the sharing
  * choices, and consent is not something a coach may record (I6).
@@ -27,19 +26,19 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useLocalStorage } from '@/lib/hooks/use-local-storage';
 import {
   currentRunStateSchema,
   uiConfigSchema,
   type CurrentRunState,
 } from '@/components/app/reclaim/types';
 import type { PhaseSignpost } from '@/lib/app/programme/runs/signposts';
+import type { PhaseMarks } from '@/lib/app/programme/runs/phase-marks';
 import { PhaseRail } from '@/components/app/reclaim/phase-rail';
 import { PhaseReview } from '@/components/app/reclaim/phase-review';
 import { ProgrammeChrome } from '@/components/app/reclaim/programme-chrome';
 import { TrendLines } from '@/components/app/reclaim/repeat/trend-lines';
 import { Signpost } from '@/components/app/reclaim/signpost';
-import { FINAL_PHASE_KEY } from '@/lib/app/programme/runs/phases';
+import { FINAL_PHASE_KEY, RECLAIM_PHASE_KEYS } from '@/lib/app/programme/runs/phases';
 import { PhaseConversation } from '@/components/app/reclaim/coach/phase-conversation';
 import { BeginAudit } from '@/components/app/reclaim/begin-audit';
 import { HistoryLink } from '@/components/app/reclaim/history/history-link';
@@ -52,16 +51,10 @@ import { Phase4Panel } from '@/components/app/reclaim/phase/phase4-panel';
 import { Phase5Panel } from '@/components/app/reclaim/phase/phase5-panel';
 import { Phase6Panel } from '@/components/app/reclaim/phase/phase6-panel';
 
-/** Where the leader's choice of conversation or form is remembered. Versioned, so the shape can move. */
-const PHASE_MODE_KEY = 'reclaim.phase-mode.v1';
-
-type PhaseMode = 'conversation' | 'form';
-
 export function ProgrammeShell() {
   const [state, setState] = useState<CurrentRunState | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
-  const [phaseMode, setPhaseMode] = useLocalStorage<PhaseMode>(PHASE_MODE_KEY, 'conversation');
   /** F8 t-4: set once the leader has accepted the current policy version (or already had). */
   const [consented, setConsented] = useState(false);
   // Stable identity on purpose — `ConsentGate` takes this as an effect dependency (see the note there).
@@ -262,7 +255,17 @@ export function ProgrammeShell() {
       ? state.phases[reviewIndex]
       : null;
 
-  const talking = phaseMode === 'conversation' && currentPhase.key !== FINAL_PHASE_KEY;
+  // Every phase in the journey but the last is the conversation, and there is no longer a mode a
+  // leader can be in — so nothing is remembered between phases either. Phase 6 is the one that still
+  // renders a panel: its content is the summary and the sharing choices, and consent is not something
+  // a coach may record (I6).
+  //
+  // **Keyed on the phase being one of the seven, not merely on it not being the last.** A key that is
+  // not in the map is a map that has moved under a live run, and `PhaseContent` says so; letting an
+  // unknown key fall to this side would open a conversation with no phase behind it, which is the
+  // defect that fallback was written for.
+  const talking =
+    RECLAIM_PHASE_KEYS.includes(currentPhase.key) && currentPhase.key !== FINAL_PHASE_KEY;
   const headingIndex = reviewing !== null ? reviewIndex : currentIndex;
   const headingPhase = reviewing ?? currentPhase;
 
@@ -356,11 +359,10 @@ export function ProgrammeShell() {
               // turn, not only when the phase moves, so a loud reload would unmount the transcript
               // mid-answer each time the coach finished speaking.
               onAdvanced={() => void load(true)}
-              onSwitchToForm={() => setPhaseMode('form')}
             />
           ) : (
-            /* The form path scrolls inside the same bounded region, so both surfaces sit in one
-               frame and switching between them does not change the shape of the page. */
+            /* Phase 6's panel scrolls inside the same bounded region the conversation uses, so
+               arriving at the last section does not change the shape of the page. */
             <div className="min-h-0 flex-1 overflow-y-auto">
               <div className="mx-auto max-w-3xl space-y-9 px-4 py-10 sm:px-6">
                 <Signpost
@@ -374,19 +376,11 @@ export function ProgrammeShell() {
                   runId={state.run.id}
                   conversationId={state.run.conversationId}
                   coachOpenings={state.run.coachOpenings}
+                  phaseMarks={state.run.phaseMarks}
                   // Quiet for the same reason: phase 6's close carries a conversation too, and the
                   // form panels hold their own in-progress field state.
                   onAdvanced={() => void load(true)}
                 />
-                {currentPhase.key !== FINAL_PHASE_KEY && (
-                  <button
-                    type="button"
-                    onClick={() => setPhaseMode('conversation')}
-                    className="text-muted-foreground hover:text-foreground text-xs underline underline-offset-4"
-                  >
-                    I would rather talk this through
-                  </button>
-                )}
               </div>
             </div>
           )}
@@ -413,18 +407,26 @@ function Frame({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * Render the form panel for the current phase (F6/F7) — the alternative to talking it through.
+ * Render the panel for the current phase (F6/F7).
  *
- * The default branch is unreachable for the seven seeded phase keys and is a stated fallback rather
- * than a chat surface: it used to render the coach conversation, which meant an unknown phase key
- * silently opened a conversation with no phase behind it. A phase key that is not one of the seven is
- * a map that has moved, and saying so is more use than a chat window.
+ * **Only two of its branches are reachable now**: phase 6, which has no conversational form, and the
+ * default. The other five were the form alternative, and the link that led to them is gone. They are
+ * kept rather than deleted because they are whole and correct — they write the same slots through the
+ * same server path (I3) — so restoring the alternative is a matter of routing to them again, not of
+ * rebuilding them.
+ *
+ * The default branch is a stated fallback rather than a chat surface: it used to render the coach
+ * conversation, which meant an unknown phase key silently opened a conversation with no phase behind
+ * it. A phase key that is not one of the seven is a map that has moved, and saying so is more use than
+ * a chat window. `talking` above is keyed on the same seven so that is still where an unknown key
+ * lands.
  */
 function PhaseContent({
   phaseKey,
   runId,
   conversationId,
   coachOpenings,
+  phaseMarks,
   onAdvanced,
 }: {
   phaseKey: string;
@@ -433,6 +435,11 @@ function PhaseContent({
   conversationId: string | null;
   /** Phase 1 needs it for the reveal beat (I12), phase 6 for the close. */
   coachOpenings: string[];
+  /**
+   * Where each phase's part of the one conversation begins — phase 6's two conversations need it for
+   * the same reason every other phase does: without it they draw the whole audit back at the leader.
+   */
+  phaseMarks: PhaseMarks;
   onAdvanced: () => void;
 }) {
   switch (phaseKey) {
@@ -454,6 +461,7 @@ function PhaseContent({
           runId={runId}
           conversationId={conversationId}
           coachOpenings={coachOpenings}
+          phaseMarks={phaseMarks}
           onAdvanced={onAdvanced}
         />
       );

@@ -50,6 +50,9 @@ import {
   chartRevealed,
   everyVisibleAreaHasHours,
 } from '@/lib/app/programme/chart/reveal';
+// Naming the absence (Brief §5). Shared with the report, which must not tell a leader something
+// different about their own week from what the coach said out loud. See `chart/absence.ts`.
+import { nearZeroAreas } from '@/lib/app/programme/chart/absence';
 import {
   readReclaimCoachContent,
   readReclaimSignposts,
@@ -293,61 +296,6 @@ function contentForPhase(
 }
 
 /**
- * The two areas the Brief singles out for naming the absence, in the order it names them.
- *
- * "If a category is near zero, especially recovery and white space or deep work, the tool gently
- * wonders about it rather than merely charting it." Everything else that is near zero is worth
- * mentioning; these two are worth mentioning first.
- */
-const ABSENCE_FIRST = ['recovery-white-space', 'deep-work'];
-
-/**
- * Areas that are near zero, which is not the same as zero.
- *
- * `ChartData.unallocated` is `hours === 0` exactly (`chart/series.ts`), which is the right definition
- * for a chart and the wrong one for this beat: a leader with one hour of recovery in a fifty-hour
- * week has, for every purpose the Brief cares about, none. The threshold is **derived from the area's
- * own benchmark** rather than invented here — below half of where the guide starts — so an operator
- * moving a benchmark moves this too, and there is no number in this file for anyone to argue with.
- *
- * Areas with no benchmark at all (fundraising, which is season-dependent) are never named this way:
- * there is nothing to be near-zero against.
- */
-function nearZeroAreas(chart: ReturnType<typeof buildChartData>, answers: Answers): string[] {
-  const near = chart.buckets.filter(
-    (b) =>
-      b.hours > 0 && b.status === 'under' && b.lowPercent !== null && b.percent < b.lowPercent / 2
-  );
-
-  // **Deep work needs its own test, and this is not a special case so much as the right measure.**
-  // The Brief names two areas to wonder about, recovery and deep work — but deep work is the one
-  // area the canonical content gives no percentage range to: "no percentage range. Measured by
-  // presence of protected blocks." So the percentage rule above can never flag it, and the beat
-  // written for it would have quietly never fired. The signal the content itself nominates is the
-  // protected-block reading, which this phase already asks for.
-  const noBlock =
-    truthy(answers['reclaim_current_deep_block_exists']) === false &&
-    answers['reclaim_current_deep_block_exists'] !== undefined;
-  const deepWork = chart.buckets.find((b) => b.slug === 'deep-work');
-  const deepWorkAbsent =
-    noBlock && deepWork !== undefined && !chart.unallocated.includes(deepWork.title)
-      ? [deepWork.title]
-      : [];
-
-  const named = [...chart.unallocated, ...near.map((b) => b.title), ...deepWorkAbsent];
-  // The Brief's two first, in its order, then everything else as it comes.
-  const priority = new Map(
-    ABSENCE_FIRST.map((slug, index) => [
-      chart.buckets.find((b) => b.slug === slug)?.title ?? slug,
-      index,
-    ])
-  );
-  return named.sort(
-    (a, b) => (priority.get(a) ?? ABSENCE_FIRST.length) - (priority.get(b) ?? ABSENCE_FIRST.length)
-  );
-}
-
-/**
  * The Brief's permission-based challenge: once per audit, asked, and only then delivered.
  *
  * **"Once per audit" is a discipline here and not a control, and that has to be said out loud** — in
@@ -526,11 +474,26 @@ async function closingContext(
   if (takeaway === undefined) {
     parts.push(
       '',
-      'They have not yet said what they are taking away, and the summary does not appear until they',
-      'have. Ask them, once, and let it land. When they answer, offer their own words back and record',
-      'it with record_answers as reclaim_reflection_p6, in their words, never inferred, and never',
-      'before they have said it. Do not produce a summary of the audit yourself and do not list what',
-      'they should have learned.'
+      'They have not yet said what they are taking away. Ask them, and let it land. Frame it as the',
+      'thing that comes before the artifact. Say something close to these words, so they know what',
+      'answering leads to:',
+      // One line, unbroken, because the card above the conversation says the same sentence
+      // (`signposts.ts`) and a phrase split across a newline is a phrase the guard cannot check.
+      '"Before offering you a downloadable summary, one last question."',
+      'When they answer, offer their own',
+      'words back and record it with record_answers as reclaim_reflection_p6, in their words,',
+      'never inferred, and never before they have said it.',
+      'Do not produce a summary of the audit yourself and do not list what they should have learned.',
+      '',
+      // The screen no longer waits for the recording, so the briefing must not tell the coach it
+      // does. The gate releases on the leader's *answer* (`phase6-panel.tsx`): a takeaway the coach
+      // heard but failed to write used to hold a leader at the last question of the audit with the
+      // summary behind it, and asking again is what that failure looked like from their side.
+      'Only once. If the conversation above already shows you asking this and them answering, then',
+      'the question has been asked and their summary is already on screen:',
+      'it is released by their answer, not by your recording of it.',
+      'Record what they said if it is still unrecorded, but do that silently: acknowledge them and go',
+      'on to the close. Asking a second time is asking them to say it again for the machine.'
     );
   } else {
     parts.push(
@@ -1663,6 +1626,21 @@ export async function buildCoachPhaseContext(userId: string): Promise<string> {
     'Where you have their own sentence for something, send it as the verbatim alongside your reading of',
     'it, in their words and not tidied. Some of what they say here is read back to them later, and it',
     'should be theirs when it is.',
+    '',
+    // The failure this paragraph exists for, from a live audit: the coach offered three ways in, the
+    // leader typed "1", and `reclaim_action_chosen` was recorded as "1". Every reader downstream
+    // inherited the digit, including the report agent, which was asked to write a chapter about what
+    // this person had decided to do. The option's own words were one line up the screen.
+    //
+    // `checkSlotWrite` refuses these now (`pointsAtAnAnswer`), so this paragraph is what stops the
+    // coach learning the rule the slow way, one refusal at a time, mid-conversation.
+    'Record what an answer means, not the keystroke it arrived as. A leader who picks an option by',
+    'typing "1", or agrees to something by typing "yes", has answered; the answer is the option they',
+    'picked or the thing they agreed to, and that is what you record. You are the one holding it: you',
+    'offered the options and you asked the question. A value that only points at an answer is refused,',
+    'because these readings are shown to the leader under their own names and go into the report they',
+    'keep, where there is nothing around them to say what "1" meant. This is not tidying their words',
+    'and it is not deciding what they meant. Where they gave you a sentence, their sentence stands.',
     '',
     // The failure this paragraph exists for, observed on a live audit: the coach replied "I'll record
     // that you're the Head of Engineering, overseeing 25 people across 5 teams" and made no call, so

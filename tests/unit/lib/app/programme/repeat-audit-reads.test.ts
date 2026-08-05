@@ -38,7 +38,18 @@ const { store, findMany } = vi.hoisted(() => ({
 vi.mock('@/lib/db/client', () => ({
   prisma: {
     slotValue: { findMany },
-    reclaimAuditRun: { findFirst: async () => ({ analystReading: null }) },
+    reclaimAuditRun: {
+      // A fixed date: this suite compares whole summaries, and a clock read per call would make
+      // every one of those comparisons flap by a millisecond.
+      findFirst: async () => ({
+        analystReading: null,
+        completedAt: null,
+        startedAt: new Date('2026-04-01T09:00:00.000Z'),
+      }),
+    },
+    // The report carries the contact address, so `buildSummary` reads the module row too. Empty
+    // here, which falls through to the schema default exactly as an untouched database does.
+    module: { findUnique: async () => null },
   },
 }));
 
@@ -102,7 +113,7 @@ beforeEach(() => {
   });
 });
 
-describe('a shared summary link survives the leader starting their next audit', () => {
+describe('an earlier report survives the leader starting their next audit', () => {
   it('renders Q1 in full after Q2 has been started and answered', async () => {
     completeAuditIn('run-q1', 10, 'last quarter');
 

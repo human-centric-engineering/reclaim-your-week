@@ -124,7 +124,7 @@ export async function fetchSummary(runId: string): Promise<AuditSummary> {
 }
 
 export interface ShareInput {
-  publicLink?: boolean;
+  /** Share the report with Rashmir. The only sharing this product does — there is no public link. */
   withCoach?: boolean;
   /** F17. Whether the coach may also read the conversation, not only the result. */
   shareTranscript?: boolean;
@@ -133,8 +133,8 @@ export interface ShareInput {
   quotable?: boolean;
 }
 
-/** Apply the leader's Phase 6 share choices; returns the public token (or null). */
-export async function shareSummary(runId: string, input: ShareInput): Promise<string | null> {
+/** Apply the leader's Phase 6 share choices; returns whether the report is now shared with her. */
+export async function shareSummary(runId: string, input: ShareInput): Promise<boolean> {
   const res = await fetch(`/api/v1/app/reclaim/runs/${encodeURIComponent(runId)}/share`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -143,8 +143,7 @@ export async function shareSummary(runId: string, input: ShareInput): Promise<st
   const json: unknown = await res.json().catch(() => null);
   if (!res.ok)
     throw new Error(errorMessageFrom(json) ?? 'We could not save your choices just now.');
-  const parsed = parseEnvelope(json, z.object({ token: z.string().nullable() }));
-  return parsed.token;
+  return parseEnvelope(json, z.object({ sharedWithCoach: z.boolean() })).sharedWithCoach;
 }
 
 /** Complete the run (Phase 6 finish) — closes the conversation (I15) and consumes the grant (I14). */

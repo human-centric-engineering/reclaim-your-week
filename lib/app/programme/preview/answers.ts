@@ -26,7 +26,7 @@
  * path a leader who declines it walks. The composite chart is therefore empty on a preview account,
  * and the Preview screen says so rather than leaving it to read as a fault.
  *
- * The six `reclaim_share_*` slots have no writer either — the sharing flow writes `ReclaimShare`,
+ * The six `reclaim_share_*` slots have no writer either — the sharing flow writes
  * `ReclaimReportShare` and `ReclaimFeedback` rows, not slots — and nothing here presses share on a
  * leader's behalf, so the phase-6 panel opens with the sharing choices untouched, which is the state
  * the operator asked to look at.

@@ -155,7 +155,6 @@ const props = {
   conversationId: 'conv-1',
   coachOpenings: [],
   onAdvanced: vi.fn(),
-  onSwitchToForm: vi.fn(),
 };
 
 beforeEach(() => {
@@ -230,13 +229,13 @@ describe('PhaseConversation', () => {
     await waitFor(() => expect(readAnswers).toHaveBeenCalledTimes(2));
   });
 
-  it('lets a leader who would rather fill in fields say so', async () => {
+  it('offers no way out to a form, because the conversation is the way through', async () => {
+    // "I would rather fill this in myself" sat under the captured panel on every phase and was the
+    // only door into the form panels. It is gone, from the column and from the drawer both.
     render(<PhaseConversation {...props} />);
     await waitFor(() => expect(readAnswers).toHaveBeenCalled());
 
-    await userEvent.click(screen.getAllByRole('button', { name: /fill this in myself/ })[0]);
-
-    expect(props.onSwitchToForm).toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: /fill this in myself/ })).not.toBeInTheDocument();
   });
 
   it('needs no reflection in the setup phase, which has no pause to enforce', async () => {
@@ -731,14 +730,14 @@ describe('PhaseConversation — the captured panel on a narrow screen', () => {
     expect(drawer()).toHaveAttribute('inert');
   });
 
-  it('offers the form path from inside the drawer, not only from the column', async () => {
+  it('carries no form path inside the drawer either, since there is no longer one to carry', async () => {
+    // The drawer renders the same panel as the column, so the link out used to appear twice. Both
+    // copies are gone; opening the drawer must not bring one of them back.
     render(<PhaseConversation {...props} />);
 
     await userEvent.click(await screen.findByRole('button', { name: /of \d+ noted/ }));
-    const switches = screen.getAllByRole('button', { name: /fill this in myself/ });
-    await userEvent.click(switches[switches.length - 1]);
 
-    expect(props.onSwitchToForm).toHaveBeenCalled();
+    expect(screen.queryAllByRole('button', { name: /fill this in myself/ })).toHaveLength(0);
   });
 });
 

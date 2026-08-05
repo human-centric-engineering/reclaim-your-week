@@ -152,7 +152,7 @@ const BY_PHASE: Record<number, PreviewTurn[]> = {
   6: [
     {
       role: 'coach',
-      text: 'Before the written summary, one last question. What are you taking away from this?',
+      text: 'Before offering you a downloadable summary, one last question. What are you taking away from this?',
     },
     { role: 'leader', text: 'That two mornings a week is a decision, not a wish.' },
     {

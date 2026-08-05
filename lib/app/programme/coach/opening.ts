@@ -99,21 +99,23 @@ export const COACH_OPENING_PHASES = {
    * reflection before the written output."
    */
   'phase-6-open': 'phase-6-summary',
-  /**
-   * The warm close, after the summary has rendered (`:359`, `:361`).
-   *
-   * A moment rather than a card because it is the one part of the close that genuinely varies: it
-   * branches on whether the leader is already working with Rashmir, on whether they have done this
-   * before, and it answers their own takeaway in their own words.
-   *
-   * **This used to add that the opening question was "scripted on the card instead", because "what
-   * are you taking away from this?" is the same question every time so a model turn would buy
-   * nothing.** That reasoning was about the *wording* and missed what a conversation is for: the
-   * question is fixed, and what a leader needs after saying something true is to be heard rather
-   * than to watch a Save button enable. `phase-6-open` asks it now, and this beat still closes.
-   */
-  'phase-6-close': 'phase-6-summary',
 } as const;
+
+/**
+ * **`phase-6-close` was here, and it is gone with the surface that fired it.**
+ *
+ * It was the warm close: a second conversation, rendered *underneath the finished report*, so that
+ * the last thing on the screen at the end of the audit was a composer asking what else the leader
+ * would like to say. The report is the end of the audit. A screen that has just handed somebody the
+ * document forty minutes of work produced should be showing them the document, not inviting another
+ * turn — so section 6 now holds exactly one conversation, and the close is said in it
+ * (`closingContext` still asks the coach to close warmly after the takeaway lands).
+ *
+ * Removing the key is safe because moments are only ever *claimed*: a run that already recorded
+ * `phase-6-close` in `coachOpenings` keeps a string nothing looks up, and no leader is replayed a
+ * beat. Re-adding the name later would replay it for exactly those people, which is the reason this
+ * note is here rather than the key.
+ */
 
 export type CoachOpeningMoment = keyof typeof COACH_OPENING_PHASES;
 
@@ -144,9 +146,10 @@ export function openingBelongsToPhase(moment: CoachOpeningMoment, phaseKey: stri
  * replaced the blanket ban with three narrower guards. The comment outlived the decision it cited
  * by three days, in the file that decides what the coach says first.
  *
- * Phase 6 now carries two moments: this one asks the takeaway before the artifact exists
- * (`Prompt_Text.md:35`), and `phase-6-close` is a data moment that fires *after* the summary has
- * rendered. Only the first is an arrival.
+ * Phase 6 carries exactly one moment: this one, which asks the takeaway before the artifact exists
+ * (`Prompt_Text.md:35`). It had a second — a warm close fired under the rendered report — and both
+ * that moment and the conversation it spoke into have been removed; see the note below
+ * `COACH_OPENING_PHASES`.
  */
 export const ARRIVAL_MOMENTS: Readonly<Record<string, CoachOpeningMoment>> = {
   'phase-0-setup': 'phase-0-open',

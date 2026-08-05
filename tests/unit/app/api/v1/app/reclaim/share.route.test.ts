@@ -43,12 +43,12 @@ beforeEach(() => {
   } as never);
   vi.mocked(loadOwnedRun).mockResolvedValue({ id: RUN_ID, userId: USER_ID } as never);
   vi.mocked(saveRunAnswers).mockResolvedValue(undefined);
-  vi.mocked(createShare).mockResolvedValue({ token: null });
+  vi.mocked(createShare).mockResolvedValue({ sharedWithCoach: false });
 });
 
 describe('POST reclaim run share — validation', () => {
   it('400s on a run id that is not a valid id, before ownership is checked', async () => {
-    const res = await POST(req({ publicLink: true }), ctx('not-an-id'));
+    const res = await POST(req({ withCoach: true }), ctx('not-an-id'));
 
     expect(res.status).toBe(400);
     expect(loadOwnedRun).not.toHaveBeenCalled();
@@ -62,7 +62,7 @@ describe('POST reclaim run share — validation', () => {
   });
 
   it('400s when a boolean field is sent as a string', async () => {
-    const res = await POST(req({ publicLink: 'yes' }), ctx());
+    const res = await POST(req({ withCoach: 'yes' }), ctx());
 
     expect(res.status).toBe(400);
     expect(createShare).not.toHaveBeenCalled();
@@ -146,12 +146,26 @@ describe('POST reclaim run share — shareTranscript is threaded to createShare,
 
 describe('POST reclaim run share — success', () => {
   it('returns whatever createShare produced in the standard envelope', async () => {
-    vi.mocked(createShare).mockResolvedValue({ token: 'abc123' });
+    vi.mocked(createShare).mockResolvedValue({ sharedWithCoach: true });
 
-    const res = await POST(req({ publicLink: true }), ctx());
-    const body = (await res.json()) as { success: true; data: { token: string | null } };
+    const res = await POST(req({ withCoach: true }), ctx());
+    const body = (await res.json()) as { success: true; data: { sharedWithCoach: boolean } };
 
     expect(res.status).toBe(200);
-    expect(body).toMatchObject({ success: true, data: { token: 'abc123' } });
+    expect(body).toMatchObject({ success: true, data: { sharedWithCoach: true } });
+  });
+
+  /**
+   * The public link is gone from the body as well as from the screen.
+   *
+   * Zod objects strip unknown keys rather than rejecting them, so a client still sending
+   * `publicLink` is not an error — it is simply ignored, which is the behaviour that matters: an old
+   * cached bundle asking for a link cannot mint one.
+   */
+  it('ignores a publicLink a stale client still sends', async () => {
+    const res = await POST(req({ publicLink: true, withCoach: false }), ctx());
+
+    expect(res.status).toBe(200);
+    expect(vi.mocked(createShare).mock.calls[0]?.[2]).not.toHaveProperty('publicLink');
   });
 });

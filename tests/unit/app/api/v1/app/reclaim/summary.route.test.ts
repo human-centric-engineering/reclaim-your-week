@@ -3,7 +3,7 @@
  * before any sharing.
  *
  * The route's one piece of behaviour beyond ownership + fetch is F14's lazy analyst-reading
- * generation: `ensureAnalystReading` runs before `buildSummary`, on this route and nowhere else that
+ * generation: `ensureReportReading` runs before `buildSummary`, on this route and nowhere else that
  * reaches `buildSummary` (deliberately not the PDF route or the public share route, per this route's
  * own docstring) — worth pinning as the thing that tells this route apart from `report.pdf`'s.
  */
@@ -17,13 +17,13 @@ import type { ChartData } from '@/lib/app/programme/chart/series';
 vi.mock('@/lib/auth/config', () => ({ auth: { api: { getSession: vi.fn() } } }));
 vi.mock('@/app/api/v1/app/reclaim/runs/service', () => ({
   loadOwnedRun: vi.fn(),
-  ensureAnalystReading: vi.fn(),
+  ensureReportReading: vi.fn(),
 }));
 vi.mock('@/lib/app/programme/summary', () => ({ buildSummary: vi.fn() }));
 
 import { GET } from '@/app/api/v1/app/reclaim/runs/[runId]/summary/route';
 import { auth } from '@/lib/auth/config';
-import { loadOwnedRun, ensureAnalystReading } from '@/app/api/v1/app/reclaim/runs/service';
+import { loadOwnedRun, ensureReportReading } from '@/app/api/v1/app/reclaim/runs/service';
 import { buildSummary } from '@/lib/app/programme/summary';
 
 const USER_ID = 'user-1';
@@ -46,6 +46,8 @@ const chart: ChartData = {
 
 const SUMMARY: AuditSummary = {
   firstName: 'Sam',
+  auditedOn: '2026-07-29T10:00:00.000Z',
+  contactEmail: 'rashmir@rashmir.net',
   role: 'Chief Executive',
   orgType: 'A social enterprise',
   period: 'last quarter',
@@ -53,7 +55,7 @@ const SUMMARY: AuditSummary = {
   current: chart,
   rows: [],
   action: { chosen: null, when: null, howKnown: null },
-  analyst: null,
+  report: null,
   footnote: 'A tool designed by Rashmir Balasubramaniam.',
 };
 
@@ -64,7 +66,7 @@ beforeEach(() => {
     session: { id: 's1' },
   } as never);
   vi.mocked(loadOwnedRun).mockResolvedValue({ id: RUN_ID, userId: USER_ID } as never);
-  vi.mocked(ensureAnalystReading).mockResolvedValue(undefined);
+  vi.mocked(ensureReportReading).mockResolvedValue(undefined);
   vi.mocked(buildSummary).mockResolvedValue(SUMMARY);
 });
 
@@ -84,7 +86,7 @@ describe('GET reclaim run summary — ownership', () => {
     const res = await GET(getReq(), ctx());
 
     expect(res.status).toBe(404);
-    expect(ensureAnalystReading).not.toHaveBeenCalled();
+    expect(ensureReportReading).not.toHaveBeenCalled();
     expect(buildSummary).not.toHaveBeenCalled();
   });
 });
@@ -93,14 +95,14 @@ describe('GET reclaim run summary — F14 lazy analyst reading', () => {
   it('generates the reading before building the summary, for this run and user', async () => {
     await GET(getReq(), ctx());
 
-    expect(ensureAnalystReading).toHaveBeenCalledWith(USER_ID, RUN_ID);
+    expect(ensureReportReading).toHaveBeenCalledWith(USER_ID, RUN_ID);
     expect(buildSummary).toHaveBeenCalledWith(USER_ID, RUN_ID);
   });
 
   it('still returns the summary when generation silently declines to produce one', async () => {
-    // ensureAnalystReading never throws (its own contract) — it just may do nothing, and
+    // ensureReportReading never throws (its own contract) — it just may do nothing, and
     // buildSummary re-reads whatever is stored either way.
-    vi.mocked(ensureAnalystReading).mockResolvedValue(undefined);
+    vi.mocked(ensureReportReading).mockResolvedValue(undefined);
 
     const res = await GET(getReq(), ctx());
 

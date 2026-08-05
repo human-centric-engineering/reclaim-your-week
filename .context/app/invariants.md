@@ -15,20 +15,21 @@ load-bearing in aggregate.
 > `vitest run tests/unit/invariants` — so **the directory is the wiring**. A new file dropped in
 > there gates automatically; a guard placed anywhere else does not, however invariant-shaped it looks.
 >
-> | Guard                                             | Invariant   | Landed      |
-> | ------------------------------------------------- | ----------- | ----------- |
-> | `npm run leaf:content-diff`                       | I11 hop 1   | pre-F2      |
-> | `npm run leaf:board-check`                        | — (P21/P23) | F12 t-3     |
-> | `tests/unit/invariants/voice.test.ts`             | I1, I2      | F2 t-4      |
-> | `tests/unit/invariants/slot-sensitivity.test.ts`  | I5          | F2 t-4      |
-> | `tests/unit/invariants/agent-caps.test.ts`        | I6          | F2 t-4      |
-> | `tests/unit/invariants/write-path.test.ts`        | I3          | F4 t-2      |
-> | `tests/unit/invariants/calendar-privacy.test.ts`  | I4          | F5          |
-> | `tests/unit/invariants/admin-support.test.ts`     | D4 (F10)    | F10 t-1     |
-> | `tests/unit/invariants/product-voice.test.ts`     | I1, I2      | open item 8 |
-> | `tests/unit/invariants/chart-beat.test.ts`        | I12         | conv. 5     |
-> | `tests/unit/invariants/reachability.test.ts`      | —           | conv. 7     |
-> | `tests/unit/invariants/preview-exclusion.test.ts` | — (F19)     | F19 t-2     |
+> | Guard                                                 | Invariant   | Landed      |
+> | ----------------------------------------------------- | ----------- | ----------- |
+> | `npm run leaf:content-diff`                           | I11 hop 1   | pre-F2      |
+> | `npm run leaf:board-check`                            | — (P21/P23) | F12 t-3     |
+> | `tests/unit/invariants/voice.test.ts`                 | I1, I2      | F2 t-4      |
+> | `tests/unit/invariants/slot-sensitivity.test.ts`      | I5          | F2 t-4      |
+> | `tests/unit/invariants/agent-caps.test.ts`            | I6          | F2 t-4      |
+> | `tests/unit/invariants/write-path.test.ts`            | I3          | F4 t-2      |
+> | `tests/unit/invariants/calendar-privacy.test.ts`      | I4          | F5          |
+> | `tests/unit/invariants/admin-support.test.ts`         | D4 (F10)    | F10 t-1     |
+> | `tests/unit/invariants/product-voice.test.ts`         | I1, I2      | open item 8 |
+> | `tests/unit/invariants/chart-beat.test.ts`            | I12         | conv. 5     |
+> | `tests/unit/invariants/reachability.test.ts`          | —           | conv. 7     |
+> | `tests/unit/invariants/preview-exclusion.test.ts`     | — (F19)     | F19 t-2     |
+> | `tests/unit/invariants/report-content-supply.test.ts` | I11         | 2026-08-05  |
 >
 > **2 · The main test suite — every PR, but not via `leaf:checks`.**
 > `tests/unit/app/programme/content.test.ts` (I11 hop 2, F2 t-3) lives outside
@@ -367,11 +368,16 @@ replace the blanket refusal, and the first two are what stop the coach walking t
    the current phase's reflection recorded unprompted, in the leader's own run, on a screen that
    shows it to them.
 3. **Visible and correctable.** The recorded reflection is shown in the captured panel under "In your
-   words". The panel itself carries no box — a leader changes it by saying so, or by taking "I would
-   rather fill this in myself" and using the phase panel's reflection field, which writes over the top
-   through the leader's own path. This is the one that makes "the leader owns their reflection" still
-   true of a reflection the coach typed, and it is why the panel is now load-bearing rather than
-   reassuring.
+   words". The panel itself carries no box — a leader changes it by saying so, and the coach records
+   the new sentence through the same guarded path. This is the one that makes "the leader owns their
+   reflection" still true of a reflection the coach typed, and it is why the panel is now load-bearing
+   rather than reassuring.
+
+   **Correcting it used to have a second route**, and that route has been removed: "I would rather
+   fill this in myself" led to the phase panel's own reflection field, which wrote over the top
+   through the leader's own path. The link is gone from every phase, so saying so in the conversation
+   is now the only way a leader changes what was recorded. The panels still exist and still write the
+   same slots; nothing routes a leader to them.
 
 `reclaim_reflection_p6` (the takeaway) is permitted on the same terms — it is the question the close
 asks, and the coach that asks it is the one that records the answer.
@@ -592,6 +598,28 @@ rewording reaches the conversation exactly as it reaches the screen. **The rule 
 reaches the coach as injected context read from `Module.config`, never as text written into the agent's
 prose fields.** A future session tempted to paste an area definition into `systemInstructions` to "help
 the model" would fork the single source of truth and slip past both hops of the chain above.
+
+### The report had the same hole, and this is now the pattern rather than the incident (2026-08-05)
+
+`report/agent.ts` said in its header and in its own system instructions that the frame and the nine
+areas "are supplied to you in context". Nothing supplied them: `runReport` composed the authored
+prose and the brief, and neither carried a word of her content. So the agent writing the document a
+leader keeps could see twenty two hours against delivery and had never been told the ceiling is 10-15%,
+still less that above it "is often a signal of under-delegation or difficulty letting go of an earlier
+identity as a practitioner". Every area description is a reading of what time there tends to mean, and
+the report was written without one of them.
+
+**The shape to recognise: I11 forbids restating her content in authored prose, and forbidding is not
+supplying.** Both times, the prose that promised the supply was written in the same commit as the
+prohibition that made it necessary, and nothing failed when the supply never arrived — the output was
+merely thin, which reads like a disappointing model rather than a defect. Any new agent that says it
+is "given" the content needs its own reader (`readReclaimReportContent`) and its own assertion that
+the content reaches the composed messages.
+
+**Test:** `tests/unit/invariants/report-content-supply.test.ts` asserts over the message list that
+actually reaches the provider, not over the imports: an import that is read and then not sent passes
+a grep and fails a leader. It also asserts the read comes from the module **row**, so hop 3 (Rashmir's
+own edits) reaches the report and not just the screen.
 
 ### The third hop is Rashmir's own, and it is not a violation (F10 t-4)
 

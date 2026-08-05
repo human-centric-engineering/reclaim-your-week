@@ -18,10 +18,10 @@
  *
  * ## What it deliberately does not do
  *
- * **No interpretation of its own** (I12). It draws the figures and, where the analyst produced one,
- * the two sections `AuditSummary` already carries. There is no highlighted worst bar, no "your
- * biggest problem is", no summary sentence the screen does not also show. A PDF is the most
- * tempting place in the product to add a conclusion, and it is exactly as forbidden here.
+ * **No interpretation of its own** (I12). It draws the figures and, where the report agent produced
+ * one, the reading `AuditSummary` already carries. There is no highlighted worst bar, no "your
+ * biggest problem is", no sentence the screen does not also show. A PDF is the most tempting place
+ * in the product to add a conclusion, and it is exactly as forbidden here.
  *
  * **Hours, never a percentage axis** (I8). The bar length is hours against the largest figure in the
  * week; the percentage rides alongside as a derived note, exactly as `ReclaimChart` does it.
@@ -34,6 +34,7 @@ import { bucketColour } from '@/components/app/reclaim/chart/palette';
 // zero-tolerance with no allowlist. See `format.ts`.
 import { NO_VALUE } from '@/components/app/reclaim/format';
 import type { AuditSummary } from '@/lib/app/programme/summary';
+import { CHAPTER_TITLES } from '@/lib/app/programme/report/chapters';
 
 /**
  * Light-mode colours only.
@@ -106,13 +107,19 @@ const styles = StyleSheet.create({
   actionText: { fontSize: 12, marginTop: 4 },
   actionMeta: { fontSize: 9, color: MUTED, marginTop: 3 },
 
+  contact: {
+    fontSize: 9,
+    color: MUTED,
+    marginTop: 24,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: HAIRLINE,
+    lineHeight: 1.5,
+  },
   footnote: {
     fontSize: 7.5,
     color: FAINT,
-    marginTop: 26,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: HAIRLINE,
+    marginTop: 12,
     lineHeight: 1.45,
   },
   // Fixed, so a multi-page report is still identifiable on the page that is lying on a desk.
@@ -120,6 +127,18 @@ const styles = StyleSheet.create({
 });
 
 const round1 = (n: number): number => Math.round(n * 10) / 10;
+
+/**
+ * The audit's date, spelled out. `en-GB` explicitly, matching the screen.
+ *
+ * This matters more on paper than anywhere else: a printed report outlives the week it describes,
+ * and an undated one goes on quietly claiming to be about now.
+ */
+function auditDate(iso: string): string | null {
+  const on = new Date(iso);
+  if (Number.isNaN(on.getTime())) return null;
+  return on.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+}
 
 /**
  * The chart, redrawn rather than screenshotted.
@@ -162,6 +181,7 @@ export function SummaryPdfDocument({ summary }: { summary: AuditSummary }) {
   const heading = summary.firstName ? `${summary.firstName}'s time audit` : 'Your time audit';
   const meta = [summary.role, summary.orgType].filter(Boolean).join(' · ');
   const period = summary.period ? `audited over the ${summary.period}` : null;
+  const on = auditDate(summary.auditedOn);
   const hasIdeal = summary.rows.some((r) => r.ideal !== null);
 
   return (
@@ -169,8 +189,8 @@ export function SummaryPdfDocument({ summary }: { summary: AuditSummary }) {
       <Page size="A4" style={styles.page}>
         <Text style={styles.eyebrow}>RECLAIM YOUR WEEK</Text>
         <Text style={styles.title}>{heading}</Text>
-        {(meta || period) && (
-          <Text style={styles.meta}>{[meta, period].filter(Boolean).join(' · ')}</Text>
+        {(meta || period || on) && (
+          <Text style={styles.meta}>{[meta, period, on].filter(Boolean).join(' · ')}</Text>
         )}
 
         {summary.priorities && (
@@ -209,13 +229,27 @@ export function SummaryPdfDocument({ summary }: { summary: AuditSummary }) {
           </View>
         )}
 
-        {/* F14's two sections, in the same order the screen puts them: the gaps read the figures
-            above, and the pathway comes after what the leader chose. Absent when the analyst
-            produced nothing, with no placeholder, because the artifact was complete without them. */}
-        {summary.analyst != null && summary.analyst.gaps.length > 0 && (
+        {/* The reading, in the same order the screen puts it, and **after** the figures on purpose
+            (I12): the narrative interprets what is above it, so a leader meets their own week first
+            and the reading of it second. Absent when the agent produced nothing, with no
+            placeholder, because the artifact was complete without any of it. */}
+        {summary.report?.chapters.map((chapter) => (
+          <View key={chapter.section}>
+            <Text style={styles.sectionTitle}>{CHAPTER_TITLES[chapter.section]}</Text>
+            {chapter.paragraphs.map((paragraph, index) => (
+              // Paragraphs have no identity of their own, so the index is the key. The array is
+              // rendered whole and never reordered or filtered, which is what makes that safe.
+              <Text key={index} style={styles.para}>
+                {paragraph}
+              </Text>
+            ))}
+          </View>
+        ))}
+
+        {summary.report != null && summary.report.gaps.length > 0 && (
           <View>
             <Text style={styles.sectionTitle}>What stands out</Text>
-            {summary.analyst.gaps.map((gapEntry) => (
+            {summary.report.gaps.map((gapEntry) => (
               <View key={gapEntry.token} style={styles.gap} wrap={false}>
                 <Text>{gapEntry.observation}</Text>
               </View>
@@ -238,14 +272,14 @@ export function SummaryPdfDocument({ summary }: { summary: AuditSummary }) {
           </View>
         )}
 
-        {summary.analyst != null && summary.analyst.pathway.length > 0 && (
+        {summary.report != null && summary.report.pathway.length > 0 && (
           <View>
             <Text style={styles.sectionTitle}>One way this could go</Text>
             <Text style={[styles.para, { color: MUTED, fontSize: 9 }]}>
               Not a plan, and nothing here is owed. It is what a sequence could look like from where
               you are.
             </Text>
-            {summary.analyst.pathway.map((step) => (
+            {summary.report.pathway.map((step) => (
               <View key={step.horizon} style={styles.step} wrap={false}>
                 <Text style={styles.horizon}>{step.horizon.toUpperCase()}</Text>
                 <Text>{step.step}</Text>
@@ -254,6 +288,22 @@ export function SummaryPdfDocument({ summary }: { summary: AuditSummary }) {
             ))}
           </View>
         )}
+
+        {/* The last words before the footnote, and deliberately not a heading of their own: a
+            closing line that announced itself would be a conclusion, which is the one thing this
+            document does not draw. */}
+        {summary.report?.closing != null && (
+          <Text style={[styles.para, { marginTop: 18, fontSize: 11 }]}>
+            {summary.report.closing}
+          </Text>
+        )}
+
+        {/* Where to take this next. On paper this is the only route back to a person: a printed
+            report has no buttons on it, and somebody reading it in six months has no app open. */}
+        <Text style={styles.contact}>
+          If you would like to take this further, Rashmir Balasubramaniam can be reached at{' '}
+          {summary.contactEmail}. The work is yours either way.
+        </Text>
 
         <Text style={styles.footnote}>{summary.footnote}</Text>
 

@@ -144,15 +144,15 @@ async function main(): Promise<void> {
 
     // ── 5. The reading survives the round trip into the summary ──
     const summary = await buildSummary(previewId, result.runId);
-    if (summary.analyst === null) {
+    if (summary.report === null) {
       fail(
         'the canned reading did not survive into buildSummary. Either JSONB came back in a shape ' +
-          'parseAnalystReading refuses, or the reading names an area this run does not have — ' +
+          'parseReportReading refuses, or the reading names an area this run does not have — ' +
           'which is the failure the derived fixture exists to prevent.'
       );
     }
-    if (summary.analyst.gaps.length < 2) fail('the reading lost a gap on the way through');
-    console.log(`[5] the summary carries ${summary.analyst.gaps.length} gaps and a pathway`);
+    if (summary.report.gaps.length < 2) fail('the reading lost a gap on the way through');
+    console.log(`[5] the summary carries ${summary.report.gaps.length} gaps and a pathway`);
 
     // ── 6. The operator can see it ──
     const listed = await listPreviewAccounts();

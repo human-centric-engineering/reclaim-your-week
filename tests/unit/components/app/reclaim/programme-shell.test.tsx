@@ -37,21 +37,12 @@ const mounts = vi.hoisted(() => ({ conversation: 0 }));
 // The phase surfaces are exercised by their own suites; here they stand in as markers, so this test
 // is about the frame rather than about what the frame contains.
 vi.mock('@/components/app/reclaim/coach/phase-conversation', () => ({
-  PhaseConversation: ({
-    onSwitchToForm,
-    onAdvanced,
-  }: {
-    onSwitchToForm: () => void;
-    onAdvanced: () => void;
-  }) => {
+  PhaseConversation: ({ onAdvanced }: { onAdvanced: () => void }) => {
     useEffect(() => {
       mounts.conversation += 1;
     }, []);
     return (
       <div data-testid="conversation">
-        <button type="button" onClick={onSwitchToForm}>
-          I would rather fill this in myself
-        </button>
         <button type="button" onClick={onAdvanced}>
           advance
         </button>
@@ -72,7 +63,13 @@ vi.mock('@/components/app/reclaim/phase/setup-panel', () => ({
   SetupPanel: () => <div data-testid="setup-panel" />,
 }));
 vi.mock('@/components/app/reclaim/phase/phase6-panel', () => ({
-  Phase6Panel: () => <div data-testid="summary-panel" />,
+  Phase6Panel: ({ onAdvanced }: { onAdvanced: () => void }) => (
+    <div data-testid="summary-panel">
+      <button type="button" onClick={onAdvanced}>
+        advance from the panel
+      </button>
+    </div>
+  ),
 }));
 vi.mock('@/components/app/reclaim/phase/phase1-panel', () => ({
   Phase1Panel: () => <div data-testid="panel-phase-1-current" />,
@@ -243,23 +240,19 @@ describe('ProgrammeShell — the frame around a run', () => {
     expect(screen.queryByTestId('form-panel')).not.toBeInTheDocument();
   });
 
-  it('switches to the form and remembers the choice, per leader', async () => {
+  it('offers no way out of the conversation to a form, and remembers no such choice', async () => {
+    // The link out — "I would rather fill this in myself" — is gone from every phase, and so is the
+    // remembered preference behind it. A leader arriving with `form` still written into their browser
+    // from before the change gets the conversation, not the phase panel they can no longer leave by
+    // any link this shell renders.
+    window.localStorage.setItem('reclaim.phase-mode.v1', JSON.stringify('form'));
     respond(runState());
-    const { unmount } = render(<ProgrammeShell />);
-
-    await userEvent.click(await screen.findByRole('button', { name: /fill this in myself/ }));
-    expect(await screen.findByTestId('form-panel')).toBeInTheDocument();
-    // The form path keeps the door back open.
-    expect(screen.getByRole('button', { name: /talk this through/ })).toBeInTheDocument();
-
-    unmount();
     render(<ProgrammeShell />);
-    // Remembered in localStorage, so the choice does not have to be made again at every phase.
-    expect(await screen.findByTestId('form-panel')).toBeInTheDocument();
 
-    // And the door back is a door, not a label.
-    await userEvent.click(screen.getByRole('button', { name: /talk this through/ }));
     expect(await screen.findByTestId('conversation')).toBeInTheDocument();
+    expect(screen.queryByTestId('form-panel')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /fill this in myself/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /talk this through/ })).not.toBeInTheDocument();
   });
 
   it('keeps the conversation mounted while it re-reads, or the transcript goes with it', async () => {
@@ -323,8 +316,9 @@ describe('ProgrammeShell — the frame around a run', () => {
   });
 
   it('re-reads the run when a phase advances, on either surface', async () => {
+    // Both surfaces the shell still renders: the conversation for phases 0 to 5, and phase 6's panel.
     respond(runState());
-    render(<ProgrammeShell />);
+    const { unmount } = render(<ProgrammeShell />);
 
     await userEvent.click(await screen.findByRole('button', { name: 'advance' }));
     await waitFor(() =>
@@ -333,9 +327,13 @@ describe('ProgrammeShell — the frame around a run', () => {
       ).toBeGreaterThan(1)
     );
 
-    await userEvent.click(screen.getByRole('button', { name: /fill this in myself/ }));
+    unmount();
+    respond(runState({ currentPhaseKey: 'phase-6-summary' }));
+    render(<ProgrammeShell />);
+
+    await screen.findByTestId('summary-panel');
     const before = fetchMock.mock.calls.filter(([u]) => String(u).includes('/runs/current')).length;
-    await userEvent.click(await screen.findByRole('button', { name: 'advance from the form' }));
+    await userEvent.click(screen.getByRole('button', { name: 'advance from the panel' }));
     await waitFor(() =>
       expect(
         fetchMock.mock.calls.filter(([u]) => String(u).includes('/runs/current')).length
@@ -359,12 +357,12 @@ describe('ProgrammeShell — the frame around a run', () => {
     expect(await screen.findByText('Section 4 · Gap analysis')).toBeInTheDocument();
   });
 
-  it('opens the setup phase as a conversation too, once the leader prefers fields', async () => {
+  it('opens the setup phase as a conversation, like every other phase but the last', async () => {
     respond(runState({ currentPhaseKey: 'phase-0-setup' }));
-    window.localStorage.setItem('reclaim.phase-mode.v1', JSON.stringify('form'));
     render(<ProgrammeShell />);
 
-    expect(await screen.findByTestId('setup-panel')).toBeInTheDocument();
+    expect(await screen.findByTestId('conversation')).toBeInTheDocument();
+    expect(screen.queryByTestId('setup-panel')).not.toBeInTheDocument();
   });
 
   it('keeps the summary phase a panel, because consent is not something a coach may record', async () => {
@@ -378,21 +376,24 @@ describe('ProgrammeShell — the frame around a run', () => {
     expect(screen.queryByRole('button', { name: /talk this through/ })).not.toBeInTheDocument();
   });
 
-  it.each(['phase-1-current', 'phase-3-ideal', 'phase-4-gap', 'phase-5-action'])(
-    'routes %s to its own form panel, so no phase falls through to the fallback',
+  it.each(['phase-0-setup', 'phase-1-current', 'phase-3-ideal', 'phase-4-gap', 'phase-5-action'])(
+    'routes %s to the conversation, so no phase falls through to the fallback',
     async (phaseKey) => {
+      // These used to be checked against their form panels, which is where the shell sent them once a
+      // leader took the link out. There is no link out, so the assertion is the same one moved: every
+      // seeded phase but the last has a surface of its own and none of them lands on "not available".
       respond(runState({ currentPhaseKey: phaseKey }));
-      window.localStorage.setItem('reclaim.phase-mode.v1', JSON.stringify('form'));
       render(<ProgrammeShell />);
 
-      expect(await screen.findByTestId(`panel-${phaseKey}`)).toBeInTheDocument();
+      expect(await screen.findByTestId('conversation')).toBeInTheDocument();
       expect(screen.queryByText(/not available just now/i)).not.toBeInTheDocument();
     }
   );
 
   it('says the map has moved rather than opening a conversation with no phase behind it', async () => {
     // An unknown phase key means the journey map changed under a live run. A chat window would be a
-    // worse answer than a sentence.
+    // worse answer than a sentence — and with the form mode gone, "not the last phase" would have sent
+    // an unknown key straight into the conversation, which is why the shell tests the seven by name.
     respond(
       runState({
         currentPhaseKey: 'phase-9-unknown',
@@ -402,7 +403,6 @@ describe('ProgrammeShell — the frame around a run', () => {
         ],
       })
     );
-    window.localStorage.setItem('reclaim.phase-mode.v1', JSON.stringify('form'));
     render(<ProgrammeShell />);
 
     expect(await screen.findByText(/not available just now/i)).toBeInTheDocument();

@@ -44,16 +44,34 @@ export const auditSummarySchema = z.object({
     howKnown: z.string().nullable(),
   }),
   /**
-   * §10's key gaps and phased pathway (F14).
+  /**
+   * The report agent's reading (`lib/app/programme/report/reading.ts`).
    *
-   * Nullable, and every view renders nothing for `null` — the analyst may not have run, may have
-   * been refused, or may have failed, and the artifact was complete without these two sections for
-   * the whole of v1. `.nullable().default(null)` rather than `.optional()`: an older cached response
-   * that predates the field parses as absent, and absent must read as "no reading" rather than
-   * failing the whole summary and blanking a leader's screen.
+   * Nullable, and every view renders nothing for `null` — the agent may not have run, may have been
+   * refused, or may have failed, and the report was complete without it for the whole of v1.
+   * `.nullable().default(null)` rather than `.optional()`: an older cached response that predates the
+   * field parses as absent, and absent must read as "no reading" rather than failing the whole
+   * response and blanking a leader's screen. The same reasoning applies one level down, to `chapters`
+   * and `closing`, which a reading stored before the arc existed does not carry.
    */
-  analyst: z
+  report: z
     .object({
+      chapters: z
+        .array(
+          z.object({
+            section: z.enum([
+              'why_now',
+              'the_week',
+              'energy',
+              'the_week_you_want',
+              'the_distance',
+              'what_you_chose',
+              'what_you_take',
+            ]),
+            paragraphs: z.array(z.string()),
+          })
+        )
+        .default([]),
       gaps: z.array(z.object({ token: z.string(), observation: z.string() })),
       pathway: z.array(
         z.object({
@@ -62,9 +80,14 @@ export const auditSummarySchema = z.object({
           difference: z.string(),
         })
       ),
+      closing: z.string().nullable().default(null),
     })
     .nullable()
     .default(null),
+  /** When the audit happened, ISO. Formatted by each surface; see `AuditSummary.auditedOn`. */
+  auditedOn: z.string(),
+  /** Where to take this next, carried on the artifact rather than left on the screen. */
+  contactEmail: z.string(),
   footnote: z.string(),
 });
 

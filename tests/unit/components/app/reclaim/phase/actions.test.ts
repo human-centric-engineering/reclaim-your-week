@@ -55,6 +55,8 @@ const ANSWER_ENTRY = { value: 'CEO', valueJson: null, sourceType: 'direct', conf
 
 const SUMMARY = {
   firstName: 'Priya',
+  auditedOn: '2026-07-29T10:00:00.000Z',
+  contactEmail: 'rashmir@rashmir.net',
   role: 'CEO',
   orgType: 'Nonprofit',
   period: '2026 Q1',
@@ -78,7 +80,7 @@ const SUMMARY = {
   },
   rows: [{ token: 'deep-work', title: 'Deep work', current: 10, ideal: null }],
   action: { chosen: null, when: null, howKnown: null },
-  analyst: null,
+  report: null,
   footnote: 'One quarter is a snapshot, not a verdict.',
 };
 
@@ -295,12 +297,12 @@ describe('fetchSummary', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/app/reclaim/runs/run-1/summary');
   });
 
-  it('defaults `analyst` to null when the server omits it (older cached response)', async () => {
-    const { analyst: _analyst, ...withoutAnalyst } = SUMMARY;
-    fetchMock.mockResolvedValue(ok(withoutAnalyst));
+  it('defaults `report` to null when the server omits it (older cached response)', async () => {
+    const { report: _report, ...withoutReading } = SUMMARY;
+    fetchMock.mockResolvedValue(ok(withoutReading));
 
     const summary = await fetchSummary('run-1');
-    expect(summary.analyst).toBeNull();
+    expect(summary.report).toBeNull();
   });
 
   it('throws on a malformed envelope rather than handing the caller a broken chart', async () => {
@@ -327,26 +329,26 @@ describe('fetchSummary', () => {
 });
 
 describe('shareSummary', () => {
-  it('posts the share choices and returns the public token', async () => {
-    fetchMock.mockResolvedValue(ok({ token: 'tok_abc123' }));
+  it('posts the share choices and reports back what was shared', async () => {
+    fetchMock.mockResolvedValue(ok({ sharedWithCoach: true }));
 
-    const input = { publicLink: true, withCoach: false, shareTranscript: false };
-    const token = await shareSummary('run-1', input);
+    const input = { withCoach: true, shareTranscript: true };
+    const shared = await shareSummary('run-1', input);
 
-    expect(token).toBe('tok_abc123');
+    expect(shared).toBe(true);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit & { body: string }];
     expect(url).toBe('/api/v1/app/reclaim/runs/run-1/share');
     expect(init.method).toBe('POST');
     expect(JSON.parse(init.body)).toEqual(input);
   });
 
-  it('returns null when the leader declines to share', async () => {
-    fetchMock.mockResolvedValue(ok({ token: null }));
-    expect(await shareSummary('run-1', { publicLink: false })).toBeNull();
+  it('reports back a save where the leader chose not to share', async () => {
+    fetchMock.mockResolvedValue(ok({ sharedWithCoach: false }));
+    expect(await shareSummary('run-1', { withCoach: false })).toBe(false);
   });
 
   it('throws on a malformed envelope', async () => {
-    fetchMock.mockResolvedValue(ok({ token: 42 }));
+    fetchMock.mockResolvedValue(ok({ sharedWithCoach: 42 }));
     await expect(shareSummary('run-1', {})).rejects.toThrow();
   });
 

@@ -1,5 +1,5 @@
 /**
- * `abandonRun`, `completeRun`'s completion email, and `ensureAnalystReading` — three F14/F15/F16
+ * `abandonRun`, `completeRun`'s completion email, and `ensureReportReading` — three F14/F15/F16
  * functions in `runs/service.ts` that carry real behavioural rules and, until now, no test that
  * exercises them at runtime.
  *
@@ -32,8 +32,8 @@ const mocks = vi.hoisted(() => ({
   emitReclaimAccessEvent: vi.fn(),
   readRunAnswers: vi.fn(),
   readBucketLabels: vi.fn(),
-  buildAnalystBrief: vi.fn(),
-  runAnalyst: vi.fn(),
+  buildReportBrief: vi.fn(),
+  runReport: vi.fn(),
   sendEmail: vi.fn(),
   auditCompleteEmail: vi.fn(),
   loggerWarn: vi.fn(),
@@ -85,12 +85,12 @@ vi.mock('@/lib/app/programme/buckets/labels', () => ({
   readBucketLabels: mocks.readBucketLabels,
 }));
 
-vi.mock('@/lib/app/programme/analyst/brief', () => ({
-  buildAnalystBrief: mocks.buildAnalystBrief,
+vi.mock('@/lib/app/programme/report/brief', () => ({
+  buildReportBrief: mocks.buildReportBrief,
 }));
 
-vi.mock('@/lib/app/programme/analyst/reading', () => ({
-  runAnalyst: mocks.runAnalyst,
+vi.mock('@/lib/app/programme/report/reading', () => ({
+  runReport: mocks.runReport,
 }));
 
 vi.mock('@/lib/email/send', () => ({
@@ -104,7 +104,7 @@ vi.mock('@/components/app/emails/audit-complete', () => ({
 import {
   abandonRun,
   completeRun,
-  ensureAnalystReading,
+  ensureReportReading,
 } from '@/app/api/v1/app/reclaim/runs/service';
 import { MODULE_SURFACE_CONTEXT_TYPE } from '@/lib/framework/guidance/surface';
 import { RECLAIM_MODULE_SLUG } from '@/lib/app/programme/module';
@@ -132,8 +132,8 @@ beforeEach(() => {
   mocks.userFindUnique.mockResolvedValue({ email: 'leader@example.com', name: 'Sam Patel' });
   mocks.readRunAnswers.mockResolvedValue({});
   mocks.readBucketLabels.mockResolvedValue({});
-  mocks.buildAnalystBrief.mockReturnValue({ usable: true });
-  mocks.runAnalyst.mockResolvedValue(null);
+  mocks.buildReportBrief.mockReturnValue({ usable: true });
+  mocks.runReport.mockResolvedValue(null);
   mocks.sendEmail.mockResolvedValue({ success: true, status: 'sent' });
   mocks.auditCompleteEmail.mockImplementation((props: unknown) => props);
 });
@@ -203,7 +203,7 @@ describe('abandonRun', () => {
 
 describe('completeRun — the completion email (sendCompletionEmail, private)', () => {
   beforeEach(() => {
-    // completeRun always reaches ensureAnalystReading before the email. Keep it a fast no-op here
+    // completeRun always reaches ensureReportReading before the email. Keep it a fast no-op here
     // by pre-seeding a non-null reading, so these tests are only about the email.
     mocks.runFindFirst.mockResolvedValue(runRow({ status: 'in_progress', analystReading: 'x' }));
   });
@@ -273,30 +273,30 @@ describe('completeRun — the completion email (sendCompletionEmail, private)', 
   });
 });
 
-describe('ensureAnalystReading', () => {
+describe('ensureReportReading', () => {
   it('does not regenerate a reading that already exists (write-once)', async () => {
     mocks.runFindFirst.mockResolvedValue({ analystReading: { gaps: [] } });
 
-    await ensureAnalystReading(USER_ID, RUN_ID);
+    await ensureReportReading(USER_ID, RUN_ID);
 
-    expect(mocks.runAnalyst).not.toHaveBeenCalled();
+    expect(mocks.runReport).not.toHaveBeenCalled();
     expect(mocks.runUpdateMany).not.toHaveBeenCalled();
   });
 
   it('writes nothing when the analyst refuses (returns null)', async () => {
     mocks.runFindFirst.mockResolvedValue({ analystReading: null });
-    mocks.runAnalyst.mockResolvedValue(null);
+    mocks.runReport.mockResolvedValue(null);
 
-    await ensureAnalystReading(USER_ID, RUN_ID);
+    await ensureReportReading(USER_ID, RUN_ID);
 
     expect(mocks.runUpdateMany).not.toHaveBeenCalled();
   });
 
   it('never throws when the analyst call rejects', async () => {
     mocks.runFindFirst.mockResolvedValue({ analystReading: null });
-    mocks.runAnalyst.mockRejectedValue(new Error('model timed out'));
+    mocks.runReport.mockRejectedValue(new Error('model timed out'));
 
-    await expect(ensureAnalystReading(USER_ID, RUN_ID)).resolves.toBeUndefined();
+    await expect(ensureReportReading(USER_ID, RUN_ID)).resolves.toBeUndefined();
     expect(mocks.runUpdateMany).not.toHaveBeenCalled();
   });
 
@@ -309,18 +309,60 @@ describe('ensureAnalystReading', () => {
     mocks.runFindFirst.mockResolvedValue({ analystReading: null });
     mocks.readRunAnswers.mockResolvedValue(answers);
     mocks.readBucketLabels.mockResolvedValue(labels);
-    mocks.buildAnalystBrief.mockReturnValue(brief);
-    mocks.runAnalyst.mockResolvedValue(reading);
+    mocks.buildReportBrief.mockReturnValue(brief);
+    mocks.runReport.mockResolvedValue(reading);
 
-    await ensureAnalystReading(USER_ID, RUN_ID);
+    await ensureReportReading(USER_ID, RUN_ID);
 
     expect(mocks.readRunAnswers).toHaveBeenCalledWith(USER_ID, RUN_ID);
     expect(mocks.readBucketLabels).toHaveBeenCalledWith(USER_ID);
-    expect(mocks.buildAnalystBrief).toHaveBeenCalledWith(answers, labels);
-    expect(mocks.runAnalyst).toHaveBeenCalledWith(brief);
+    expect(mocks.buildReportBrief).toHaveBeenCalledWith(answers, labels);
+    expect(mocks.runReport).toHaveBeenCalledWith(brief);
     expect(mocks.runUpdateMany).toHaveBeenCalledWith({
-      where: { id: RUN_ID, userId: USER_ID, analystReading: { equals: Prisma.DbNull } },
+      where: {
+        id: RUN_ID,
+        userId: USER_ID,
+        OR: [
+          { analystReading: { equals: Prisma.DbNull } },
+          { analystReading: { equals: Prisma.JsonNull } },
+        ],
+      },
       data: { analystReading: reading },
     });
+  });
+
+  /**
+   * The silent cost leak, and the reason the `where` above is an `OR`.
+   *
+   * `analystReading` is `Json?`, so the column has two empty states: SQL `NULL` and the JSON value
+   * `null`. Both read back as `null` in JavaScript, so the write-once early return treats each as
+   * "never generated" — correctly. The write condition could tell them apart, and did: a row holding
+   * JSON `null` generated a reading on **every** summary read and stored none of them. The guard let
+   * it through, the model was called, the write matched no row, and the leader saw no reading while
+   * each refresh spent money.
+   *
+   * Found by winding a run back for testing with `{ analystReading: null }`, which is exactly how a
+   * column reaches that state. Asserted on the condition rather than on a round trip, because the
+   * whole failure was that the condition and the guard disagreed about what "empty" means.
+   */
+  it('stores into a column holding JSON null, not only SQL NULL', async () => {
+    mocks.runFindFirst.mockResolvedValue({ analystReading: null });
+    mocks.buildReportBrief.mockReturnValue({ usable: true });
+    mocks.runReport.mockResolvedValue({ gaps: [], pathway: [] });
+
+    await ensureReportReading(USER_ID, RUN_ID);
+
+    // Identity, not serialisation: both sentinels stringify to `{}`, so a JSON comparison here would
+    // pass against two copies of the same one — which is the exact bug.
+    const where = mocks.runUpdateMany.mock.calls[0]?.[0]?.where as {
+      OR?: Array<{ analystReading: { equals: unknown } }>;
+    };
+    const matched = (where.OR ?? []).map((clause) => clause.analystReading.equals);
+    expect(
+      matched,
+      'the write matches only one of the two empty states, so the other regenerates forever'
+    ).toHaveLength(2);
+    expect(matched).toContain(Prisma.DbNull);
+    expect(matched).toContain(Prisma.JsonNull);
   });
 });

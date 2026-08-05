@@ -70,7 +70,7 @@ describe('the phase arrivals', () => {
     expect(isArrivalMoment('phase-5-action')).toBe(true);
     // The reveal is not one. It fires mid-phase, when the leader asks to look (I12).
     expect(isArrivalMoment('phase-1-chart-reveal')).toBe(false);
-    expect(isArrivalMoment('phase-6-close')).toBe(false);
+    expect(isArrivalMoment('phase-1-calendar-return')).toBe(false);
   });
 
   it('opens an arrival with the trigger that introduces the phase, and a beat with the other', () => {

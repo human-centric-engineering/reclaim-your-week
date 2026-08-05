@@ -48,7 +48,7 @@
  * ## What is faked
  *
  * `analystReading`, which is the sole part of a finished summary a model produces. Pre-writing it
- * makes the write-once `ensureAnalystReading` a no-op when the operator does press finish, so neither
+ * makes the write-once `ensureReportReading` a no-op when the operator does press finish, so neither
  * the summary nor the completion costs a provider call. The content is derived in
  * `lib/app/programme/preview/fixtures.ts`.
  *
@@ -97,7 +97,7 @@ import { readReclaimAccessConfig, type ReclaimAccessConfig } from '@/lib/app/pro
 import { mintGrant, grantAnotherAudit } from '@/lib/app/programme/access/grants';
 import { recordConsent, readConsent } from '@/lib/app/programme/access/consent';
 import { isPreviewAccount, registerPreviewAccount } from '@/lib/app/programme/preview/accounts';
-import { previewAnalystReading } from '@/lib/app/programme/preview/fixtures';
+import { previewReportReading } from '@/lib/app/programme/preview/fixtures';
 import {
   CURRENT_HOURS,
   IDEAL_HOURS,
@@ -452,9 +452,9 @@ export async function fastForwardPreviewAccount(
   }
 
   // Written before the operator ever opens the phase, which is the whole trick: the summary reads this
-  // column, and `ensureAnalystReading` returns early when it is already set — so neither looking at the
+  // column, and `ensureReportReading` returns early when it is already set — so neither looking at the
   // summary nor finishing the audit afterwards spends anything on a provider.
-  const reading = previewAnalystReading(
+  const reading = previewReportReading(
     Object.fromEntries(
       Object.keys(CURRENT_HOURS).map((token) => [
         token,

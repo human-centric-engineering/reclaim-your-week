@@ -588,13 +588,29 @@ describe('buildCoachPhaseContext — the close', () => {
     confidence: 10,
   };
 
-  it('holds the summary back until the leader has said what they are taking away', async () => {
+  it('asks the last question once, and does not ask it again for the machine', async () => {
     readRunAnswers.mockResolvedValue({});
 
     const block = await buildCoachPhaseContext('u1');
 
-    expect(block).toContain('the summary does not appear until they');
+    // The screen releases the summary on the leader's *answer*, not on the coach's recording of it
+    // (`phase6-panel.tsx`). This briefing used to tell the coach the opposite — "the summary does not
+    // appear until they have" — so a takeaway it heard and failed to write left it asking a leader who
+    // had already answered, with their finished audit sitting behind the question.
+    expect(block).toContain('released by their answer, not by your recording of it');
+    expect(block).toContain('Only once');
+    expect(block).not.toContain('the summary does not appear until they');
     expect(block).toContain('not produce a summary of the audit yourself');
+  });
+
+  it('tells the leader what answering leads to, in the words the card uses', async () => {
+    readRunAnswers.mockResolvedValue({});
+
+    // The card above the conversation says it too (`signposts.ts`): one question, and then the thing
+    // they can download. A last question with no stated end reads as another one of many.
+    expect(await buildCoachPhaseContext('u1')).toContain(
+      'Before offering you a downloadable summary'
+    );
   });
 
   it('answers their takeaway in their own words once they have written it', async () => {
