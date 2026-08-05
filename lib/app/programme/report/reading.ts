@@ -431,7 +431,7 @@ export function parseReportReading(raw: unknown, allowedTokens: Set<string>): Re
   }
 
   let parsedClosing: string | null = null;
-  if (closing !== undefined) {
+  if (closing !== undefined && closing !== null) {
     parsedClosing = clean(closing, MAX_CLOSING);
     if (parsedClosing === null) return refuse(`closing refused: ${describe(closing)}`);
   }

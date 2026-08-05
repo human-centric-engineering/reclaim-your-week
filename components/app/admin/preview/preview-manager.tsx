@@ -70,7 +70,7 @@ const TARGET_OPTIONS: { value: PreviewTarget; label: string }[] = [
  * Turn one chosen target into the request body the API takes.
  *
  * The API kept its `to` / `toPhase` pair, so this is where the screen's one question is translated
- * back into it. `summary` is not simply "phase 6": it is the target that writes the analyst reading,
+ * back into it. `summary` is not simply "phase 6": it is the target that writes the report agent's reading,
  * so the last phase has to be sent under that name and not as a `toPhase`.
  */
 function targetToRequest(target: PreviewTarget): { to: 'mid-audit' | 'summary'; toPhase?: string } {

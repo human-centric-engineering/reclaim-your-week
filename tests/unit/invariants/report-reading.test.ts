@@ -29,6 +29,7 @@ import { REPORT_BRIEF_SLUGS } from '@/lib/app/programme/report/brief';
 import { parseReportReading } from '@/lib/app/programme/report/reading';
 import { REPORT_IMPERATIVE_OPENERS, reclaimReportAgent } from '@/lib/app/programme/report/agent';
 import { CHAPTER_ORDER, CHAPTER_TITLES } from '@/lib/app/programme/report/chapters';
+import { auditSummarySchema } from '@/components/app/reclaim/summary/types';
 
 // The parser logs every refusal with its reason, which is the point of it in production and noise
 // here. Silenced rather than asserted on: the return value is the contract.
@@ -192,6 +193,21 @@ describe('parseReportReading refuses, and refuses whole', () => {
     expect(parsed).not.toBeNull();
     expect(parsed?.gaps).toHaveLength(2);
     expect(parsed?.pathway.map((s) => s.horizon)).toEqual(['now', 'next', 'later']);
+  });
+
+  it('tolerates a missing closing, and tolerates it again once storage has turned that into null', () => {
+    const { closing: _closing, ...withoutClosing } = reading();
+    const first = parseReportReading(withoutClosing, TOKENS);
+    expect(first).not.toBeNull();
+    expect(first?.closing).toBeNull();
+
+    // `ensureReportReading` stores the parsed reading as JSON, which turns an omitted key into a
+    // present `null` on the way back out. The parser must accept its own output, or a reading with
+    // no closing line is refused in full — chapters, gaps and pathway included — on every read after
+    // the first, silently and with nothing but a log line to say why.
+    const roundTripped = JSON.parse(JSON.stringify(first));
+    expect(parseReportReading(roundTripped, TOKENS)).not.toBeNull();
+    expect(parseReportReading(roundTripped, TOKENS)?.closing).toBeNull();
   });
 
   it('orders the pathway even when the model does not', () => {
@@ -538,6 +554,23 @@ describe('the arc is the product’s, not the model’s', () => {
       );
     }
     expect(Object.keys(CHAPTER_TITLES).sort()).toEqual([...CHAPTER_ORDER].sort());
+  });
+
+  it('lets the client accept every chapter the server can send', () => {
+    // `auditSummarySchema` (`components/app/reclaim/summary/types.ts`) carries its own copy of the
+    // chapter-section enum, because it is client-safe and this module is not (it imports Prisma and
+    // the provider manager). A chapter added here alone type-checks fine and reaches the client as an
+    // unrecognised enum value — which `parseEnvelope` treats as a total parse failure, not a missing
+    // chapter, so one new section blanks the whole report screen for every reading that includes it.
+    for (const section of CHAPTER_ORDER) {
+      const result = auditSummarySchema.shape.report.safeParse({
+        chapters: [{ section, paragraphs: ['x'] }],
+        gaps: [],
+        pathway: [],
+        closing: null,
+      });
+      expect(result.success, `client schema rejects "${section}"`).toBe(true);
+    }
   });
 
   it('leaves room for the reading it now asks for', () => {

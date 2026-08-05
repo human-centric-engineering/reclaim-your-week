@@ -270,15 +270,19 @@ function phase5(): PreviewAnswer[] {
   return [
     {
       // Written by the coach's own `record_answers` call in a real run, which is why it carries the
-      // three options rather than only the chosen one: `analyst/brief.ts` reads this list into the
+      // three options rather than only the chosen one: `report/brief.ts` reads this list into the
       // summary, and a fabricated audit missing it loses that section of the artifact.
       slotSlug: 'reclaim_action_options',
       value:
         'Two protected mornings a week; hand over the Thursday delivery stand-up; a standing monthly look at where the week went',
+      // `{title, impact}` objects, matching the shape the coach's own `record_answers` call writes
+      // (`action-options.ts`) — `optionsFrom` in `report/brief.ts` drops anything else, silently.
+      // No impact was stated for any of the three, so each carries the empty string `optionsFrom`
+      // treats as "none was stated" rather than an invented one.
       valueJson: [
-        'Two protected mornings a week for the funding bid',
-        'The Thursday delivery stand-up handed to the delivery lead',
-        'A standing monthly look at where the week actually went',
+        { title: 'Two protected mornings a week for the funding bid', impact: '' },
+        { title: 'The Thursday delivery stand-up handed to the delivery lead', impact: '' },
+        { title: 'A standing monthly look at where the week actually went', impact: '' },
       ],
     },
     {

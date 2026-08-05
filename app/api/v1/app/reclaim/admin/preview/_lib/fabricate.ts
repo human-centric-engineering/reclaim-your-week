@@ -19,7 +19,7 @@
  * Two consequences follow, and both are deliberate:
  *   - `createRun` runs `assertEntitled`, so I14's one door is exercised rather than bypassed. A
  *     fabrication for an account with no grant fails the same way a leader would.
- *   - A refused `transitionRun` is **rethrown**, naming the phase. `smoke/reclaim-analyst.ts` swallows
+ *   - A refused `transitionRun` is **rethrown**, naming the phase. `smoke/reclaim-report-agent.ts` swallows
  *     these with `.catch(() => undefined)`; copying that here would let a facilitation-policy change
  *     produce an account labelled "mid-audit" whose journey is still sitting at phase 0, and the
  *     operator would have no way to know.
@@ -43,7 +43,7 @@
  * shape this replaced (`fresh` / `mid-audit` / `completed`) could only ever show an operator two of the
  * seven screens, and `mid-audit` always meant phase 4 because nothing sent the phase it already
  * accepted. `summary` survives as the name for "the last phase", because stopping there is different
- * in kind: it is the only target that writes the analyst reading.
+ * in kind: it is the only target that writes the report agent's reading.
  *
  * ## What is faked
  *
@@ -121,7 +121,7 @@ import {
  * What state a test account should be left in.
  *
  * `mid-audit` carries its stopping point in `toPhase`; `summary` is the last phase and is named
- * separately because it is the only one that writes the analyst reading.
+ * separately because it is the only one that writes the report agent's reading.
  */
 export type PreviewState = 'fresh' | 'mid-audit' | 'summary';
 

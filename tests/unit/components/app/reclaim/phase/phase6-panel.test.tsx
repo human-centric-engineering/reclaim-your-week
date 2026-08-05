@@ -17,7 +17,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Phase6Panel } from '@/components/app/reclaim/phase/phase6-panel';
 
@@ -37,6 +37,22 @@ const json = (data: unknown) => ({
   headers: new Headers({ 'content-type': 'application/json' }),
   json: async () => ({ success: true, data }),
 });
+
+/**
+ * A `/coach/stream` response that opens and immediately closes with no frames.
+ *
+ * `CoachChat` commits whatever text arrived and calls `onTurnComplete` in its `finally` block once
+ * the reader reports `done` — that happens whether or not anything was actually said, so an empty
+ * stream is enough to settle a turn and is far simpler than assembling real SSE frames.
+ */
+function emptyStreamResponse(): Response {
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.close();
+    },
+  });
+  return new Response(stream, { status: 200, headers: { 'content-type': 'text/event-stream' } });
+}
 
 /** Enough of a summary to satisfy the schema; none of it is asserted on. */
 const SUMMARY = {
@@ -115,6 +131,8 @@ function serve(takeaway?: string, transcript: { messages: unknown[] } = TRANSCRI
       );
     }
     if (url.includes('/messages')) return Promise.resolve(json(transcript));
+    if (url.includes('/coach/stream')) return Promise.resolve(emptyStreamResponse());
+    if (url.includes('/complete')) return Promise.resolve(json({}));
     return Promise.reject(new Error(`unexpected fetch: ${url}`));
   });
 }
@@ -253,5 +271,106 @@ describe('Phase6Panel — finishing explains itself', () => {
     // tell apart from the three above it.
     expect(screen.getByText(/closes the conversation with the coach/i)).toBeInTheDocument();
     expect(screen.getByText(/report is not going anywhere/i)).toBeInTheDocument();
+  });
+
+  it('replaces the whole screen with the closing affirmation once finishing completes', async () => {
+    serve(undefined, ANSWERED_TRANSCRIPT);
+    render(panel());
+    await screen.findByTestId('summary-view');
+
+    await userEvent.click(screen.getByRole('button', { name: /finish my audit/i }));
+
+    // The report, the sharing panel and the finish control are all gone — this is the one other
+    // screen the panel can be in, not a state layered on top of the report.
+    expect(await screen.findByText(/no pressure\. the work is yours\./i)).toBeInTheDocument();
+    expect(screen.queryByTestId('summary-view')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /finish my audit/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /back to your audit/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /rashmir@rashmir\.net/i })).toHaveAttribute(
+      'href',
+      'mailto:rashmir@rashmir.net'
+    );
+  });
+});
+
+describe('Phase6Panel — the three reads it gates on can each fail on their own', () => {
+  it('shows a fallback message when the summary itself cannot be loaded', async () => {
+    fetchMock.mockImplementation((input: string | URL) => {
+      const url = typeof input === 'string' ? input : input.href;
+      if (url.includes('/summary')) return Promise.reject(new Error('network down'));
+      if (url.includes('/answers')) return Promise.resolve(json({ answers: {} }));
+      if (url.includes('/messages')) return Promise.resolve(json(TRANSCRIPT));
+      return Promise.reject(new Error(`unexpected fetch: ${url}`));
+    });
+    render(panel());
+
+    expect(await screen.findByText('We could not load your report just now.')).toBeInTheDocument();
+    // Neither the question nor the report — the summary is the one read that fails hard rather than
+    // degrading, because there is nothing honest to show in its place.
+    expect(screen.queryByText('What are you taking away from this audit?')).not.toBeInTheDocument();
+  });
+
+  it('treats a takeaway read failure as no takeaway, rather than leaving the gate stuck', async () => {
+    fetchMock.mockImplementation((input: string | URL) => {
+      const url = typeof input === 'string' ? input : input.href;
+      if (url.includes('/summary')) return Promise.resolve(json(SUMMARY));
+      if (url.includes('/answers')) return Promise.reject(new Error('answers unreachable'));
+      if (url.includes('/messages')) return Promise.resolve(json(TRANSCRIPT));
+      return Promise.reject(new Error(`unexpected fetch: ${url}`));
+    });
+    render(panel());
+
+    // A failed read of the takeaway must not hang the "Gathering your report…" gate forever — it
+    // resolves to "no takeaway yet" and the leader still meets the last question.
+    expect(
+      await screen.findByText('What are you taking away from this audit?')
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Gathering your report…', { exact: false })).not.toBeInTheDocument();
+  });
+});
+
+describe('Phase6Panel — a run with no conversation yet cannot have been answered', () => {
+  it('asks the question rather than assuming an answer when conversationId is null', async () => {
+    serve();
+    render(
+      <Phase6Panel
+        runId="run-1"
+        conversationId={null}
+        coachOpenings={OPENINGS}
+        phaseMarks={PHASE_MARKS}
+        onAdvanced={() => {}}
+      />
+    );
+
+    // No transcript to read means "not answered", the safe way round — the coach stays there to ask
+    // rather than a leader being shown a report for an answer that was never actually given.
+    expect(await screen.findByPlaceholderText(/write to the coach/i)).toBeInTheDocument();
+    expect(screen.queryByTestId('summary-view')).not.toBeInTheDocument();
+  });
+});
+
+describe('Phase6Panel — the opening claims itself when the run has not recorded it yet', () => {
+  it('passes an opening moment when phase-6-open is not already claimed, and moves the leader on once that turn settles', async () => {
+    serve(undefined, TRANSCRIPT);
+    const onAdvanced = vi.fn();
+    render(
+      <Phase6Panel
+        runId="run-1"
+        conversationId="conv-1"
+        // Deliberately NOT including 'phase-6-open' — the run has not recorded this beat yet, so the
+        // panel must hand CoachChat a moment to open rather than `null`.
+        coachOpenings={[]}
+        phaseMarks={PHASE_MARKS}
+        onAdvanced={onAdvanced}
+      />
+    );
+
+    // CoachChat fires that opening turn on its own once hydrated; when it settles, onTurnComplete
+    // re-reads the takeaway and the answered state and tells the parent to move on.
+    await waitFor(() => expect(onAdvanced).toHaveBeenCalled());
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/coach/stream'),
+      expect.objectContaining({ method: 'POST' })
+    );
   });
 });

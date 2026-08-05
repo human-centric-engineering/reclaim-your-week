@@ -56,7 +56,7 @@ export interface AuditSummary {
   /**
    * §10's two remaining items — the key gaps, and the phased pathway (F14).
    *
-   * `null` whenever the analyst has not run, was refused, or failed, and **every surface renders
+   * `null` whenever the report agent has not run, was refused, or failed, and **every surface renders
    * nothing for `null`** rather than an error or a placeholder. The summary satisfied §10's other
    * six bullets for the whole of v1; telling a leader their artifact is defective is worse than
    * quietly being the artifact it was before.

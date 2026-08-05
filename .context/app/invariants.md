@@ -45,7 +45,7 @@ load-bearing in aggregate.
 > `smoke:reclaim-preview` (a test account walks the real engine, and the published figures do not move).
 >
 > **Not gated anywhere.** The two that need a real model key, and only those:
-> `smoke:reclaim-calendar` (I4 end to end) and `smoke:reclaim-analyst` (whether a real model can get
+> `smoke:reclaim-calendar` (I4 end to end) and `smoke:reclaim-report-agent` (whether a real model can get
 > a reading past the guards at all). Both are deliberate manual gates — see
 > [[planning/post-v1|post-v1]] P16, whose one decision now covers both.
 >
@@ -803,6 +803,19 @@ is not lives in the product (§7 of `content-source.md`).
 
 **Why load-bearing:** it is the line between a coaching instrument and an advice engine. Paired with
 the §0 frame, it is what keeps the tool from delivering verdicts.
+
+### The report's chapters are the product's vocabulary, not the model's
+
+`lib/app/programme/report/chapters.ts` fixes `CHAPTER_ORDER` and each chapter's heading in code. The
+report agent chooses which chapters an audit earned and what goes in them; it never chooses what a
+chapter _is_, where it sits, or what it is called. A model that could name a section would eventually
+write "Areas for improvement"; one that could sequence them would build to a finding — both are the
+advice engine this invariant exists to prevent, and `report/reading.ts` refuses any chapter key that
+is not one of the eight declared here. `what_holds_it` is deliberately the report's only analytic
+chapter, sitting after `the_distance` (a reading **of** the distance, never a substitute for it) and
+before `what_you_chose` (so a leader meets what they decided last, on their own terms) — a report with
+a whole analytic section stops being a mirror and starts being a diagnosis, which is the line this
+invariant draws.
 
 ---
 

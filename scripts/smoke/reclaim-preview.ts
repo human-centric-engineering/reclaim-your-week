@@ -9,14 +9,14 @@
  *      fails against a real better-auth. A mocked test would happily accept an account nobody can
  *      log in to, and hand the operator a password that does not work.
  *   2. **Six real transitions reach the last phase, and stop there.** This is the assertion
- *      `smoke:reclaim-analyst` gave up when it wrote `.catch(() => undefined)` around its
+ *      `smoke:reclaim-report-agent` gave up when it wrote `.catch(() => undefined)` around its
  *      transitions. Stopping is now half the claim: the fabricator leaves the run in progress on the
  *      summary — where the report and the sharing choices are — and finishing is the operator's own
  *      press. So this script presses it, through `completeRun`, exactly as the phase-6 panel does.
  *   3. **Neither the fabrication nor the completion calls a model.** Asserted by counting
  *      `ai_cost_log` rows across the window rather than by trusting the ordering in the source.
  *   4. **The canned reading survives the JSONB round trip** and the run's own token check, so the
- *      summary has an analyst section rather than two empty panels.
+ *      summary has a report agent section rather than two empty panels.
  *   5. **The published figures do not move.** `readAggregate` and `readMeasures` are read before and
  *      after fabricating a completed audit and must come back byte-identical. No mocked test can
  *      make this claim, because the thing being tested is what real SQL returns.
@@ -135,7 +135,7 @@ async function main(): Promise<void> {
     if (costAfter !== costBefore) {
       fail(
         `${costAfter - costBefore} provider call(s) were billed. The canned reading must be written ` +
-          'by the fabricator, or ensureAnalystReading finds an empty column and calls the analyst.'
+          'by the fabricator, or ensureReportReading finds an empty column and calls the report agent.'
       );
     }
     console.log(

@@ -31,8 +31,8 @@
  *
  * It goes to `/programme/history/<runId>`, not to a tokenised URL and not to an attached PDF. The
  * report carries their role, their hours, what they said their priorities were and, since the
- * analyst was allowed to read the audit, a reading written from what they said in it. A sign-in is
- * the correct friction for that.
+ * report agent was allowed to read the audit, a reading written from what they said in it. A sign-in
+ * is the correct friction for that.
  *
  * **There is no longer a tokenised URL to weigh this against.** The public share link had no expiry
  * and no revoke, and it has been removed rather than kept for the case where a leader chose it

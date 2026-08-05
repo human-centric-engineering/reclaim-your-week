@@ -347,7 +347,12 @@ const PLACEHOLDER_VALUES: readonly string[] = [
  * is exactly the reading this app is most careful about, so the anchor is load-bearing rather than
  * tidy.
  */
-const NARRATES_ABOUT_THE_LEADER = /^\s*(?:the|this)\s+(?:leader|user|participant|person)\b/i;
+// `person` is deliberately not in this set: unlike `leader`/`user`/`participant` (this product's own
+// vocabulary, which a leader would not use to describe themselves), "the person who..." is ordinary
+// English a real answer can open with — e.g. delegating a task to "the person who runs delivery".
+// Including it would refuse a real answer for the sake of a failure mode nobody has observed opening
+// with that word.
+const NARRATES_ABOUT_THE_LEADER = /^\s*(?:the|this)\s+(?:leader|user|participant)\b/i;
 
 /**
  * "No first name was provided", "No figure was given" — the same non-answer in the passive.

@@ -34,6 +34,26 @@ const slugsUpTo = (phaseIndex: number): string[] =>
     .flatMap((index) => previewAnswersForPhase(index))
     .map((answer) => answer.slotSlug);
 
+describe('previewAnswersForPhase — reclaim_action_options survives the brief', () => {
+  it('writes {title, impact} objects, the only shape optionsFrom (report/brief.ts) accepts', () => {
+    // `report/brief.ts`'s `optionsFrom` drops anything that is not `{title: string, impact: string}`
+    // per entry — a bare string array parses as valid JSON and passes every check up to that one, so
+    // this slipping past review once already cost the panel its "what they chose" section silently.
+    const answer = previewAnswersForPhase(5).find((a) => a.slotSlug === 'reclaim_action_options');
+    expect(answer).toBeDefined();
+    expect(Array.isArray(answer?.valueJson)).toBe(true);
+
+    const entries = answer?.valueJson as unknown[];
+    expect(entries.length).toBeGreaterThan(0);
+    for (const entry of entries) {
+      expect(entry === null || typeof entry !== 'object').toBe(false);
+      const { title, impact } = entry as Record<string, unknown>;
+      expect(typeof title).toBe('string');
+      expect(typeof impact).toBe('string');
+    }
+  });
+});
+
 describe('previewAnswersForPhase — every slug is a real slot', () => {
   it('writes nothing the module has not declared', () => {
     // The failure this catches is invisible in production: `saveAnswer` on an unknown slug writes a

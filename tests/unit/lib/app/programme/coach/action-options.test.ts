@@ -15,6 +15,8 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { assertDefined } from '@/tests/helpers/assertions';
+import type { ActionOption } from '@/lib/app/programme/coach/action-options';
 
 /** In-memory stand-in for the slot store. */
 const store = new Map<string, { value: string; valueJson: unknown; sourceType: string }>();
@@ -30,7 +32,12 @@ const {
   readRunAnswers: vi.fn(),
   resolveAgentProviderAndModel: vi.fn(),
   getProvider: vi.fn(),
-  runStructuredCompletion: vi.fn(),
+  runStructuredCompletion:
+    vi.fn<
+      (opts: {
+        parse: (raw: string) => Array<{ title: string; impact: string }> | null;
+      }) => Promise<{ value: Array<{ title: string; impact: string }> }>
+    >(),
   findUnique: vi.fn(),
   findFirst: vi.fn(),
 }));
@@ -202,5 +209,135 @@ describe('sweepActionOptions', () => {
     const result = await sweepActionOptions(input);
 
     expect(result).toEqual({ recorded: false, skipped: 'no_transcript' });
+  });
+
+  it('says nothing about a run with no conversation at all, before touching the answers store', async () => {
+    const result = await sweepActionOptions({ ...input, conversationId: undefined });
+
+    expect(result).toEqual({ recorded: false, skipped: 'no_transcript' });
+    // The conversationId guard runs ahead of the already-held check — a run with nothing to read from
+    // has no business asking the answers store anything yet.
+    expect(readRunAnswers).not.toHaveBeenCalled();
+  });
+
+  it('writes nothing when the coach agent itself cannot be resolved', async () => {
+    findUnique.mockResolvedValue(null);
+
+    const result = await sweepActionOptions(input);
+
+    expect(result).toEqual({ recorded: false, skipped: 'provider_unavailable' });
+    expect(resolveAgentProviderAndModel).not.toHaveBeenCalled();
+  });
+
+  it('returns "failed" even when the rejection is not an Error instance', async () => {
+    // Not every rejection is a thrown `Error` — a provider client can reject with a plain string or
+    // response body. The sweep's own failure logging has to cope with that without throwing itself.
+    runStructuredCompletion.mockRejectedValue('provider said no');
+
+    await expect(sweepActionOptions(input)).resolves.toEqual({
+      recorded: false,
+      skipped: 'failed',
+    });
+    expect(store.has(ACTION_OPTIONS_SLUG)).toBe(false);
+  });
+});
+
+describe("parseOptions — the guard between the model's JSON and the slot", () => {
+  /**
+   * `parseOptions` is never exported: it only exists as the `parse` callback handed to
+   * `runStructuredCompletion`, which is mocked away entirely above (`offered()` stubs its return
+   * value directly). That means the real guard logic — the shape checks, the blank-title drop, the
+   * trim — never ran under the tests above; they only ever exercised what `sweepActionOptions` does
+   * with an already-parsed array.
+   *
+   * Capturing the actual `parse` function the source passes on each call, and invoking it directly,
+   * tests the real function the way it is really used — reading the model's raw JSON text — without
+   * exporting a private implementation detail just to reach it in a test.
+   */
+  async function capturedParse(): Promise<(raw: string) => ActionOption[] | null> {
+    offered([
+      { title: 'One', impact: 'a' },
+      { title: 'Two', impact: 'b' },
+      { title: 'Three', impact: 'c' },
+    ]);
+    await sweepActionOptions(input);
+    const call = runStructuredCompletion.mock.calls.at(-1)?.[0];
+    assertDefined(call, 'runStructuredCompletion was not called');
+    return call.parse;
+  }
+
+  it('rejects text that is not valid JSON at all', async () => {
+    const parse = await capturedParse();
+
+    expect(parse('the model just talked instead of answering in JSON')).toBeNull();
+  });
+
+  it('rejects a JSON value that is not an object, such as a bare string', async () => {
+    const parse = await capturedParse();
+
+    expect(parse('"just a string"')).toBeNull();
+  });
+
+  it('rejects JSON null', async () => {
+    const parse = await capturedParse();
+
+    expect(parse('null')).toBeNull();
+  });
+
+  it('rejects an object with no options array at all', async () => {
+    const parse = await capturedParse();
+
+    expect(parse('{}')).toBeNull();
+  });
+
+  it('rejects an options array holding a non-object entry', async () => {
+    const parse = await capturedParse();
+
+    expect(parse(JSON.stringify({ options: ['just a string'] }))).toBeNull();
+  });
+
+  it('rejects an options array holding a null entry', async () => {
+    const parse = await capturedParse();
+
+    expect(parse(JSON.stringify({ options: [null] }))).toBeNull();
+  });
+
+  it('rejects an entry whose title is not a string', async () => {
+    const parse = await capturedParse();
+
+    expect(parse(JSON.stringify({ options: [{ title: 123, impact: 'x' }] }))).toBeNull();
+  });
+
+  it('rejects an entry whose impact is not a string', async () => {
+    const parse = await capturedParse();
+
+    expect(parse(JSON.stringify({ options: [{ title: 'x', impact: 123 }] }))).toBeNull();
+  });
+
+  it('drops a blank title rather than treating it as an option offered', async () => {
+    const parse = await capturedParse();
+
+    const result = parse(
+      JSON.stringify({
+        options: [
+          { title: '   ', impact: 'a blank one should never count' },
+          { title: 'Real option', impact: 'y' },
+        ],
+      })
+    );
+
+    // The blank one is silently dropped, not returned as an option with an empty title — a title a
+    // leader could never have been offered is not a menu entry.
+    expect(result).toEqual([{ title: 'Real option', impact: 'y' }]);
+  });
+
+  it('trims whitespace from valid titles and impacts', async () => {
+    const parse = await capturedParse();
+
+    const result = parse(
+      JSON.stringify({ options: [{ title: '  Protect mornings  ', impact: '  Five hours  ' }] })
+    );
+
+    expect(result).toEqual([{ title: 'Protect mornings', impact: 'Five hours' }]);
   });
 });

@@ -24,7 +24,7 @@ export const GET = withAuth<{ runId: string }>(async (_request, session, { param
 
   // F14's lazy path, and the only place it belongs.
   //
-  // `completeRun` generates the analyst's reading, so the common case has one before anyone reads
+  // `completeRun` generates the report agent's reading, so the common case has one before anyone reads
   // the summary. This covers the two it cannot: audits finished before F14 shipped, and generations
   // that failed. Write-once and best-effort inside, so a second tab cannot produce a second reading
   // and a model failure cannot break the page.

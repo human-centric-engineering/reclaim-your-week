@@ -12,11 +12,11 @@
  * from `/summary/:token` with **no session at all**. Three things were true of it at once: the report
  * it served is the most personal thing this product makes, the token could never be revoked (there
  * was no delete, no rotate, no expiry — the deleted route's own docblock said so), and the only thing
- * keeping the artifact safe to serve that way was a promise that the analyst stayed blindfolded to
+ * keeping the artifact safe to serve that way was a promise that the report agent stayed blindfolded to
  * everything the leader actually said.
  *
  * Removing it settles all three and pays for the report the audit should have been producing: with
- * no unauthenticated surface, the analyst may read the whole audit (`analyst/brief.ts`), which is why
+ * no unauthenticated surface, the report agent may read the whole audit (`report/brief.ts`), which is why
  * that file's allowlist could widen in the same change.
  *
  * **`ReclaimShare` the table is deliberately still in the schema.** Dropping it is a destructive
@@ -82,16 +82,28 @@ export async function createShare(
       update: { transcriptConsent },
     });
   } else if (input.withCoach === false) {
-    // Unticking "share with Rashmir" withdraws the transcript with it. The row itself stays, as it
-    // always has: nothing here deletes a share, and that is a separate decision from this one.
+    // Unticking "share with Rashmir" deletes the row rather than merely clearing consent on it.
+    // **Row existence is the share** — `ReclaimReportShare` carries no `active`/`withdrawn` field,
+    // `listSharedResults` (`admin/inbox.ts`) reads every row with no filter, and the screen tells the
+    // leader "this report has not been shared" the moment this runs. A row that only cleared
+    // `transcriptConsent` left both of those false: the inbox kept showing the leader as a "results
+    // only" sharer, and a leader who unshared then saved anything else (the takeaway, the age band)
+    // would silently re-send `withCoach: false` and be told a still-listed report "has not been
+    // shared" — a consent record contradicting the fact on the leader's own screen.
+    //
+    // **The cost, named:** deleting loses the record that a share once existed, which the leader's
+    // own data export (`admin/export.ts`) would otherwise have preserved (the same way the retired
+    // `ReclaimShare` public-link table is kept rather than dropped, precisely so a leader can see they
+    // once minted a link). Accepted here because the row's only other purpose is gating Rashmir's live
+    // read access, and a leader who withdrew that access should not keep appearing as though they
+    // hadn't.
     //
     // **`=== false`, not "falsy".** The client always sends the checkbox state, so an explicit
     // `false` is the leader unticking it. `undefined` means the field was not part of this request
     // at all — a caller saving only the feedback line, say — and taking that as a withdrawal would
-    // both revoke a consent nobody touched and put a write on every save that never mentions it.
-    await prisma.reclaimReportShare.updateMany({
-      where: { userId, auditRunId: runId, transcriptConsent: true },
-      data: { transcriptConsent: false },
+    // both revoke a consent nobody touched and delete a row on every save that never mentions it.
+    await prisma.reclaimReportShare.deleteMany({
+      where: { userId, auditRunId: runId },
     });
   }
 

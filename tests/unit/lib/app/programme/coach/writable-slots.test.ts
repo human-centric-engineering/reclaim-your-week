@@ -78,6 +78,10 @@ describe('isNotAnAnswer — a report that there was nothing to record', () => {
     'The bit I have not provided is what I would drop',
     'none',
     'not enough time with the board',
+    // "Person" is ordinary English a real answer can open with, unlike "leader"/"user"/"participant"
+    // — this product's own vocabulary, which a leader would not use to describe themselves.
+    'The person who runs delivery can take the Thursday stand-up.',
+    'This person is the one I trust with the escalations.',
   ])('keeps a real answer: %s', (value) => {
     expect(isNotAnAnswer(value)).toBe(false);
   });

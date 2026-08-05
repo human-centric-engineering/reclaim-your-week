@@ -8,9 +8,9 @@
  * trip in a shape the parser drops, a chart with no buckets because the answers were run-scoped away
  * — none of them is reachable from a fixture.
  *
- * **It never calls the analyst.** The reading is written straight to the column, so this needs no
+ * **It never calls the report agent.** The reading is written straight to the column, so this needs no
  * provider key and gates in CI from the day it lands. The expensive proof that a real model can get
- * a reading past the guards is `smoke:reclaim-analyst`, and the two deliberately do not share a
+ * a reading past the guards is `smoke:reclaim-report-agent`, and the two deliberately do not share a
  * script: one of them would have to become manual, and it would be this one.
  *
  * Throwaway user, erased at the end.
@@ -33,7 +33,7 @@ function fail(message: string): never {
   throw new Error(message);
 }
 
-/** A reading in the shape the analyst produces, written directly so no model is involved. */
+/** A reading in the shape the report agent produces, written directly so no model is involved. */
 const READING = {
   gaps: [
     { token: 'deep_work', observation: 'Deep work sits at four hours against the ten you wanted.' },
@@ -119,12 +119,12 @@ async function main(): Promise<void> {
     // `sendEmail` returns `{status:'disabled'}` outside production when no provider is configured,
     // which is the shape CI runs in. What is being proved here is not that mail left the building:
     // it is that `completeRun` survives the whole email path, and that a leader who finishes an
-    // audit is not handed an error by a best-effort side effect. The analyst is skipped for the
+    // audit is not handed an error by a best-effort side effect. The report agent is skipped for the
     // same reason it is everywhere in this script.
     const completed = await completeRun(uid, run.id);
     if (completed.status !== 'complete') fail('completeRun did not complete the run');
     if (completed.completedAt === null) fail('a completed run carries no completion time');
-    console.log('[5] completeRun survives the analyst attempt and the completion email');
+    console.log('[5] completeRun survives the report agent attempt and the completion email');
 
     console.log('✓ smoke:reclaim-report passed — a real run renders, and completes cleanly');
   } finally {

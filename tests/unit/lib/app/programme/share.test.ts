@@ -10,7 +10,7 @@ const {
   shareUpsert,
   shareFindUnique,
   reportUpsert,
-  reportUpdateMany,
+  reportDeleteMany,
   feedbackFindFirst,
   feedbackCreate,
   feedbackUpdate,
@@ -18,7 +18,7 @@ const {
   shareUpsert: vi.fn(),
   shareFindUnique: vi.fn(),
   reportUpsert: vi.fn(),
-  reportUpdateMany: vi.fn(),
+  reportDeleteMany: vi.fn(),
   feedbackFindFirst: vi.fn(),
   feedbackCreate: vi.fn(),
   feedbackUpdate: vi.fn(),
@@ -26,7 +26,7 @@ const {
 vi.mock('@/lib/db/client', () => ({
   prisma: {
     reclaimShare: { upsert: shareUpsert, findUnique: shareFindUnique },
-    reclaimReportShare: { upsert: reportUpsert, updateMany: reportUpdateMany },
+    reclaimReportShare: { upsert: reportUpsert, deleteMany: reportDeleteMany },
     reclaimFeedback: {
       findFirst: feedbackFindFirst,
       create: feedbackCreate,
@@ -47,7 +47,7 @@ beforeEach(() => {
     );
   shareFindUnique.mockReset();
   reportUpsert.mockReset().mockResolvedValue(undefined);
-  reportUpdateMany.mockReset().mockResolvedValue({ count: 0 });
+  reportDeleteMany.mockReset().mockResolvedValue({ count: 0 });
   feedbackFindFirst.mockReset().mockResolvedValue(null);
   feedbackCreate.mockReset().mockResolvedValue(undefined);
   feedbackUpdate.mockReset().mockResolvedValue(undefined);
@@ -129,12 +129,13 @@ describe('createShare', () => {
       );
     });
 
-    it('withdraws it when they stop sharing the results at all', async () => {
-      // Sharing the exchange but not the summary it produced is a state nobody asked for.
+    it('deletes the row when they stop sharing the results at all', async () => {
+      // Sharing the exchange but not the summary it produced is a state nobody asked for, and row
+      // existence is the share — leaving it behind with `transcriptConsent: false` kept the leader
+      // listed in the coach's inbox as a "results only" sharer after they had unshared entirely.
       await createShare('u1', 'run-1', { withCoach: false, shareTranscript: true });
-      expect(reportUpdateMany).toHaveBeenCalledWith({
-        where: { userId: 'u1', auditRunId: 'run-1', transcriptConsent: true },
-        data: { transcriptConsent: false },
+      expect(reportDeleteMany).toHaveBeenCalledWith({
+        where: { userId: 'u1', auditRunId: 'run-1' },
       });
       expect(reportUpsert).not.toHaveBeenCalled();
     });
@@ -143,7 +144,7 @@ describe('createShare', () => {
       // A save that only records the feedback line must not revoke a consent nobody touched, and
       // must not put a write on the database to discover that.
       await createShare('u1', 'run-1', { takeaway: 'A clearer week.' });
-      expect(reportUpdateMany).not.toHaveBeenCalled();
+      expect(reportDeleteMany).not.toHaveBeenCalled();
       expect(reportUpsert).not.toHaveBeenCalled();
     });
   });

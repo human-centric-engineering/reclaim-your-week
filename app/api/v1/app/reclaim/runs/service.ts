@@ -169,7 +169,7 @@ export async function completeRun(userId: string, runId: string): Promise<Reclai
   // timed out, and must never see a failure for a section that did not exist a week ago.
   await ensureReportReading(userId, runId);
 
-  // F15: the one message a finished audit sends. **After the analyst, deliberately** — the email
+  // F15: the one message a finished audit sends. **After the report agent, deliberately** — the email
   // links to the summary, and sending first would point a leader at a page missing the two sections
   // that had just been generated. That is the one ordering they would actually notice.
   await sendCompletionEmail(userId, runId);
@@ -280,7 +280,7 @@ async function sendCompletionEmail(userId: string, runId: string): Promise<void>
 }
 
 /**
- * Generate the analyst's reading for a run, once.
+ * Generate the report agent's reading for a run, once.
  *
  * Called from `completeRun`, and again lazily from the summary read — which is what covers the two
  * cases completion alone cannot: audits finished before F14 shipped, and generations that failed.

@@ -5,6 +5,8 @@
 
 import { z } from 'zod';
 
+import { CHAPTER_ORDER } from '@/lib/app/programme/report/chapters';
+
 const chartBucketSchema = z.object({
   token: z.string(),
   slug: z.string(),
@@ -44,7 +46,6 @@ export const auditSummarySchema = z.object({
     howKnown: z.string().nullable(),
   }),
   /**
-  /**
    * The report agent's reading (`lib/app/programme/report/reading.ts`).
    *
    * Nullable, and every view renders nothing for `null` — the agent may not have run, may have been
@@ -59,15 +60,7 @@ export const auditSummarySchema = z.object({
       chapters: z
         .array(
           z.object({
-            section: z.enum([
-              'why_now',
-              'the_week',
-              'energy',
-              'the_week_you_want',
-              'the_distance',
-              'what_you_chose',
-              'what_you_take',
-            ]),
+            section: z.enum(CHAPTER_ORDER),
             paragraphs: z.array(z.string()),
           })
         )
