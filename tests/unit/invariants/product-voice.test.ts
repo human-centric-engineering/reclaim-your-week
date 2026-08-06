@@ -131,11 +131,17 @@ const COACH_VOICED = [
   'components/app/reclaim/repeat/comparison.tsx',
   'components/app/reclaim/repeat/trend-lines.tsx',
   'components/app/reclaim/signpost.tsx',
-  'components/app/reclaim/summary/shared-summary.tsx',
   'components/app/reclaim/summary/summary-view.tsx',
   // Coach voice that does not live under `components/`. The server writes the phase signposts — the
   // agent's own orienting job, done server-side — so a directory rule would have missed them.
   'lib/app/programme/runs/signposts.ts',
+  // The report's chapter headings. Authored by the product rather than returned by the model, which
+  // is what stops a section of somebody's report being called "Areas for improvement", and which
+  // makes them exactly the kind of copy this guard exists for. They are among the most quoted
+  // sentences in the most durable document the product makes.
+  'lib/app/programme/report/chapters.ts',
+  // The document a leader keeps, and the header lines of its plain-text twin.
+  'lib/app/programme/runs/transcript.ts',
   // The categoriser's prompt, whose `reasoning` output renders to the leader in `calendar-review`.
   'lib/app/programme/calendar/categorise.ts',
   // The per-turn instructions the coach reads. Not copy a leader sees, and in scope anyway: a model
@@ -152,6 +158,15 @@ const COACH_VOICED = [
   // a leader reads the real thing — and the point of walking a test account is to judge how the screen
   // reads. Prose that failed I2 here would be prose nobody could tell apart from a real reading.
   'lib/app/programme/preview/fixtures.ts',
+  // F19. The coach's own turns in a fabricated transcript. A tester reads these in the chat panel in
+  // exactly the position the real coach's words occupy, and an operator reads them again in the admin
+  // transcript view. If any prose in this repo is coach voice, it is the prose written as the coach.
+  'lib/app/programme/preview/conversation.ts',
+  // F19. The leader's side of a fabricated audit. Not coach voice by authorship, and held to the same
+  // rules anyway for two reasons: it renders inside the phase panels beside copy that is, and it sits
+  // in the transcript one line above coach turns. A banned term or an em dash reads as the product's
+  // wherever it lands, and nobody looking at the screen is checking who typed which line.
+  'lib/app/programme/preview/answers.ts',
   // The three emails the app authors. `welcome.tsx` is here because its absence had a cost; the other
   // two were already clean, which is luck rather than enforcement, and this is what ends the luck.
   'components/app/emails/invitation.tsx',
@@ -168,8 +183,21 @@ const COACH_VOICED = [
   // most durable thing the product says in its own voice. Its headings ("Where the week went", "One
   // way this could go") and its one framing sentence are authored here rather than passed in.
   'components/app/reclaim/report/summary-pdf-document.tsx',
-  // F15. Four words on a control, and they are still four words a leader reads.
-  'components/app/reclaim/report/download-report.tsx',
+  // F15. Four words on a control, and they are still four words a leader reads. This includes what
+  // it says while it waits and what it says when it fails, which are the words most likely to be
+  // written carelessly because nobody expects to see them.
+  'components/app/reclaim/report/download-button.tsx',
+  // The report's own record of the conversation. Its headings and its one framing sentence are
+  // authored here, and it is a document a leader may keep for years.
+  'components/app/reclaim/report/transcript-pdf-document.tsx',
+  // Everything a leader can do with the report, and a sentence each saying what it does. The
+  // sentences are the whole point of the component, so they are exactly what this guard is for.
+  'components/app/reclaim/report/report-actions.tsx',
+  // A consent question in prose. Every line here states a consequence to somebody about to agree to
+  // it, which makes it the copy on this list it would be worst to get wrong.
+  'components/app/reclaim/report/share-with-coach.tsx',
+  // What finishing does, said before it is pressed.
+  'components/app/reclaim/report/finish-audit.tsx',
 ];
 
 /** Plumbing: fetchers, types, palettes, pure arithmetic. Nothing here reaches a leader as prose. */

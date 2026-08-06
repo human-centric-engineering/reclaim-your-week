@@ -8,12 +8,15 @@
  *      `accept-invite`'s ordering — sign up, then force `emailVerified` — and that ordering only
  *      fails against a real better-auth. A mocked test would happily accept an account nobody can
  *      log in to, and hand the operator a password that does not work.
- *   2. **Six real transitions reach the last phase.** This is the assertion `smoke:reclaim-analyst`
- *      gave up when it wrote `.catch(() => undefined)` around its transitions.
- *   3. **A fabricated completion calls no model.** Asserted by counting `ai_cost_log` rows across
- *      the window rather than by trusting the ordering in the source.
+ *   2. **Six real transitions reach the last phase, and stop there.** This is the assertion
+ *      `smoke:reclaim-report-agent` gave up when it wrote `.catch(() => undefined)` around its
+ *      transitions. Stopping is now half the claim: the fabricator leaves the run in progress on the
+ *      summary — where the report and the sharing choices are — and finishing is the operator's own
+ *      press. So this script presses it, through `completeRun`, exactly as the phase-6 panel does.
+ *   3. **Neither the fabrication nor the completion calls a model.** Asserted by counting
+ *      `ai_cost_log` rows across the window rather than by trusting the ordering in the source.
  *   4. **The canned reading survives the JSONB round trip** and the run's own token check, so the
- *      summary has an analyst section rather than two empty panels.
+ *      summary has a report agent section rather than two empty panels.
  *   5. **The published figures do not move.** `readAggregate` and `readMeasures` are read before and
  *      after fabricating a completed audit and must come back byte-identical. No mocked test can
  *      make this claim, because the thing being tested is what real SQL returns.
@@ -36,6 +39,7 @@ import { readMeasures } from '@/lib/app/programme/admin/measures';
 import { listPreviewAccounts } from '@/lib/app/programme/admin/preview-list';
 import { isPreviewAccount } from '@/lib/app/programme/preview/accounts';
 import { RECLAIM_PHASE_KEYS } from '@/lib/app/programme/runs/phases';
+import { completeRun } from '@/app/api/v1/app/reclaim/runs/service';
 import {
   provisionPreviewAccount,
   fastForwardPreviewAccount,
@@ -98,41 +102,57 @@ async function main(): Promise<void> {
     }
     console.log(`[3] provisioned ${previewId}, and it can sign in`);
 
-    // ── 4. Six real transitions, and a completion that calls no model ──
+    // ── 4. Six real transitions, a run left at the summary, and a completion that calls no model ──
     const costBefore = await prisma.aiCostLog.count();
 
-    const result = await fastForwardPreviewAccount(previewId, 'completed');
-    if (!result.completed) fail('the fast-forward reported an incomplete run');
-
-    const run = await prisma.reclaimAuditRun.findUniqueOrThrow({ where: { id: result.runId } });
-    if (run.status !== 'complete') fail(`the run is ${run.status}, not complete`);
-    if (run.completedAt === null) fail('a completed run carries no completion time');
+    const result = await fastForwardPreviewAccount(previewId, 'summary');
+    if (!result.atSummary) fail('the fast-forward did not report a run waiting at the summary');
 
     const finalPhase = RECLAIM_PHASE_KEYS[RECLAIM_PHASE_KEYS.length - 1];
     if (result.reachedPhaseKey !== finalPhase) {
       fail(`the walk stopped at ${result.reachedPhaseKey} rather than ${String(finalPhase)}`);
     }
 
+    // The point of the whole state: it is still in progress, so `loadCurrentRunState` finds it and
+    // signing in as the account opens on the summary rather than on the invitation to begin.
+    const waiting = await prisma.reclaimAuditRun.findUniqueOrThrow({ where: { id: result.runId } });
+    if (waiting.status !== 'in_progress') {
+      fail(
+        `the fabricated run is ${waiting.status}. Anything but in_progress and the account opens on ` +
+          'the entry screen, which is the bug this state exists to fix.'
+      );
+    }
+
+    // Now the button the leader presses. Through the service the phase-6 panel calls, so the smoke
+    // covers the completion path rather than a fabricator's private shortcut through it.
+    await completeRun(previewId, result.runId);
+
+    const run = await prisma.reclaimAuditRun.findUniqueOrThrow({ where: { id: result.runId } });
+    if (run.status !== 'complete') fail(`the run is ${run.status}, not complete`);
+    if (run.completedAt === null) fail('a completed run carries no completion time');
+
     const costAfter = await prisma.aiCostLog.count();
     if (costAfter !== costBefore) {
       fail(
         `${costAfter - costBefore} provider call(s) were billed. The canned reading must be written ` +
-          'BEFORE completeRun, or ensureAnalystReading finds an empty column and calls the analyst.'
+          'by the fabricator, or ensureReportReading finds an empty column and calls the report agent.'
       );
     }
-    console.log(`[4] walked to ${finalPhase}, completed, ${costAfter - costBefore} provider calls`);
+    console.log(
+      `[4] walked to ${finalPhase}, waited there, completed, ${costAfter - costBefore} provider calls`
+    );
 
     // ── 5. The reading survives the round trip into the summary ──
     const summary = await buildSummary(previewId, result.runId);
-    if (summary.analyst === null) {
+    if (summary.report === null) {
       fail(
         'the canned reading did not survive into buildSummary. Either JSONB came back in a shape ' +
-          'parseAnalystReading refuses, or the reading names an area this run does not have — ' +
+          'parseReportReading refuses, or the reading names an area this run does not have — ' +
           'which is the failure the derived fixture exists to prevent.'
       );
     }
-    if (summary.analyst.gaps.length < 2) fail('the reading lost a gap on the way through');
-    console.log(`[5] the summary carries ${summary.analyst.gaps.length} gaps and a pathway`);
+    if (summary.report.gaps.length < 2) fail('the reading lost a gap on the way through');
+    console.log(`[5] the summary carries ${summary.report.gaps.length} gaps and a pathway`);
 
     // ── 6. The operator can see it ──
     const listed = await listPreviewAccounts();

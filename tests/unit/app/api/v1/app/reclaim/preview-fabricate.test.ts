@@ -10,9 +10,13 @@
  *   2. **No swallowed transition.** `smoke/reclaim-analyst.ts` catches and discards a refused
  *      transition; copying that would produce an account the API calls "mid-audit" whose journey never
  *      left phase 0.
- *   3. **The analyst is never called.** The reading is written before `completeRun`, so the write-once
- *      `ensureAnalystReading` finds it already there and the completion costs nothing.
+ *   3. **The analyst is never called.** The reading is written by the fabricator, so the write-once
+ *      `ensureAnalystReading` finds it already there and neither the summary nor a later completion
+ *      costs anything.
  *   4. **Reflections are written**, even though the service does not check for them — the route does.
+ *   5. **Nothing here finishes an audit.** `summary` stops at the last phase and leaves the run in
+ *      progress, because the summary, the report and the sharing choices all live there and are gone
+ *      the moment it is completed.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -23,23 +27,36 @@ const mocks = vi.hoisted(() => ({
   createRun: vi.fn(),
   saveRunAnswers: vi.fn(),
   transitionRun: vi.fn(),
-  completeRun: vi.fn(),
   claimCoachOpening: vi.fn(),
+  linkRunConversation: vi.fn(),
+  recordPhaseMark: vi.fn(),
+  closeSurfaceConversation: vi.fn(),
   recordConsent: vi.fn(),
   readConsent: vi.fn(),
   grantAnotherAudit: vi.fn(),
   mintGrant: vi.fn(),
   runUpdate: vi.fn(),
+  grantFindMany: vi.fn(),
   userFindUnique: vi.fn(),
   userUpdate: vi.fn(),
   signUpEmail: vi.fn(),
+  resolveModuleSurface: vi.fn(),
+  conversationCreate: vi.fn(),
+  messageCreate: vi.fn(),
 }));
 
 vi.mock('@/lib/db/client', () => ({
   prisma: {
     reclaimAuditRun: { update: mocks.runUpdate },
+    reclaimGrant: { findMany: mocks.grantFindMany },
     user: { findUnique: mocks.userFindUnique, update: mocks.userUpdate },
+    aiConversation: { create: mocks.conversationCreate },
+    aiMessage: { create: mocks.messageCreate },
   },
+}));
+vi.mock('@/lib/framework/guidance/surface', () => ({
+  MODULE_SURFACE_CONTEXT_TYPE: 'module',
+  resolveModuleSurface: mocks.resolveModuleSurface,
 }));
 vi.mock('@/lib/auth/config', () => ({ auth: { api: { signUpEmail: mocks.signUpEmail } } }));
 vi.mock('@/lib/app/programme/preview/accounts', () => ({
@@ -56,21 +73,29 @@ vi.mock('@/lib/app/programme/access/consent', () => ({
 }));
 vi.mock('@/lib/app/programme/config', () => ({
   readReclaimAccessConfig: () =>
-    Promise.resolve({ policyVersion: 'draft-1', clientMustStartWithinDays: 30 }),
+    Promise.resolve({
+      policyVersion: 'draft-1',
+      clientMustStartWithinDays: 30,
+      clientWindowMonths: 12,
+    }),
 }));
 vi.mock('@/app/api/v1/app/reclaim/runs/service', () => ({
   createRun: mocks.createRun,
   saveRunAnswers: mocks.saveRunAnswers,
   transitionRun: mocks.transitionRun,
-  completeRun: mocks.completeRun,
   claimCoachOpening: mocks.claimCoachOpening,
+  linkRunConversation: mocks.linkRunConversation,
+  recordPhaseMark: mocks.recordPhaseMark,
+  closeSurfaceConversation: mocks.closeSurfaceConversation,
 }));
 
 import {
   provisionPreviewAccount,
   fastForwardPreviewAccount,
+  describeFabrication,
 } from '@/app/api/v1/app/reclaim/admin/preview/_lib/fabricate';
 import { passwordSchema } from '@/lib/validations/auth';
+import { COACH_SYNTHETIC_MESSAGES } from '@/lib/app/programme/coach/opening';
 
 const USER = 'preview-user-1';
 
@@ -85,12 +110,36 @@ beforeEach(() => {
   mocks.isPreviewAccount.mockResolvedValue(true);
   mocks.readConsent.mockResolvedValue({ accepted: false, policyVersion: 'draft-1' });
   mocks.createRun.mockResolvedValue({ id: 'run-1' });
+  // The account as it is the moment after provisioning: one standard audit, unused. Nothing to top up.
+  mocks.grantFindMany.mockResolvedValue([
+    {
+      tier: 'standard',
+      auditsGranted: 1,
+      auditsUsed: 0,
+      windowStartsAt: null,
+      mustStartBy: null,
+    },
+  ]);
   mocks.transitionRun.mockImplementation((_u: string, _r: string, key: string) =>
     Promise.resolve({ enteredPhaseKey: `after:${key}` })
   );
   mocks.userFindUnique.mockResolvedValue({ id: USER });
   mocks.signUpEmail.mockResolvedValue({});
+  mocks.resolveModuleSurface.mockResolvedValue({
+    agentSlug: 'reclaim-coach',
+    agentId: 'agent-1',
+    scope: 'scope',
+    rateLimitRpm: 30,
+  });
+  mocks.conversationCreate.mockResolvedValue({ id: 'conv-1' });
+  mocks.messageCreate.mockResolvedValue({ id: 'msg-1' });
 });
+
+/** Every `aiMessage.create` payload, in the order they were written. */
+const writtenMessages = (): { role: string; content: string; createdAt: Date }[] =>
+  mocks.messageCreate.mock.calls.map(
+    (call) => (call[0] as { data: { role: string; content: string; createdAt: Date } }).data
+  );
 
 describe('provisionPreviewAccount', () => {
   it('generates a password the platform’s own schema accepts', async () => {
@@ -211,7 +260,7 @@ describe('fastForwardPreviewAccount — the interlock', () => {
   it('refuses an account that is not a registered test account, before any write', async () => {
     mocks.isPreviewAccount.mockResolvedValue(false);
 
-    await expect(fastForwardPreviewAccount('a-real-leader', 'completed')).rejects.toThrow(
+    await expect(fastForwardPreviewAccount('a-real-leader', 'summary')).rejects.toThrow(
       /not a test account/i
     );
 
@@ -242,8 +291,7 @@ describe('fastForwardPreviewAccount — mid-audit', () => {
       'phase-2-energy',
       'phase-3-ideal',
     ]);
-    expect(result.completed).toBe(false);
-    expect(mocks.completeRun).not.toHaveBeenCalled();
+    expect(result.atSummary).toBe(false);
   });
 
   it('writes the reflections the route would have required', async () => {
@@ -297,32 +345,46 @@ describe('fastForwardPreviewAccount — mid-audit', () => {
   });
 });
 
-describe('fastForwardPreviewAccount — completed', () => {
-  it('walks every phase and completes the run', async () => {
-    const result = await fastForwardPreviewAccount(USER, 'completed');
+describe('fastForwardPreviewAccount — at the summary', () => {
+  it('walks every phase and leaves the run in progress on the last one', async () => {
+    // The bug this replaced: the fabricator called `completeRun`, and `loadCurrentRunState` only
+    // looks for an in-progress run — so signing in as a "completed" test account opened on the
+    // invitation to begin, with the summary, the report and the sharing choices all behind it.
+    const result = await fastForwardPreviewAccount(USER, 'summary');
 
     expect(mocks.transitionRun).toHaveBeenCalledTimes(6);
-    expect(mocks.completeRun).toHaveBeenCalledWith(USER, 'run-1');
-    expect(result.completed).toBe(true);
+    expect(result.atSummary).toBe(true);
+    expect(result.reachedPhaseKey).toBe('after:phase-5-action');
   });
 
-  it('writes the analyst reading BEFORE completing, so no model is ever called', async () => {
-    // `ensureAnalystReading` runs inside `completeRun` and returns early when the column is set. The
-    // ordering is the whole mechanism: reversed, every fabricated completion would spend real money.
-    await fastForwardPreviewAccount(USER, 'completed');
+  it('writes the takeaway, so the panel opens on the summary rather than on the question', async () => {
+    // Phase 6 holds the summary back until `reclaim_reflection_p6` is answered. A run fabricated to
+    // the summary and missing it opens on the question — which is not what was asked for.
+    await fastForwardPreviewAccount(USER, 'summary');
+
+    expect(writtenSlugs()).toContain('reclaim_reflection_p6');
+  });
+
+  it('leaves the takeaway alone for a run that stops short of the last phase', async () => {
+    await fastForwardPreviewAccount(USER, 'mid-audit');
+
+    expect(writtenSlugs()).not.toContain('reclaim_reflection_p6');
+  });
+
+  it('writes the analyst reading, so no model is ever called', async () => {
+    // `ensureAnalystReading` is write-once and returns early when the column is set. Without this
+    // write, opening the summary — or finishing the audit later — would spend real money.
+    await fastForwardPreviewAccount(USER, 'summary');
 
     expect(mocks.runUpdate).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: 'run-1' } })
     );
-    const updateOrder = mocks.runUpdate.mock.invocationCallOrder[0] ?? Infinity;
-    const completeOrder = mocks.completeRun.mock.invocationCallOrder[0] ?? 0;
-    expect(updateOrder).toBeLessThan(completeOrder);
   });
 
   it('anchors the reading to areas the run actually filled in', async () => {
     // `parseAnalystReading` refuses a gap naming an area the run does not have, and refuses the whole
     // reading when it does — so a mismatch here costs the summary its entire analyst section.
-    await fastForwardPreviewAccount(USER, 'completed');
+    await fastForwardPreviewAccount(USER, 'summary');
 
     const data = mocks.runUpdate.mock.calls[0]?.[0] as {
       data: { analystReading: { gaps: { token: string }[] } };
@@ -333,10 +395,27 @@ describe('fastForwardPreviewAccount — completed', () => {
     }
   });
 
-  it('tops the account up first, so a second fast-forward is not refused', async () => {
-    // Completing consumes the account's single standard audit. Without this, the second use of the
-    // button on the same account fails the entitlement gate.
-    await fastForwardPreviewAccount(USER, 'completed');
+  it('does not top up an account that still has an audit in hand', async () => {
+    // The spare-grant bug: a freshly provisioned account already has its one standard audit, so an
+    // unconditional top-up left the operator looking at a leader who had finished an audit and could
+    // still start another. `hasAuditInHand` is what keeps the test account faithful to the gate.
+    await fastForwardPreviewAccount(USER, 'summary');
+
+    expect(mocks.grantAnotherAudit).not.toHaveBeenCalled();
+  });
+
+  it('tops the account up when its audits are spent, so a second fabrication is not refused', async () => {
+    mocks.grantFindMany.mockResolvedValue([
+      {
+        tier: 'standard',
+        auditsGranted: 1,
+        auditsUsed: 1,
+        windowStartsAt: null,
+        mustStartBy: null,
+      },
+    ]);
+
+    await fastForwardPreviewAccount(USER, 'summary');
 
     expect(mocks.grantAnotherAudit).toHaveBeenCalledWith(
       USER,
@@ -350,7 +429,7 @@ describe('fastForwardPreviewAccount — completed', () => {
   });
 
   it('records consent when the account has not accepted, because the gate runs first', async () => {
-    await fastForwardPreviewAccount(USER, 'completed');
+    await fastForwardPreviewAccount(USER, 'summary');
 
     expect(mocks.recordConsent).toHaveBeenCalledWith(USER, 'draft-1', false);
   });
@@ -358,8 +437,194 @@ describe('fastForwardPreviewAccount — completed', () => {
   it('does not record consent twice for an account that already accepted', async () => {
     mocks.readConsent.mockResolvedValue({ accepted: true, policyVersion: 'draft-1' });
 
-    await fastForwardPreviewAccount(USER, 'completed');
+    await fastForwardPreviewAccount(USER, 'summary');
 
     expect(mocks.recordConsent).not.toHaveBeenCalled();
+  });
+});
+
+describe('fastForwardPreviewAccount — answers arrive with the phase, not before it', () => {
+  it('writes nothing from a phase the run has not reached', async () => {
+    // The state this prevents: an operator opens phase 5 on an account sitting at phase 2 and finds
+    // the action plan already filled in by a leader who has not been asked. Writing every answer up
+    // front also made every stopping point identical underneath, which is what made the phase target
+    // worth nothing as a preview.
+    await fastForwardPreviewAccount(USER, 'mid-audit', { toPhase: 'phase-2-energy' });
+
+    const slugs = writtenSlugs();
+    expect(slugs).toContain('reclaim_energy_peak_description');
+    expect(slugs).not.toContain('reclaim_ideal_total_hours');
+    expect(slugs).not.toContain('reclaim_action_chosen');
+    expect(slugs).not.toContain('reclaim_gap_strategy_mirror');
+  });
+
+  it('stops at phase 0 without transitioning, holding only the setup answers', async () => {
+    // Phase 0 is a legal target and the loop must not treat "no transitions" as "walk to the end".
+    await fastForwardPreviewAccount(USER, 'mid-audit', { toPhase: 'phase-0-setup' });
+
+    expect(mocks.transitionRun).not.toHaveBeenCalled();
+    const slugs = writtenSlugs();
+    expect(slugs).toContain('reclaim_setup_keeping_me_up');
+    expect(slugs).not.toContain('reclaim_current_hours__deep_work');
+  });
+
+  it('fills in the prose slots the refer-back quotes back, not only the numbers', async () => {
+    // I13 quotes `keeping_me_up` and `why_now` verbatim in phase 4. Both were blank on every
+    // fabricated audit, so the one beat the refer-back exists for had nothing to say on the only
+    // accounts anybody used to look at it with.
+    await fastForwardPreviewAccount(USER, 'summary');
+
+    const slugs = writtenSlugs();
+    for (const slug of [
+      'reclaim_setup_keeping_me_up',
+      'reclaim_setup_why_now',
+      'reclaim_current_detail__deep_work',
+      'reclaim_energy_protected',
+      'reclaim_gap_unfunded_priorities',
+      'reclaim_action_stopping',
+      'reclaim_action_options',
+    ]) {
+      expect(slugs).toContain(slug);
+    }
+  });
+
+  it('never writes a slot no part of the product writes', async () => {
+    // These three are declared but have no writer anywhere: the panels compute the gap at render time
+    // and the phase-2 panel writes prose beside the grid rather than the grid. Filling them would
+    // invent a state no audit produces, which is the one thing a preview account must not do.
+    await fastForwardPreviewAccount(USER, 'summary');
+
+    const slugs = writtenSlugs();
+    expect(slugs).not.toContain('reclaim_gap_summary');
+    expect(slugs).not.toContain('reclaim_gap_hours_to_remove');
+    expect(slugs).not.toContain('reclaim_energy_peak_windows');
+  });
+
+  it('leaves the calendar branch alone, so the path a leader who declines it walks is previewable', async () => {
+    await fastForwardPreviewAccount(USER, 'summary');
+
+    expect(writtenSlugs().filter((s) => s.startsWith('reclaim_calendar_'))).toEqual([]);
+    expect(writtenSlugs().filter((s) => s.startsWith('reclaim_composite_'))).toEqual([]);
+  });
+});
+
+describe('fastForwardPreviewAccount — the fabricated transcript', () => {
+  it('marks the conversation and every message as fabricated', async () => {
+    // The whole condition on which writing these rows was acceptable. Without the flag, an operator
+    // reading the transcript back through the admin view cannot tell invented words from real ones.
+    await fastForwardPreviewAccount(USER, 'summary');
+
+    expect(mocks.conversationCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ metadata: { fabricated: true } }),
+      })
+    );
+    for (const call of mocks.messageCreate.mock.calls) {
+      expect((call[0] as { data: { metadata: unknown } }).data.metadata).toEqual({
+        fabricated: true,
+      });
+    }
+  });
+
+  it('links the conversation to the run, or the coach surface opens an empty one', async () => {
+    await fastForwardPreviewAccount(USER, 'summary');
+
+    expect(mocks.linkRunConversation).toHaveBeenCalledWith('run-1', 'conv-1');
+  });
+
+  it('closes any conversation already active, keeping I15’s one-at-a-time true', async () => {
+    await fastForwardPreviewAccount(USER, 'summary');
+
+    expect(mocks.closeSurfaceConversation).toHaveBeenCalledWith(USER);
+  });
+
+  it('stamps turns in ascending order, so replies cannot precede their questions', async () => {
+    // Several rows written inside one millisecond come back in an arbitrary order, and both readers
+    // sort by `createdAt`. The bug is invisible until a reload happens to shuffle a phase.
+    await fastForwardPreviewAccount(USER, 'summary');
+
+    const times = writtenMessages().map((m) => m.createdAt.getTime());
+    expect(times.length).toBeGreaterThan(0);
+    expect([...times].sort((a, b) => a - b)).toEqual(times);
+    // The last turn lands about now rather than in the future, which is what makes the transcript
+    // read as a session somebody had.
+    expect(times[times.length - 1]).toBeLessThanOrEqual(Date.now());
+  });
+
+  it('writes a phase’s turns before leaving it, so the phase marks cut in the right place', async () => {
+    // A mark is the id of the last message that existed when the phase was entered. A transcript
+    // written in one go at the end would file the whole conversation under the final phase.
+    await fastForwardPreviewAccount(USER, 'mid-audit', { toPhase: 'phase-1-current' });
+
+    const firstTransition = mocks.transitionRun.mock.invocationCallOrder[0] ?? Infinity;
+    const firstMessage = mocks.messageCreate.mock.invocationCallOrder[0] ?? Infinity;
+    const lastMessage = mocks.messageCreate.mock.invocationCallOrder.at(-1) ?? 0;
+    expect(firstMessage).toBeLessThan(firstTransition);
+    expect(lastMessage).toBeGreaterThan(firstTransition);
+  });
+
+  it('records a phase mark on every transition, which the service does not do for itself', async () => {
+    // The **route** does this on a leader's own transition, not the service. A fabricator driving the
+    // service directly has to, or every phase-scoped read of the transcript falls back to the whole
+    // conversation.
+    await fastForwardPreviewAccount(USER, 'summary');
+
+    expect(mocks.recordPhaseMark).toHaveBeenCalledTimes(mocks.transitionRun.mock.calls.length);
+  });
+
+  it('translates the fixture’s roles into the ones the table stores', async () => {
+    await fastForwardPreviewAccount(USER, 'mid-audit', { toPhase: 'phase-0-setup' });
+
+    const roles = new Set(writtenMessages().map((m) => m.role));
+    expect(roles).toEqual(new Set(['user', 'assistant']));
+  });
+
+  it('writes no synthetic trigger rows, which every reader is built to hide', async () => {
+    await fastForwardPreviewAccount(USER, 'summary');
+
+    for (const message of writtenMessages())
+      expect(message.content.trim().length).toBeGreaterThan(0);
+    expect(writtenMessages().some((m) => COACH_SYNTHETIC_MESSAGES.includes(m.content.trim()))).toBe(
+      false
+    );
+  });
+
+  it('fabricates the audit anyway when the surface has no agent bound', async () => {
+    // A real deployment state on a fresh install. Refusing the whole fabrication over it would take
+    // the phase walk away too, which is the part that works without an agent.
+    mocks.resolveModuleSurface.mockResolvedValue(null);
+
+    const result = await fastForwardPreviewAccount(USER, 'summary');
+
+    expect(result.transcript).toBe('no-agent');
+    expect(mocks.conversationCreate).not.toHaveBeenCalled();
+    expect(mocks.messageCreate).not.toHaveBeenCalled();
+    expect(mocks.linkRunConversation).not.toHaveBeenCalled();
+    expect(writtenSlugs()).toContain('reclaim_action_chosen');
+  });
+});
+
+describe('describeFabrication', () => {
+  it('names the phase, because being able to choose it is the point', () => {
+    const sentence = describeFabrication({
+      runId: 'run-1',
+      reachedPhaseKey: 'phase-2-energy',
+      atSummary: false,
+      transcript: 'written',
+    });
+
+    expect(sentence).toContain('Energy');
+    expect(sentence).not.toContain('mid-audit');
+  });
+
+  it('tells the operator when there is no agent, because they can fix that and cannot guess it', () => {
+    const sentence = describeFabrication({
+      runId: 'run-1',
+      reachedPhaseKey: 'phase-6-summary',
+      atSummary: true,
+      transcript: 'no-agent',
+    });
+
+    expect(sentence).toMatch(/no public agent bound/i);
   });
 });

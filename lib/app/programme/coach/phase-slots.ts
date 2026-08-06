@@ -64,7 +64,36 @@ export interface PhaseSlot {
   pairedTo?: string;
   /** The condition under which this reading applies at all. Absent means it always does. */
   askOnlyIf?: SlotCondition;
+  /**
+   * This reading is something the **coach produces**, not something the leader is asked.
+   *
+   * Everything else on a capture list is a question: the coach asks it, the leader answers, and the
+   * answer is theirs. `reclaim_action_options` is the other kind. The coach offers three ways in and
+   * records what it offered, so the summary can show what was on the table — the leader is never
+   * asked for it and has no way to supply it. The form panel reflects that already: every other
+   * phase-5 slot has a field in `phase5-panel.tsx` and this one does not, because there is nothing
+   * for a person to type.
+   *
+   * **Marking it matters because the coverage gate counts questions.** That gate asks whether the
+   * leader has been taken through the phase, and a reading only the coach can author answers nothing
+   * about that. Counted anyway it did real harm: a live audit reached phase 5 with all five of the
+   * leader's readings settled, and the way onward stayed shut behind the one the coach had never
+   * offered — with the form panel, the documented escape from exactly that, unable to write it
+   * either. The reading is still recorded, still shown, and still worth having. It is just not
+   * evidence about the leader, so it is not counted as though it were.
+   */
+  authoredByCoach?: true;
 }
+
+/**
+ * Readings the coach produces rather than asks for. See `PhaseSlot.authoredByCoach`.
+ *
+ * A set rather than a property on the slot definitions, because this is a fact about how a reading
+ * is *obtained* in conversation, not about the shape of the value — `reclaim_action_options` is
+ * json-typed, but so could a leader-answered reading be one day, and keying the gate on `dataType`
+ * would then silently stop counting a question the leader really was asked.
+ */
+const COACH_AUTHORED_SLOTS: ReadonlySet<string> = new Set(['reclaim_action_options']);
 
 /** "Only ask this when that other reading came back a particular way." */
 export interface SlotCondition {
@@ -358,7 +387,66 @@ export function phaseCaptureSlots(phaseKey: string, options: PhaseSlotOptions = 
           ...(followers.length > 0 ? { pairedWith: followers } : {}),
           ...(anchor !== undefined && onThisPhase(anchor) ? { pairedTo: anchor } : {}),
           ...(condition !== undefined ? { askOnlyIf: condition } : {}),
+          ...(COACH_AUTHORED_SLOTS.has(definition.slug) ? { authoredByCoach: true as const } : {}),
         };
       })
   );
+}
+
+/**
+ * The readings this run would ask **inside a compound question**, as it stands right now.
+ *
+ * ## Why anything needs to know this
+ *
+ * A pair is asked in one breath — "is your team spread across places, and how does that shape the way
+ * you lead?" — and that is the whole point of `SLOT_PAIRS`. But half of these anchors are booleans,
+ * and a boolean reading has an answer set (`slot-choices.ts`). Put those two facts together without a
+ * rule between them and the leader is asked an open question with **Yes / No** underneath it, which is
+ * what happened on a live audit: the coach asked how a distributed team shapes someone's leadership
+ * and offered them two buttons neither of which is an answer to it.
+ *
+ * The offer was not wrong about the *reading* — `reclaim_profile_distributed_team` really does close
+ * on yes or no. It was wrong about the *question*, because the question on screen was the pair, and a
+ * pair is not a choice. So the rule is stated once, here, in the same file that decides what a pair
+ * is: **a reading asked inside a compound question carries no answer set.** Both halves. The follower
+ * of the fundraising pair has an authored set of its own, and offering *that* under a two-part
+ * question is the same failure wearing different buttons.
+ *
+ * ## Live, not merely paired
+ *
+ * A pairing that is not being asked right now is not a compound question. An anchor this run has
+ * already captured is not going to be asked again except to be confirmed, and a confirmation is a
+ * single closed question that should keep its buttons. So a pair counts here only when the anchor is
+ * outstanding and at least one follower is outstanding and not ruled out — which is exactly the
+ * condition under which `nextQuestionsFor` pairs them, so the two cannot drift into disagreeing about
+ * what is being asked.
+ */
+export function compoundQuestionSlugs(
+  slots: PhaseSlot[],
+  answers: Readonly<Record<string, { valueJson?: unknown; value: string } | undefined>>,
+  paired: boolean
+): Set<string> {
+  const inside = new Set<string>();
+  // `one-at-a-time` asks every reading on its own, so nothing is compound and every set stands.
+  if (!paired) return inside;
+
+  const byslug = new Map(slots.map((slot) => [slot.slug, slot]));
+  for (const slot of slots) {
+    if (answers[slot.slug] !== undefined) continue;
+    if (slotApplies(slot.askOnlyIf, answers) === false) continue;
+    const live = (slot.pairedWith ?? []).filter((slug) => {
+      const follower = byslug.get(slug);
+      return (
+        follower !== undefined &&
+        answers[slug] === undefined &&
+        // `undefined` — the condition turns on a reading nobody has answered — keeps the follower in
+        // the question, which is what `nextQuestionsFor` does and why these pairs read as one thought.
+        slotApplies(follower.askOnlyIf, answers) !== false
+      );
+    });
+    if (live.length === 0) continue;
+    inside.add(slot.slug);
+    for (const slug of live) inside.add(slug);
+  }
+  return inside;
 }

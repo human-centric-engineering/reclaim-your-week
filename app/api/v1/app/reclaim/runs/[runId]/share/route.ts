@@ -2,11 +2,15 @@
  * Reclaim audit runs — the Phase 6 share (F7 t-4).
  *
  * POST /api/v1/app/reclaim/runs/:runId/share
- *   body: { publicLink?, withCoach?, ageBand?, takeaway?, quotable? }
+ *   body: { withCoach?, shareTranscript?, ageBand?, takeaway?, quotable? }
  *
  * Sharing is invited, never required — this only runs when the leader opts in. Saves the optional
- * `reclaim_share_*` capture (run record, I3) and mints the token + coach-share + retained feedback
+ * `reclaim_share_*` capture (run record, I3) and records the coach-share + retained feedback
  * (`createShare`). Quote consent is its own field, not implied by sharing (Brief §3).
+ *
+ * **`publicLink` is gone from the body**, along with the unauthenticated surface it minted a token
+ * for. Sharing means sharing with Rashmir; see `share.ts` for why the link was removed rather than
+ * hidden.
  */
 
 import { z } from 'zod';
@@ -22,7 +26,6 @@ import { createShare } from '@/lib/app/programme/share';
 
 const prose = z.string().trim().max(2000);
 const shareSchema = z.object({
-  publicLink: z.boolean().optional(),
   withCoach: z.boolean().optional(),
   /** F17. Its own question, and only meaningful alongside `withCoach`. */
   shareTranscript: z.boolean().optional(),
@@ -58,7 +61,6 @@ export const POST = withAuth<{ runId: string }>(async (request, session, { param
   if (slots.length > 0) await saveRunAnswers(userId, runId, slots);
 
   const result = await createShare(userId, runId, {
-    publicLink: body.publicLink,
     withCoach: body.withCoach,
     shareTranscript: body.shareTranscript,
     takeaway: body.takeaway,
@@ -67,8 +69,7 @@ export const POST = withAuth<{ runId: string }>(async (request, session, { param
 
   log.info('Reclaim summary shared', {
     runId,
-    publicLink: !!result.token,
-    withCoach: !!body.withCoach,
+    withCoach: result.sharedWithCoach,
     // Whether a leader let their conversation be read is worth being able to answer later, and the
     // flag is the fact — never any of its contents.
     transcript: body.withCoach === true && body.shareTranscript === true,

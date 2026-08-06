@@ -18,11 +18,19 @@ import { ErrorCodes } from '@/lib/api/errors';
 import { validateRequestBody } from '@/lib/api/validation';
 import { getRouteLogger } from '@/lib/api/context';
 import { RECLAIM_PHASE_KEYS } from '@/lib/app/programme/runs/phases';
-import { fastForwardPreviewAccount } from '@/app/api/v1/app/reclaim/admin/preview/_lib/fabricate';
+import {
+  fastForwardPreviewAccount,
+  describeFabrication,
+} from '@/app/api/v1/app/reclaim/admin/preview/_lib/fabricate';
 
 const fastForwardSchema = z.object({
-  to: z.enum(['mid-audit', 'completed']),
-  /** Only meaningful for `mid-audit`. Validated against the map's own phase keys. */
+  to: z.enum(['mid-audit', 'summary']),
+  /**
+   * Where a `mid-audit` account stops. Any phase of the map, validated against its own keys.
+   *
+   * `summary` ignores it, because that target is defined as the last phase rather than as a phase the
+   * caller picks. A client that wants the last phase can send either.
+   */
   toPhase: z
     .string()
     .refine((key) => RECLAIM_PHASE_KEYS.includes(key), 'Not a phase of the audit')
@@ -48,12 +56,7 @@ export const POST = withAdminAuth<{ userId: string }>(async (request, session, {
       adminId: session.user.id,
     });
 
-    return successResponse({
-      ...result,
-      message: result.completed
-        ? 'That test account now has a completed audit, with a summary and a report to look at.'
-        : `That test account is now sitting at ${result.reachedPhaseKey}.`,
-    });
+    return successResponse({ ...result, message: describeFabrication(result) });
   } catch (error) {
     // The engine's own words. A "something went wrong" here would hide the one thing this endpoint
     // is good at telling you: that the product refused a step it used to allow.

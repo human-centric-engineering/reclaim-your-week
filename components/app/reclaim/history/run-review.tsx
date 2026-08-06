@@ -29,7 +29,7 @@ import { ProgrammeChrome } from '@/components/app/reclaim/programme-chrome';
 import { PhaseRail } from '@/components/app/reclaim/phase-rail';
 import { PhaseReview } from '@/components/app/reclaim/phase-review';
 import { SummaryView } from '@/components/app/reclaim/summary/summary-view';
-import { DownloadReport } from '@/components/app/reclaim/report/download-report';
+import { DownloadButton } from '@/components/app/reclaim/report/download-button';
 import { uiConfigSchema } from '@/components/app/reclaim/types';
 import { fetchSummary } from '@/components/app/reclaim/phase/actions';
 import type { AuditSummary } from '@/components/app/reclaim/summary/types';
@@ -202,10 +202,28 @@ export function RunReview({ runId }: { runId: string }) {
                 {summary !== null ? (
                   <>
                     <SummaryView summary={summary} />
-                    {/* F15. A finished audit is the one a leader is most likely to want a copy of:
-                        they are here because they came back for it. */}
-                    <div className="border-border/70 mt-8 border-t pt-6">
-                      <DownloadReport runId={runId} />
+                    {/*
+                      F15. A finished audit is the one a leader is most likely to want a copy of:
+                      they are here because they came back for it. Both documents, because both are
+                      offered when the audit ends and "you can come back and download it whenever you
+                      like" (`finish-audit.tsx`) is a promise this screen has to keep.
+                    */}
+                    <div className="border-border/70 mt-8 flex flex-wrap gap-3 border-t pt-6">
+                      <DownloadButton
+                        href={`/api/v1/app/reclaim/runs/${encodeURIComponent(runId)}/report.pdf`}
+                        fallbackFilename="time-audit.pdf"
+                        busyLabel="Making your report…"
+                        tone="primary"
+                      >
+                        Download the report
+                      </DownloadButton>
+                      <DownloadButton
+                        href={`/api/v1/app/reclaim/runs/${encodeURIComponent(runId)}/transcript.pdf`}
+                        fallbackFilename="time-audit-conversation.pdf"
+                        busyLabel="Gathering it…"
+                      >
+                        Download the conversation
+                      </DownloadButton>
                     </div>
                   </>
                 ) : summaryFailed ? (

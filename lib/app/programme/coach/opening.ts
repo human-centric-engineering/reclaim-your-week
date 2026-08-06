@@ -99,21 +99,23 @@ export const COACH_OPENING_PHASES = {
    * reflection before the written output."
    */
   'phase-6-open': 'phase-6-summary',
-  /**
-   * The warm close, after the summary has rendered (`:359`, `:361`).
-   *
-   * A moment rather than a card because it is the one part of the close that genuinely varies: it
-   * branches on whether the leader is already working with Rashmir, on whether they have done this
-   * before, and it answers their own takeaway in their own words.
-   *
-   * **This used to add that the opening question was "scripted on the card instead", because "what
-   * are you taking away from this?" is the same question every time so a model turn would buy
-   * nothing.** That reasoning was about the *wording* and missed what a conversation is for: the
-   * question is fixed, and what a leader needs after saying something true is to be heard rather
-   * than to watch a Save button enable. `phase-6-open` asks it now, and this beat still closes.
-   */
-  'phase-6-close': 'phase-6-summary',
 } as const;
+
+/**
+ * **`phase-6-close` was here, and it is gone with the surface that fired it.**
+ *
+ * It was the warm close: a second conversation, rendered *underneath the finished report*, so that
+ * the last thing on the screen at the end of the audit was a composer asking what else the leader
+ * would like to say. The report is the end of the audit. A screen that has just handed somebody the
+ * document forty minutes of work produced should be showing them the document, not inviting another
+ * turn — so section 6 now holds exactly one conversation, and the close is said in it
+ * (`closingContext` still asks the coach to close warmly after the takeaway lands).
+ *
+ * Removing the key is safe because moments are only ever *claimed*: a run that already recorded
+ * `phase-6-close` in `coachOpenings` keeps a string nothing looks up, and no leader is replayed a
+ * beat. Re-adding the name later would replay it for exactly those people, which is the reason this
+ * note is here rather than the key.
+ */
 
 export type CoachOpeningMoment = keyof typeof COACH_OPENING_PHASES;
 
@@ -144,9 +146,10 @@ export function openingBelongsToPhase(moment: CoachOpeningMoment, phaseKey: stri
  * replaced the blanket ban with three narrower guards. The comment outlived the decision it cited
  * by three days, in the file that decides what the coach says first.
  *
- * Phase 6 now carries two moments: this one asks the takeaway before the artifact exists
- * (`Prompt_Text.md:35`), and `phase-6-close` is a data moment that fires *after* the summary has
- * rendered. Only the first is an arrival.
+ * Phase 6 carries exactly one moment: this one, which asks the takeaway before the artifact exists
+ * (`Prompt_Text.md:35`). It had a second — a warm close fired under the rendered report — and both
+ * that moment and the conversation it spoke into have been removed; see the note below
+ * `COACH_OPENING_PHASES`.
  */
 export const ARRIVAL_MOMENTS: Readonly<Record<string, CoachOpeningMoment>> = {
   'phase-0-setup': 'phase-0-open',
@@ -190,6 +193,33 @@ export const COACH_ARRIVAL_TRIGGER =
   '(The leader has just arrived at this phase and has not spoken yet. You speak first. Say briefly why this part of the audit is worth their time and what to expect from it, without restating the card already on their screen. Then open the phase the way your context describes, end on your first question, and stop. Do not wait for them to begin.)';
 
 /**
+ * The text sent in the leader's place when a turn that had already reached the conversation is asked
+ * for again.
+ *
+ * **The failure this exists for, observed on a live audit.** The leader answered, the server wrote
+ * their message, and the provider returned a 429 before the model said a word. Nothing in the chat
+ * path retries: `chatStream` opens the provider stream without the backoff `withRetry` gives the
+ * non-streaming path, and the handler's only recovery is failing over to a *different* provider,
+ * which a single-provider install does not have. So the turn ended with the leader's sentence in the
+ * conversation, no reply under it, and a line telling them to ask the coach to pick it up. The one
+ * thing they could not do was press a button.
+ *
+ * They cannot simply say it again: the words are already persisted, and re-sending them would put the
+ * same sentence in the audit twice and invite the coach to record the reading twice with it. So this
+ * asks for the turn that was lost rather than the message that produced it, and it is a stage
+ * direction for the same three reasons `COACH_OPENING_TRIGGER` is: it stays in the model's history
+ * for the rest of the run, it never reaches the leader's screen (both surfaces filter it), and
+ * anybody reading the row in a database can tell what it is.
+ *
+ * **It says not to mention the interruption**, which is a product decision rather than a stylistic
+ * one. The screen has already told the leader what happened, in the app's own voice; a coach opening
+ * with an apology for a provider error would be the audit talking about itself at exactly the moment
+ * the leader is waiting to be answered.
+ */
+export const COACH_RESUME_TRIGGER =
+  '(Your reply to the leader was lost before it reached them: the connection dropped after they spoke and nothing you said arrived. They have seen no answer and have not spoken again. Take that turn now, from their last message, exactly as you would have. Do not apologise, do not mention the interruption, and do not ask them to repeat themselves.)';
+
+/**
  * Every trigger string this app has ever shipped.
  *
  * A list rather than a constant because the filters have to keep working on transcripts written by
@@ -200,6 +230,7 @@ export const COACH_ARRIVAL_TRIGGER =
 export const COACH_SYNTHETIC_MESSAGES: readonly string[] = [
   COACH_OPENING_TRIGGER,
   COACH_ARRIVAL_TRIGGER,
+  COACH_RESUME_TRIGGER,
 ];
 
 /** Which trigger a moment is opened with. Arrivals introduce the phase; the rest open a beat. */

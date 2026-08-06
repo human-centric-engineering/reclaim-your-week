@@ -13,7 +13,7 @@
  * (`/api/v1/app/reclaim/shared/:token`, which serves a summary a leader deliberately published) this
  * is not a bearer surface.
  *
- * **It never generates the analyst's reading**, and that is deliberate rather than an oversight.
+ * **It never generates the report agent's reading**, and that is deliberate rather than an oversight.
  * `buildSummary` renders whatever is stored, including nothing. Generation lives on the leader's own
  * summary route (F14's lazy path) because an export must never be the thing that first spends money,
  * and a twenty-second model call inside a download is a broken download.
@@ -55,7 +55,7 @@ export const GET = withAuth<{ runId: string }>(async (request, session, { params
     runId,
     bytes: pdf.length,
     areas: summary.current.buckets.length,
-    withAnalystReading: summary.analyst !== null,
+    withReportReading: summary.report !== null,
   });
 
   return summaryPdfResponse(pdf, summary);

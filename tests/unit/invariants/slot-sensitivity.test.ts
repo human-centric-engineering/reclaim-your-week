@@ -58,6 +58,6 @@ describe('I5 — slot sensitivity is never special_category', () => {
     expect(
       reclaimSlotDefinitions.length,
       'the slot count changed — update slots.ts (2 headers), .context/app/README.md (3 references) and slot-spec.md, then this number'
-    ).toBe(106);
+    ).toBe(107);
   });
 });

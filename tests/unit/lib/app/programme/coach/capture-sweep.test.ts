@@ -201,6 +201,47 @@ describe('the sweep records what the coach did not', () => {
     expect(store.size).toBe(0);
   });
 
+  it('refuses a note that the leader did not answer, which is not an answer', async () => {
+    // Observed on a live audit, and the leader saw it. A message about a role, a team and two
+    // locations came back with `reclaim_profile_first_name` at confidence 9, valued "The leader did
+    // not provide their first name in this exchange." Nothing refused it, and the panel then showed
+    // that sentence in the row headed "Your first name" as though they had said it. Leaving a reading
+    // out means returning nothing for it, never returning a value that says it was not answered.
+    extracts({
+      slotSlug: 'reclaim_profile_first_name',
+      value: 'The leader did not provide their first name in this exchange.',
+      reasoningNote: 'The leader did not mention their first name in the exchange.',
+    });
+
+    const result = await runCaptureSweep(input);
+
+    expect(result.recorded).toEqual([]);
+    expect(result.refused).toEqual(['reclaim_profile_first_name:not_an_answer']);
+    expect(store.size).toBe(0);
+  });
+
+  it('refuses a placeholder standing in for a reading nobody gave', async () => {
+    extracts({ slotSlug: 'reclaim_setup_why_now', value: 'Not provided' });
+
+    const result = await runCaptureSweep(input);
+
+    expect(result.refused).toEqual(['reclaim_setup_why_now:not_an_answer']);
+    expect(store.size).toBe(0);
+  });
+
+  it('still records a real answer that merely opens on similar words', async () => {
+    // The other half of the rule, and the reason it is anchored rather than searched for: a leader
+    // talking about leadership, or about what their week did not protect, is answering.
+    extracts({
+      slotSlug: 'reclaim_setup_why_now',
+      value: 'No time was protected last quarter, and that is what finally pushed me to do this.',
+    });
+
+    const result = await runCaptureSweep(input);
+
+    expect(result.recorded).toEqual(['reclaim_setup_why_now']);
+  });
+
   it('reaches nowhere but the phase the leader is on', async () => {
     // The brief names this phase's slugs. A slug outside it is the extractor reaching past its
     // worklist, and it is checked in code rather than trusted from the prompt.

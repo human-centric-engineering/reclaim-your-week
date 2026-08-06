@@ -7,17 +7,46 @@
  * for a reading that has none, or for a reading that does not exist — because those are the three
  * ways a leader ends up tapping a button that produces something their audit cannot store.
  *
+ * The fourth way is the one that cost a leader a bad screen: a reading whose set is real but whose
+ * *question* is not, because it is being asked in one breath with a reading answered in the leader's
+ * own words. So the run is mocked rather than the guard — what these assert is the real pairing
+ * arithmetic in `compoundQuestionSlugs`, reached the way the capability reaches it.
+ *
  * The other property, asserted last, is that it writes nothing. `record_answers` is the coach's only
  * write (I6), and a tool that drew a button and also filled a slot would be the audit recording an
  * answer nobody gave.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ReclaimOfferChoicesCapability } from '@/lib/app/programme/coach/capabilities/offer-choices';
 import { RECLAIM_RUN_SCOPE_KEY } from '@/lib/app/programme/coach/scope';
 import { RECLAIM_MODULE_SLUG } from '@/lib/app/programme/identity';
 
+const { readRunAnswers, readQuestioning } = vi.hoisted(() => ({
+  readRunAnswers: vi.fn(),
+  readQuestioning: vi.fn(),
+}));
+
+vi.mock('@/lib/app/programme/runs/answers', () => ({ readRunAnswers }));
+vi.mock('@/lib/app/programme/coach/questioning', () => ({
+  readReclaimQuestioning: readQuestioning,
+}));
+
 const capability = new ReclaimOfferChoicesCapability();
+
+/** A reading this run holds, in the shape the pairing arithmetic reads. */
+const recorded = (value: string, valueJson: unknown) => ({
+  value,
+  valueJson,
+  sourceType: 'direct',
+  confidence: 10,
+});
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  readRunAnswers.mockResolvedValue({});
+  readQuestioning.mockResolvedValue({ pairing: 'paired', opportunistic: true });
+});
 
 /** The dispatch scope the run's own stream route builds. The phase is never a model argument. */
 const contextIn = (phaseKey: string) => ({
@@ -47,12 +76,157 @@ describe('offer_choices', () => {
   });
 
   it('derives yes and no for a boolean reading, so no list has to be kept in step', async () => {
+    // The *follower* is what this run holds, which leaves the yes-or-no outstanding and standing on
+    // its own: a pair is a compound question only while both halves are open. See the
+    // compound-question tests below for the case where it is not.
+    readRunAnswers.mockResolvedValue({
+      reclaim_setup_transition_detail: recorded('a merger', null),
+    });
+
     const result = await capability.execute(
       { slotSlug: 'reclaim_setup_in_transition' },
       contextIn('phase-0-setup')
     );
 
     expect(result.data?.options).toEqual(['Yes', 'No']);
+  });
+
+  it('refuses the anchor of a live pair, because the question on screen is both halves', async () => {
+    // The bug, exactly as a leader met it. The coach asked "with a team split between two locations,
+    // how does having a distributed team shape your leadership?" and the screen put **Yes / No**
+    // under it. Nothing the other three guards check was wrong — the reading exists, it is a boolean,
+    // it is in section 0 — but it is the anchor of a pair whose second half is answered in the
+    // leader's own words, so the buttons answered a question nobody had asked.
+    const result = await capability.execute(
+      { slotSlug: 'reclaim_profile_distributed_team' },
+      contextIn('phase-0-setup')
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error?.code).toBe('inside_compound_question');
+    // Fed back into the same turn, so it must leave the coach able to finish asking rather than
+    // simply told no: it is the offer that is wrong here, never the question.
+    expect(result.error?.message).toContain('one open question');
+  });
+
+  it('refuses the follower half too, where that is the half carrying the set', async () => {
+    // The fundraising pair is the case where the *second* reading has the authored options ("I have a
+    // development team" / "I carry it myself"). Same failure, different buttons — so the rule is
+    // about the question, not about which end of the pair happens to be closed.
+    const result = await capability.execute(
+      { slotSlug: 'reclaim_setup_fundraising_support' },
+      contextIn('phase-0-setup')
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error?.code).toBe('inside_compound_question');
+  });
+
+  it('allows the follower once its anchor has landed and the question stands alone', async () => {
+    // A pair is a compound question only while both halves are outstanding. Refusing after the anchor
+    // is in would cost the leader an offer for a question that really is a choice.
+    readRunAnswers.mockResolvedValue({
+      reclaim_setup_fundraising_relevant: recorded('Yes', true),
+    });
+
+    const result = await capability.execute(
+      { slotSlug: 'reclaim_setup_fundraising_support' },
+      contextIn('phase-0-setup')
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.data?.options).toEqual(['I have a development team', 'I carry it myself']);
+  });
+
+  it('allows an anchor when the deployment asks every reading on its own', async () => {
+    // Under `one-at-a-time` there is no compound question to be half of, and the coach is told to ask
+    // the anchor alone. A guard that assumed pairing would fight that instruction.
+    readQuestioning.mockResolvedValue({ pairing: 'one-at-a-time', opportunistic: true });
+
+    const result = await capability.execute(
+      { slotSlug: 'reclaim_profile_distributed_team' },
+      contextIn('phase-0-setup')
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.data?.options).toEqual(['Yes', 'No']);
+  });
+
+  it('refuses a reading this audit has answered and left, so the buttons cannot outlive the question', async () => {
+    // The bug as a leader met it. Asked which period the audit covers, they tapped "last quarter";
+    // the coach recorded it, called this tool for the same reading in the same turn, and asked
+    // something else. The four periods were then drawn under "what stands out to you about your
+    // current situation and priorities?", inviting them to answer a settled question underneath an
+    // unrelated one.
+    readRunAnswers.mockResolvedValue({
+      reclaim_setup_audit_period: recorded('last quarter', null),
+    });
+
+    const result = await capability.execute(
+      { slotSlug: 'reclaim_setup_audit_period' },
+      contextIn('phase-0-setup')
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error?.code).toBe('already_answered');
+    // Fed back mid-turn, so it has to leave the coach able to finish the turn it is in rather than
+    // simply told no.
+    expect(result.error?.message).toContain('no offer attached');
+  });
+
+  it('still offers a reading the coach inferred and has never had confirmed', async () => {
+    // The distinction the guard turns on, and the reason it is not "already answered". A reading the
+    // coach worked out rather than heard is offered back for the leader to put right, and that is the
+    // turn the buttons matter most on: the audit currently claims something they never said, and the
+    // set is the shortest way for them to correct it.
+    readRunAnswers.mockResolvedValue({
+      reclaim_setup_audit_period: {
+        value: 'last month',
+        valueJson: null,
+        sourceType: 'inferred',
+        confidence: 5,
+      },
+    });
+
+    const result = await capability.execute(
+      { slotSlug: 'reclaim_setup_audit_period' },
+      contextIn('phase-0-setup')
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.data?.options).toEqual(['last week', 'last month', 'last quarter', 'last year']);
+  });
+
+  it('treats a recorded yes-or-no as settled, because a typed reading carries no flag', async () => {
+    // `answerFlag` exempts every typed reading unconditionally, so a boolean this run holds is
+    // settled the moment it lands. That is the right reading of it: its two buttons answer a question
+    // that has been answered, and there is no "not yet confirmed" state for them to sit in.
+    readRunAnswers.mockResolvedValue({
+      reclaim_setup_in_transition: recorded('Yes', true),
+      reclaim_setup_transition_detail: recorded('a merger', null),
+    });
+
+    const result = await capability.execute(
+      { slotSlug: 'reclaim_setup_in_transition' },
+      contextIn('phase-0-setup')
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error?.code).toBe('already_answered');
+  });
+
+  it('offers rather than refuses when the run cannot be read at all', async () => {
+    // Fails open, deliberately. A wrong offer names the reading it is for and sits beside a way to
+    // type instead; an offer silently withheld for every leader during a database wobble is neither
+    // visible nor recoverable, and it is worse than the blank box this mechanism replaced.
+    readRunAnswers.mockRejectedValue(new Error('the run could not be read'));
+
+    const result = await capability.execute(
+      { slotSlug: 'reclaim_setup_audit_period' },
+      contextIn('phase-0-setup')
+    );
+
+    expect(result.success).toBe(true);
   });
 
   it('refuses a reading from another section, because the section is not the model’s to choose', async () => {

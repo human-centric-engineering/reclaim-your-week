@@ -66,11 +66,13 @@ import {
 import { RECLAIM_MODULE_SLUG } from '@/lib/app/programme/identity';
 import { buildCoachScope } from '@/lib/app/programme/coach/scope';
 import { runCaptureSweep } from '@/lib/app/programme/coach/capture-sweep';
+import { sweepActionOptions } from '@/lib/app/programme/coach/action-options';
 import { pendingChoiceOffer } from '@/lib/app/programme/coach/phase-context';
 import { ReclaimOfferChoicesCapability } from '@/lib/app/programme/coach/capabilities/offer-choices';
 import { RECLAIM_OFFER_CHOICES_SLUG } from '@/lib/app/programme/agent';
 import {
   COACH_OPENING_MOMENTS,
+  COACH_RESUME_TRIGGER,
   openingBelongsToPhase,
   openingTriggerFor,
 } from '@/lib/app/programme/coach/opening';
@@ -84,11 +86,16 @@ import {
 import type { ChatEvent } from '@/types/orchestration';
 
 /**
- * A turn is either the leader speaking or the coach opening a moment.
+ * A turn is the leader speaking, the coach opening a moment, or a lost reply asked for again.
  *
  * **The client sends the moment; it never sends the phase.** The phase comes from the journey below,
  * and a moment that does not belong to it is refused. That keeps both halves of the dispatch scope
  * server-derived, which is the whole reason the coach may write audit answers at all (I6).
+ *
+ * **`resume` carries nothing at all**, and that is the point: it asks for the turn the leader was
+ * owed, not for a message they might send. The trigger is chosen here (`COACH_RESUME_TRIGGER`), the
+ * conversation it resumes is the run's own, and the last thing in that conversation is whatever the
+ * leader actually said. Nothing the client sends can influence any of it.
  *
  * A body with no `kind` is read as a leader turn, so a browser still running the previous build keeps
  * working across a deploy: nobody should lose a sentence they were part-way through because the
@@ -109,6 +116,9 @@ const coachTurnSchema = z.preprocess(
     z.object({
       kind: z.literal('opening'),
       moment: z.enum(COACH_OPENING_MOMENTS),
+    }),
+    z.object({
+      kind: z.literal('resume'),
     }),
   ])
 );
@@ -295,10 +305,25 @@ export const POST = withAuth<{ runId: string }>(async (request, session, { param
   // Ownership, in-progress, and the phase — all before a single token is generated.
   const target = await loadCoachTurnTarget(session.user.id, runId);
 
+  // A resume is a request for a turn that was already owed, so there has to be a conversation for it
+  // to have been owed *in*. A run with none has never had a turn at all, and the honest answer is the
+  // opening the client should be asking for instead.
+  if (body.kind === 'resume' && target.conversationId === undefined) {
+    return errorResponse('There is nothing here to pick up yet.', {
+      code: 'NOTHING_TO_RESUME',
+      status: 409,
+    });
+  }
+
   // An opening turn is the coach speaking first, so two things are checked here that a leader turn
   // does not need: that the moment belongs to the phase the leader is actually on (the client sends
   // the moment, the server owns the phase), and that this run has not already had it.
-  let message = body.kind === 'leader' ? body.message : openingTriggerFor(body.moment);
+  let message =
+    body.kind === 'leader'
+      ? body.message
+      : body.kind === 'resume'
+        ? COACH_RESUME_TRIGGER
+        : openingTriggerFor(body.moment);
   if (body.kind === 'opening') {
     if (!openingBelongsToPhase(body.moment, target.phaseKey)) {
       return errorResponse('That moment does not belong to this phase.', {
@@ -353,19 +378,6 @@ export const POST = withAuth<{ runId: string }>(async (request, session, { param
     userId: session.user.id,
   });
 
-  const events = streamChat({
-    message,
-    agentSlug: surface.agentSlug,
-    userId: session.user.id,
-    conversationId: target.conversationId,
-    contextType: MODULE_SURFACE_CONTEXT_TYPE,
-    contextId: RECLAIM_MODULE_SLUG,
-    scope: buildCoachScope({ runId, phaseKey: target.phaseKey }),
-    requestId: await getRequestId(),
-    visitorId: await getVisitorId(),
-    signal: request.signal,
-  });
-
   // The run's conversation, for the sweep. Known already on a resumed turn; on the first turn of a
   // run it arrives on the `start` frame, so it is captured there and read when the sweep fires.
   let conversationId = target.conversationId;
@@ -373,11 +385,62 @@ export const POST = withAuth<{ runId: string }>(async (request, session, { param
   /**
    * The deterministic half of capture (`coach/capture-sweep.ts`).
    *
-   * Only on a leader turn: an opening is the coach speaking into a silence the leader has not filled,
-   * so there is nothing in it to record and a sweep would only re-read the turn before.
+   * Every turn but an opening: an opening is the coach speaking into a silence the leader has not
+   * filled, so there is nothing in it to record and a sweep would only re-read the turn before.
+   *
+   * **A resume is swept, and has to be.** The leader's words are in the conversation and the turn
+   * that should have read them died before its `done` frame, so nothing has ever swept them. Skipping
+   * it here would mean a leader whose turn was interrupted quietly gets the one exchange in their
+   * audit that only the model's own recording covered.
+   *
+   * A resume is in fact swept **twice** — once below, before the turn is generated, and once here on
+   * the way past `done`. The first pass is what stops the coach asking again for what it was already
+   * told; this one is the backstop for a first pass that could not run, which on a resume is a real
+   * possibility, because a resume follows a provider that has just refused. The second pass is not a
+   * duplicate write: a reading already held is refused as `already_held`, and a superseding value
+   * identical to the stored one is refused as a rewrite (`capture-sweep.ts`).
    */
+  /**
+   * The one thing an opening turn leaves behind that is worth recording.
+   *
+   * `sweep` skips openings because an opening is the coach speaking into a silence the leader has
+   * not filled, so there is nothing of *theirs* in it. The phase-5 opening is the exception: its
+   * whole job is to put three named ways in front of the leader, and the briefing asks the coach to
+   * record them as a structured value in the same breath. Observed live, it did neither — it went
+   * straight to the chosen action, and the audit lost the menu the summary is meant to show.
+   *
+   * So this reads the opening the coach has just spoken and writes down the options it actually
+   * offered. It never invents one, and a turn that offered fewer than three writes nothing, which is
+   * the honest record of an opening that did not do its job. See `coach/action-options.ts`.
+   *
+   * Its failures are its own, like every other pass here: a leader's turn is their conversation.
+   */
+  const optionsSweep = async (): Promise<void> => {
+    const result = await sweepActionOptions({
+      userId: session.user.id,
+      runId,
+      phaseKey: target.phaseKey,
+      ...(conversationId !== undefined ? { conversationId } : {}),
+    });
+    if (result.recorded) {
+      log.info('Reclaim action options recorded from the coach opening', { runId });
+      // The briefing is cached for sixty seconds per `(type, id, userId)` and this wrote through a
+      // path that dropped nothing, exactly as the capture sweep does. Without this the coach's next
+      // turn would still read the options as outstanding.
+      invalidateContext(MODULE_SURFACE_CONTEXT_TYPE, RECLAIM_MODULE_SLUG, {
+        userId: session.user.id,
+      });
+    } else if (result.skipped !== 'wrong_phase' && result.skipped !== 'already_held') {
+      log.info('Reclaim action options not recorded', {
+        runId,
+        skipped: result.skipped,
+        ...(result.offered !== undefined ? { offered: result.offered } : {}),
+      });
+    }
+  };
+
   const sweep = async (): Promise<void> => {
-    if (body.kind !== 'leader') return;
+    if (body.kind === 'opening') return optionsSweep();
     const result = await runCaptureSweep({
       userId: session.user.id,
       runId,
@@ -407,6 +470,60 @@ export const POST = withAuth<{ runId: string }>(async (request, session, { param
       });
     }
   };
+
+  /**
+   * A resume sweeps **before** it generates, as well as after.
+   *
+   * **The failure this exists for, observed on a live audit.** The leader was asked how many hours of
+   * deep work they wanted, answered "10", and the provider threw 429 before the coach said a word.
+   * The client picked the turn back up, and the coach asked the same question again, word for word.
+   *
+   * Every part of that was the machinery working as written. The lost turn never reached its `done`
+   * frame, so `sweepingCapture` never fired and nothing recorded the "10". The resume then built the
+   * coach's briefing from a run that still held the reading as unasked, so `nextQuestionFor` named it
+   * as the question to end on — correctly, on the evidence it had. The one guard that would have
+   * caught it, the fallback in `nextQuestionLines`, is worded for a leader turn: it asks whether the
+   * named reading is what they answered *in the message you are replying to*, and on a resume the
+   * message being replied to is a stage direction. So the pointer was spent, nothing said so, and the
+   * leader was asked for a figure that was already in the transcript above.
+   *
+   * Sweeping here is the half of the fix that does not depend on a model reading anything correctly.
+   * The reason the route gives for not sweeping a failed turn — no settled transcript — is about the
+   * coach's half of the exchange, and it is the coach's half that is missing. The leader's message is
+   * as settled as any other. Recording it now, and dropping the cached briefing with it, means the
+   * resume is generated against a run that knows what it has been told, and the question it ends on is
+   * the next one rather than the last one.
+   *
+   * It runs before `streamChat` rather than beside it because the briefing is built as the turn opens,
+   * and a sweep racing that build is a sweep that does not exist.
+   *
+   * **It is allowed to fail, and often will.** A resume follows a provider that has just refused, and
+   * this is another call to the same provider. `runCaptureSweep` returns rather than throws and this
+   * does not take its word for it: a capture pass is bookkeeping, a turn is the leader's conversation.
+   * The sweep after the turn stays exactly where it was, as the backstop for the pass that could not
+   * run here, and the widened prose in `nextQuestionLines` covers the turn in between.
+   */
+  if (body.kind === 'resume') {
+    await sweep().catch((error: unknown) => {
+      log.warn('Reclaim pre-resume capture sweep threw; picking the turn up regardless', {
+        runId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+  }
+
+  const events = streamChat({
+    message,
+    agentSlug: surface.agentSlug,
+    userId: session.user.id,
+    conversationId: target.conversationId,
+    contextType: MODULE_SURFACE_CONTEXT_TYPE,
+    contextId: RECLAIM_MODULE_SLUG,
+    scope: buildCoachScope({ runId, phaseKey: target.phaseKey }),
+    requestId: await getRequestId(),
+    visitorId: await getVisitorId(),
+    signal: request.signal,
+  });
 
   /**
    * The answers for this turn's question, when the coach did not put them up itself.

@@ -138,6 +138,7 @@ table: nothing per-event is persisted anywhere.
 | Slug                                | dataType  | Sensitivity | Meaning                                                                                                   |
 | ----------------------------------- | --------- | ----------- | --------------------------------------------------------------------------------------------------------- |
 | `reclaim_calendar_uploaded`         | `boolean` | `standard`  | Whether the branch was taken                                                                              |
+| `reclaim_calendar_declined`         | `boolean` | `standard`  | Offered the branch and said no. The offer is made once; this is what carries that forward                 |
 | `reclaim_calendar_completeness`     | `text`    | `standard`  | How much their calendar reflects their working life                                                       |
 | `reclaim_calendar_period`           | `text`    | `standard`  | Period analysed                                                                                           |
 | `reclaim_calendar_hours__<bucket>`  | `number`  | `standard`  | Calendar-derived hours per bucket. Same nine tokens.                                                      |
@@ -281,7 +282,7 @@ aggregate picture, not as profiling. Every one carries a "prefer not to say" opt
 | `reclaim_profile`    | 6                                |
 | `reclaim_setup`      | 9                                |
 | `reclaim_current`    | 21 (18 per-bucket + 3 deep-work) |
-| `reclaim_calendar`   | 21 (9 per-bucket + 12 fixed)     |
+| `reclaim_calendar`   | 22 (9 per-bucket + 13 fixed)     |
 | `reclaim_composite`  | 10 (9 per-bucket + 1 fixed)      |
 | `reclaim_energy`     | 3                                |
 | `reclaim_ideal`      | 12 (9 per-bucket + 3 fixed)      |
@@ -289,7 +290,7 @@ aggregate picture, not as profiling. Every one carries a "prefer not to say" opt
 | `reclaim_action`     | 6                                |
 | `reclaim_reflection` | 6                                |
 | `reclaim_share`      | 6                                |
-| **Total**            | **106**                          |
+| **Total**            | **107**                          |
 
 The earlier estimate of "~45" undercounted because it did not expand the per-bucket slots. The count
 rose from 91 to **95** when the coverage audit added four slots: `reclaim_calendar_switch_frequency`,
@@ -307,6 +308,13 @@ It rose to **106** on 2026-07-27 in #54, when the conversational close added `re
 — the takeaway the source asks for before the summary is produced. Same shape of gap a third time:
 the question was being asked, in the sharing form, so nothing looked missing until the _order_ was
 read against the source.
+
+It rose to **107** on 2026-08-03, when `reclaim_calendar_declined` gave the calendar offer somewhere
+to record a **no**. The offer is made once by contract — the wording says so — and the coach was told
+"if they decline do not return to it" by a briefing rebuilt from the run's answers on every turn. With
+nothing holding the refusal, the branch fired again and leaders were asked twice. Same shape a fourth
+time: the rule was written down in three places and enforced by none of them, because the state it
+depended on did not exist.
 
 **Nothing recorded the count changing at the time**, so three prose references and two file headers
 went on saying 105 for five days, in a repository whose own standard is that a document which

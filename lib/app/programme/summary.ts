@@ -9,7 +9,8 @@
 import { prisma } from '@/lib/db/client';
 import { readRunAnswers } from '@/lib/app/programme/runs/answers';
 import { RECLAIM_FOOTNOTE } from '@/lib/app/programme/content';
-import { parseAnalystReading, type AnalystReading } from '@/lib/app/programme/analyst/reading';
+import { readReclaimConsultationEmail } from '@/lib/app/programme/config';
+import { parseReportReading, type ReportReading } from '@/lib/app/programme/report/reading';
 import {
   buildChartData,
   type Answers,
@@ -26,6 +27,19 @@ export interface SummaryBucketRow {
 
 export interface AuditSummary {
   firstName: string | null;
+  /**
+   * When this audit happened, as an ISO date, and the reason the report has a date on it at all.
+   *
+   * A report a leader keeps for a year and comes back to is worthless without one: "twelve hours in
+   * delivery" is a fact about a particular week, and a document that does not say which week is a
+   * document making a claim about now. `completedAt` where the run is finished, `startedAt` while it
+   * is still open, so the date on screen during section 6 is the day they did the work rather than a
+   * blank waiting for a button press.
+   *
+   * ISO rather than formatted: the two surfaces render it in their own way, and a formatted string
+   * crossing an API is a locale decision made in the wrong place.
+   */
+  auditedOn: string;
   role: string | null;
   orgType: string | null;
   period: string | null;
@@ -42,7 +56,7 @@ export interface AuditSummary {
   /**
    * §10's two remaining items — the key gaps, and the phased pathway (F14).
    *
-   * `null` whenever the analyst has not run, was refused, or failed, and **every surface renders
+   * `null` whenever the report agent has not run, was refused, or failed, and **every surface renders
    * nothing for `null`** rather than an error or a placeholder. The summary satisfied §10's other
    * six bullets for the whole of v1; telling a leader their artifact is defective is worse than
    * quietly being the artifact it was before.
@@ -50,7 +64,17 @@ export interface AuditSummary {
    * Read from the run row, never generated here. `buildSummary` is called by the public share route
    * with no session and by the PDF route, and neither is a place to start spending money.
    */
-  analyst: AnalystReading | null;
+  report: ReportReading | null;
+  /**
+   * Where a leader takes this next, carried on the artifact rather than left on the screen.
+   *
+   * The screen already offers it once, at the end (§10, and the consultation invitation appears once
+   * by I16's reading of Brief §2). The **document** is the thing that outlives the screen: somebody
+   * reading their report six months later, deciding they want to talk to somebody, should not have to
+   * find the app again to discover who. Operator-set through `Module.config`, so it is read here
+   * rather than hard-coded into two render surfaces.
+   */
+  contactEmail: string;
   footnote: string;
 }
 
@@ -67,12 +91,13 @@ const numOf = (a: SlotAnswer): number | null => {
 
 /** Build the summary for a run. Reads every slug it needs run-scoped; carries no sensitive prose. */
 export async function buildSummary(userId: string, runId: string): Promise<AuditSummary> {
-  const [answers, run] = await Promise.all([
+  const [answers, run, config] = await Promise.all([
     readRunAnswers(userId, runId) as Promise<Answers>,
     prisma.reclaimAuditRun.findFirst({
       where: { id: runId, userId },
-      select: { analystReading: true },
+      select: { analystReading: true, completedAt: true, startedAt: true },
     }),
+    readReclaimConsultationEmail(),
   ]);
   const current = buildChartData(answers);
 
@@ -80,10 +105,10 @@ export async function buildSummary(userId: string, runId: string): Promise<Audit
   // deploy, so the shape it holds is whatever that build considered valid; re-running the refusals
   // means a reading that would not pass today's guards does not reach a public share because it
   // happened to be written before them. The token set is this run's own areas.
-  const analyst =
+  const report =
     run?.analystReading == null
       ? null
-      : parseAnalystReading(run.analystReading, new Set(current.buckets.map((b) => b.token)));
+      : parseReportReading(run.analystReading, new Set(current.buckets.map((b) => b.token)));
 
   const rows: SummaryBucketRow[] = current.buckets.map((b) => ({
     token: b.token,
@@ -94,6 +119,10 @@ export async function buildSummary(userId: string, runId: string): Promise<Audit
 
   return {
     firstName: text(answers['reclaim_profile_first_name']),
+    // `completedAt` once finished, `startedAt` while the leader is still on section 6. A run that
+    // cannot be read at all is dated today, which is the only honest answer available and is never
+    // the common case: `buildSummary`'s callers have all loaded the run already.
+    auditedOn: (run?.completedAt ?? run?.startedAt ?? new Date()).toISOString(),
     role: text(answers['reclaim_profile_role']),
     orgType: text(answers['reclaim_profile_org_type']),
     period: text(answers['reclaim_setup_audit_period']),
@@ -105,7 +134,8 @@ export async function buildSummary(userId: string, runId: string): Promise<Audit
       when: text(answers['reclaim_action_when']),
       howKnown: text(answers['reclaim_action_how_known']),
     },
-    analyst,
+    report,
+    contactEmail: config,
     footnote: RECLAIM_FOOTNOTE,
   };
 }

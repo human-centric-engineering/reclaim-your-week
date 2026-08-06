@@ -31,6 +31,7 @@
 
 import { prisma } from '@/lib/db/client';
 import { isCoachSyntheticMessage } from '@/lib/app/programme/coach/opening';
+import { isFabricatedConversation } from '@/lib/app/programme/preview/conversation';
 
 export interface SharedTranscriptTurn {
   id: string;
@@ -46,6 +47,22 @@ export interface SharedTranscript {
   /** When the leader shared, which is when the consent was given. */
   sharedAt: string;
   turns: SharedTranscriptTurn[];
+  /**
+   * Whether these words were written by the preview fabricator rather than said by anybody.
+   *
+   * **The condition on which fabricating a transcript at all was acceptable.** F19 originally refused
+   * to write `AiMessage` rows precisely because a reader here would have no way to tell them from a
+   * real exchange, and that objection is answered by carrying the fact through to the screen rather
+   * than by leaving the transcript empty. The view must say so; a flag nobody renders is not an
+   * answer.
+   *
+   * Read from the conversation's own `metadata`, so it is a property of the record rather than an
+   * inference about whose account it is. Badging by preview-account membership would be wrong in both
+   * directions: an operator who marks their own walked-through account as a test account has a real
+   * transcript on it, and a fabricated conversation would stop being flagged the moment the account
+   * was un-marked.
+   */
+  fabricated: boolean;
 }
 
 /**
@@ -73,20 +90,27 @@ export async function readSharedTranscript(
   });
   if (run === null || run.conversationId === null) return null;
 
-  const messages = await prisma.aiMessage.findMany({
-    where: {
-      conversationId: run.conversationId,
-      role: { in: ['user', 'assistant'] },
-      content: { not: '' },
-    },
-    orderBy: { createdAt: 'asc' },
-    select: { id: true, role: true, content: true, createdAt: true },
-  });
+  const [conversation, messages] = await Promise.all([
+    prisma.aiConversation.findUnique({
+      where: { id: run.conversationId },
+      select: { metadata: true },
+    }),
+    prisma.aiMessage.findMany({
+      where: {
+        conversationId: run.conversationId,
+        role: { in: ['user', 'assistant'] },
+        content: { not: '' },
+      },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, role: true, content: true, createdAt: true },
+    }),
+  ]);
 
   return {
     runId: run.id,
     quarter: run.quarter,
     sharedAt: share.createdAt.toISOString(),
+    fabricated: isFabricatedConversation(conversation?.metadata),
     turns: messages
       .filter((m) => !isCoachSyntheticMessage(m.role, m.content))
       .filter((m) => m.content.trim().length > 0)

@@ -1,26 +1,34 @@
 /**
- * The Phase 6 share (F7 t-4). Sharing is **invited, never required** (§10, Brief §3). A leader may mint
- * a tokenised public link to their own summary (`ReclaimShare`), and/or share the result with the coach
- * (`ReclaimReportShare`, the existing-client inbox F10 reads). The optional feedback line + its
- * **separate** quote consent land in `ReclaimFeedback` — quote consent governs republication and is its
- * own fact, not implied by sharing.
+ * The Phase 6 share (F7 t-4). Sharing is **invited, never required** (§10, Brief §3).
+ *
+ * There is exactly one thing a leader can do here: share the report **with Rashmir**
+ * (`ReclaimReportShare`, the existing-client inbox F10 reads), and optionally let her read the
+ * conversation too. The optional feedback line + its **separate** quote consent land in
+ * `ReclaimFeedback` — quote consent governs republication and is its own fact, not implied by sharing.
+ *
+ * ## The public link is gone, and this is the file where it lived
+ *
+ * A leader used to be able to mint an unguessable token (`ReclaimShare`) that served their summary
+ * from `/summary/:token` with **no session at all**. Three things were true of it at once: the report
+ * it served is the most personal thing this product makes, the token could never be revoked (there
+ * was no delete, no rotate, no expiry — the deleted route's own docblock said so), and the only thing
+ * keeping the artifact safe to serve that way was a promise that the report agent stayed blindfolded to
+ * everything the leader actually said.
+ *
+ * Removing it settles all three and pays for the report the audit should have been producing: with
+ * no unauthenticated surface, the report agent may read the whole audit (`report/brief.ts`), which is why
+ * that file's allowlist could widen in the same change.
+ *
+ * **`ReclaimShare` the table is deliberately still in the schema.** Dropping it is a destructive
+ * migration against rows that are somebody's data, and nothing writes or reads it now — the data
+ * export (`admin/export.ts`) still includes it, so a leader who minted a link before this change can
+ * still see that they did. Retiring the table is its own decision.
  */
 
 import { prisma } from '@/lib/db/client';
 
-/**
- * An unguessable public share token (64 hex chars). Uses the Web Crypto `randomUUID` global (available
- * in every realm) rather than `node:crypto`, so this file stays edge/client-bundle-safe (the leaf
- * boundary rule).
- */
-function mintToken(): string {
-  return (globalThis.crypto.randomUUID() + globalThis.crypto.randomUUID()).replace(/-/g, '');
-}
-
 export interface CreateShareInput {
-  /** Mint a public link to the summary. */
-  publicLink?: boolean;
-  /** Also share the result with the coach (existing-client close). */
+  /** Share the report with the coach — the only sharing this product does. */
   withCoach?: boolean;
   /**
    * Also let the coach read the conversation, not only the result (F17).
@@ -37,8 +45,8 @@ export interface CreateShareInput {
 }
 
 export interface ShareResult {
-  /** The public token, if a link was minted. */
-  token: string | null;
+  /** Whether the report is now shared with the coach. Echoed back so the screen states the fact. */
+  sharedWithCoach: boolean;
 }
 
 /**
@@ -62,20 +70,6 @@ export async function createShare(
   runId: string,
   input: CreateShareInput
 ): Promise<ShareResult> {
-  let token: string | null = null;
-
-  if (input.publicLink) {
-    // The token must not be regenerated on re-save — a leader who has already sent someone the link
-    // would find it dead. `update: {}` is deliberate: touch nothing, keep the existing token.
-    const share = await prisma.reclaimShare.upsert({
-      where: { userId_auditRunId: { userId, auditRunId: runId } },
-      create: { userId, auditRunId: runId, token: mintToken() },
-      update: {},
-      select: { token: true },
-    });
-    token = share.token;
-  }
-
   if (input.withCoach) {
     const transcriptConsent = input.shareTranscript === true;
     await prisma.reclaimReportShare.upsert({
@@ -88,16 +82,28 @@ export async function createShare(
       update: { transcriptConsent },
     });
   } else if (input.withCoach === false) {
-    // Unticking "share with Rashmir" withdraws the transcript with it. The row itself stays, as it
-    // always has: nothing here deletes a share, and that is a separate decision from this one.
+    // Unticking "share with Rashmir" deletes the row rather than merely clearing consent on it.
+    // **Row existence is the share** — `ReclaimReportShare` carries no `active`/`withdrawn` field,
+    // `listSharedResults` (`admin/inbox.ts`) reads every row with no filter, and the screen tells the
+    // leader "this report has not been shared" the moment this runs. A row that only cleared
+    // `transcriptConsent` left both of those false: the inbox kept showing the leader as a "results
+    // only" sharer, and a leader who unshared then saved anything else (the takeaway, the age band)
+    // would silently re-send `withCoach: false` and be told a still-listed report "has not been
+    // shared" — a consent record contradicting the fact on the leader's own screen.
+    //
+    // **The cost, named:** deleting loses the record that a share once existed, which the leader's
+    // own data export (`admin/export.ts`) would otherwise have preserved (the same way the retired
+    // `ReclaimShare` public-link table is kept rather than dropped, precisely so a leader can see they
+    // once minted a link). Accepted here because the row's only other purpose is gating Rashmir's live
+    // read access, and a leader who withdrew that access should not keep appearing as though they
+    // hadn't.
     //
     // **`=== false`, not "falsy".** The client always sends the checkbox state, so an explicit
     // `false` is the leader unticking it. `undefined` means the field was not part of this request
-    // at all — a caller saving only a public link, say — and taking that as a withdrawal would both
-    // revoke a consent nobody touched and put a write on every save that never mentions it.
-    await prisma.reclaimReportShare.updateMany({
-      where: { userId, auditRunId: runId, transcriptConsent: true },
-      data: { transcriptConsent: false },
+    // at all — a caller saving only the feedback line, say — and taking that as a withdrawal would
+    // both revoke a consent nobody touched and delete a row on every save that never mentions it.
+    await prisma.reclaimReportShare.deleteMany({
+      where: { userId, auditRunId: runId },
     });
   }
 
@@ -119,16 +125,5 @@ export async function createShare(
     }
   }
 
-  return { token };
-}
-
-/** Resolve a public share token to its `{ userId, runId }`, or `null` for an unknown/expired token. */
-export async function resolveShareToken(
-  token: string
-): Promise<{ userId: string; runId: string } | null> {
-  const row = await prisma.reclaimShare.findUnique({
-    where: { token },
-    select: { userId: true, auditRunId: true },
-  });
-  return row ? { userId: row.userId, runId: row.auditRunId } : null;
+  return { sharedWithCoach: input.withCoach === true };
 }

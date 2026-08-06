@@ -46,7 +46,7 @@ Editing a bridge conflicts on every Daybreak upgrade. Always edit the `leaf-*` f
 | [`sources/`](./sources/README.md)                                | **The authority.** Rashmir's five originals, byte-identical and **read-only**                                                                            |
 | [`invariants.md`](./invariants.md)                               | **Read before writing any code.** I1–I18 + I-frame + I-composite                                                                                         |
 | [`content-source.md`](./content-source.md)                       | Working extract of `sources/`, verbatim. Loads into `Module.config` (I11)                                                                                |
-| [`slot-spec.md`](./slot-spec.md)                                 | The 106 slot definitions — exact slugs, dataType, sensitivity                                                                                            |
+| [`slot-spec.md`](./slot-spec.md)                                 | The 107 slot definitions — exact slugs, dataType, sensitivity                                                                                            |
 | [`coverage-audit.md`](./coverage-audit.md)                       | The source-instruction audit: carries / becomes UI / retired / gap                                                                                       |
 | [`daybreak-asks.md`](./daybreak-asks.md)                         | Framework changes we carry + defects we find, so a sync knows what to delegate                                                                           |
 | [`upstream-sync.md`](./upstream-sync.md)                         | **The ordered procedure for a sync** — the four files we have modified inside upstream's tree, and what fails quietly if you resolve them by reflex      |
@@ -104,7 +104,7 @@ seam; only the rendering is ours.
 Brief header: _"The name is a working title. It will be tested against real audiences before launch,
 so please treat it as good enough to build with rather than final branding."_
 
-It is nonetheless the root of the module slug `reclaim-audit`, 106 `reclaim_*` slot slugs, eight
+It is nonetheless the root of the module slug `reclaim-audit`, 107 `reclaim_*` slot slugs, eight
 `app_reclaim_*` tables, `prisma/seeds/app-reclaim/` and `smoke:reclaim` — and I7 says canonical slugs
 never change. **That is the intended outcome, not an oversight.** These identifiers are internal
 storage keys that no user ever sees; renaming them on a rebrand would mean a data migration across
@@ -117,7 +117,7 @@ deploy.
 
 **`programme` is the surface, `reclaim` is the module.** Routes, URLs, UI folders and shared leaf
 plumbing are `programme` — they are module-agnostic, and the Parked life-wheel would live behind the
-same surface. Identity and persistence are `reclaim`: the module slug `reclaim-audit`, the 106
+same surface. Identity and persistence are `reclaim`: the module slug `reclaim-audit`, the 107
 `reclaim_*` slots, the `app_reclaim_*` tables, `prisma/seeds/app-reclaim/`, `smoke:reclaim`. Do not
 introduce per-module subfolders under `lib/app/programme/` until there is a second module.
 

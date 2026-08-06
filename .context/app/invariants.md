@@ -15,20 +15,21 @@ load-bearing in aggregate.
 > `vitest run tests/unit/invariants` — so **the directory is the wiring**. A new file dropped in
 > there gates automatically; a guard placed anywhere else does not, however invariant-shaped it looks.
 >
-> | Guard                                             | Invariant   | Landed      |
-> | ------------------------------------------------- | ----------- | ----------- |
-> | `npm run leaf:content-diff`                       | I11 hop 1   | pre-F2      |
-> | `npm run leaf:board-check`                        | — (P21/P23) | F12 t-3     |
-> | `tests/unit/invariants/voice.test.ts`             | I1, I2      | F2 t-4      |
-> | `tests/unit/invariants/slot-sensitivity.test.ts`  | I5          | F2 t-4      |
-> | `tests/unit/invariants/agent-caps.test.ts`        | I6          | F2 t-4      |
-> | `tests/unit/invariants/write-path.test.ts`        | I3          | F4 t-2      |
-> | `tests/unit/invariants/calendar-privacy.test.ts`  | I4          | F5          |
-> | `tests/unit/invariants/admin-support.test.ts`     | D4 (F10)    | F10 t-1     |
-> | `tests/unit/invariants/product-voice.test.ts`     | I1, I2      | open item 8 |
-> | `tests/unit/invariants/chart-beat.test.ts`        | I12         | conv. 5     |
-> | `tests/unit/invariants/reachability.test.ts`      | —           | conv. 7     |
-> | `tests/unit/invariants/preview-exclusion.test.ts` | — (F19)     | F19 t-2     |
+> | Guard                                                 | Invariant   | Landed      |
+> | ----------------------------------------------------- | ----------- | ----------- |
+> | `npm run leaf:content-diff`                           | I11 hop 1   | pre-F2      |
+> | `npm run leaf:board-check`                            | — (P21/P23) | F12 t-3     |
+> | `tests/unit/invariants/voice.test.ts`                 | I1, I2      | F2 t-4      |
+> | `tests/unit/invariants/slot-sensitivity.test.ts`      | I5          | F2 t-4      |
+> | `tests/unit/invariants/agent-caps.test.ts`            | I6          | F2 t-4      |
+> | `tests/unit/invariants/write-path.test.ts`            | I3          | F4 t-2      |
+> | `tests/unit/invariants/calendar-privacy.test.ts`      | I4          | F5          |
+> | `tests/unit/invariants/admin-support.test.ts`         | D4 (F10)    | F10 t-1     |
+> | `tests/unit/invariants/product-voice.test.ts`         | I1, I2      | open item 8 |
+> | `tests/unit/invariants/chart-beat.test.ts`            | I12         | conv. 5     |
+> | `tests/unit/invariants/reachability.test.ts`          | —           | conv. 7     |
+> | `tests/unit/invariants/preview-exclusion.test.ts`     | — (F19)     | F19 t-2     |
+> | `tests/unit/invariants/report-content-supply.test.ts` | I11         | 2026-08-05  |
 >
 > **2 · The main test suite — every PR, but not via `leaf:checks`.**
 > `tests/unit/app/programme/content.test.ts` (I11 hop 2, F2 t-3) lives outside
@@ -44,7 +45,7 @@ load-bearing in aggregate.
 > `smoke:reclaim-preview` (a test account walks the real engine, and the published figures do not move).
 >
 > **Not gated anywhere.** The two that need a real model key, and only those:
-> `smoke:reclaim-calendar` (I4 end to end) and `smoke:reclaim-analyst` (whether a real model can get
+> `smoke:reclaim-calendar` (I4 end to end) and `smoke:reclaim-report-agent` (whether a real model can get
 > a reading past the guards at all). Both are deliberate manual gates — see
 > [[planning/post-v1|post-v1]] P16, whose one decision now covers both.
 >
@@ -205,8 +206,27 @@ the guard.
 
 ## I6 — The agent never selects the run, and never transitions
 
-Granted capabilities: `get_journey_state`, `get_next_steps`, `get_state`,
-`reclaim_audit__record_answers`, `reclaim_audit__offer_choices`.
+Granted capabilities: `reclaim_audit__record_answers`, `reclaim_audit__offer_choices`.
+
+**The three framework reads were removed (2026-08-04): `get_journey_state`, `get_next_steps`,
+`get_state`.** They predate the run briefing, which now opens with the section the leader is on and
+lists every reading this run holds — so they had little left to answer, and across a whole live
+audit they were called six times against `record_answers`' sixty three.
+
+What settled it belongs in this invariant rather than in a performance note. `get_state` answers
+from the leader's slot values across **every** audit they have ever run, undated and unscoped: on a
+live run it returned `reclaim_reflection_p1` and a deep-work blocker captured in a _previous_ audit,
+days before that one began. The briefing already had to defend against it in prose — its list is
+"from this audit and none of it from any earlier one, whatever undated values appear elsewhere in
+your context" — and that clause exists because of this tool. A run-scoped record that a second tool
+can silently contradict is not run-scoped. `get_next_steps` returned `{"journeyStarted":false,
+"moves":[]}` mid-audit, which invites the model to talk about progression that the leader's screen
+owns and the coach cannot see.
+
+They are **disabled, never deleted**, for the reason the `fill_slot` note below sets out at length:
+a missing pivot row is permissive. `004-reclaim-coach-grants` lists all four in `RETIRED`, because
+the stale sweep only disables rows that exist and a fresh install would never create one — and this
+coach's own transcripts contain `get_state` calls from before the change, which a model imitates.
 
 **`fill_slot` was granted here and has been removed (2026-07-27).** The reasoning that put it there
 is kept below because it is the same reasoning that justifies `record_answers`' shape. It covered
@@ -239,15 +259,39 @@ takes the run from the server may write the audit.
 | `reclaim_audit__record_answers`   | `CapabilityContext.scope`, issued by the route | the allowlist below |
 | `reclaim_audit__offer_choices`    | `CapabilityContext.scope`, issued by the route | nothing at all      |
 
-**`offer_choices` is granted and writes nothing** (added 2026-07-29). It answers one question about
-static data — "which answers does this reading offer?" — so the screen can draw them instead of an
-empty box. The model names the reading; the **product** owns the answers (`coach/slot-choices.ts`),
-so there is no argument that can make a leader be shown an option their audit cannot store. The
-section is read from `readCoachScope(context.scope)`, never from an argument, and a dispatch with no
-scope refuses rather than falling back to "any section" — so a coach in section 2 cannot put section
-4's answers in front of the leader. The answer a leader taps is sent as an ordinary turn in their own
-column and recorded through `record_answers` like anything else: nothing is stored because a button
-was drawn. `record_answers` therefore remains the only capability on this agent that writes.
+**`offer_choices` is granted and writes nothing** (added 2026-07-29). It answers one question — "which
+answers does this reading offer, if any?" — so the screen can draw them instead of an empty box. The
+model names the reading; the **product** owns the answers (`coach/slot-choices.ts`), so there is no
+argument that can make a leader be shown an option their audit cannot store. The section is read from
+`readCoachScope(context.scope)`, never from an argument, and a dispatch with no scope refuses rather
+than falling back to "any section" — so a coach in section 2 cannot put section 4's answers in front
+of the leader. The answer a leader taps is sent as an ordinary turn in their own column and recorded
+through `record_answers` like anything else: nothing is stored because a button was drawn.
+`record_answers` therefore remains the only capability on this agent that writes.
+
+It reads the run for two things (added 2026-08-03), and both are refusals rather than writes.
+
+The first is whether the named reading is being asked as
+half of a **two-part question**, in which case it refuses. A pair — "is your team spread across
+places, and how does that shape how you lead?" — has an open half in it, and a live audit showed the
+cost of ignoring that: the coach asked the open half and the composer drew **Yes / No** beneath it,
+because the anchor is a boolean and booleans have a set. The reading was not wrong; the question was.
+`compoundQuestionSlugs` (`coach/phase-slots.ts`) states the rule beside the definition of a pair, and
+the same rule suppresses the instruction in the capture list and stands the route's deterministic
+fallback down.
+
+The second is whether the reading is one this audit has **settled** — answered, and carrying no flag
+saying it is owed another turn (`coach/settled-reading.ts`). A live audit asked which period was being
+audited, the leader tapped "last quarter", and in that one turn the coach recorded the answer, called
+`offer_choices` for the same reading, and asked something else: the four periods were drawn beneath
+"what stands out to you about your current situation and priorities?". The test is "settled" and not
+"answered" deliberately — the audit does go back to a reading it **inferred** rather than heard, and
+that turn keeps its buttons, because it is the turn where a leader is asked to correct something the
+audit claims they said.
+
+Both reads are reads: the capability still writes nothing, and both fail **open** — a run
+it cannot read yields an offer rather than none, because a wrong offer names its reading and can be
+dismissed, while a silently missing one leaves the leader the blank box this mechanism replaced.
 
 **Why the distinction.** `contextKey` is an optional argument on the framework's own tools
 (`lib/framework/guidance/capabilities/shared.ts:18-21`) and the model can pass any string, so
@@ -324,11 +368,16 @@ replace the blanket refusal, and the first two are what stop the coach walking t
    the current phase's reflection recorded unprompted, in the leader's own run, on a screen that
    shows it to them.
 3. **Visible and correctable.** The recorded reflection is shown in the captured panel under "In your
-   words". The panel itself carries no box — a leader changes it by saying so, or by taking "I would
-   rather fill this in myself" and using the phase panel's reflection field, which writes over the top
-   through the leader's own path. This is the one that makes "the leader owns their reflection" still
-   true of a reflection the coach typed, and it is why the panel is now load-bearing rather than
-   reassuring.
+   words". The panel itself carries no box — a leader changes it by saying so, and the coach records
+   the new sentence through the same guarded path. This is the one that makes "the leader owns their
+   reflection" still true of a reflection the coach typed, and it is why the panel is now load-bearing
+   rather than reassuring.
+
+   **Correcting it used to have a second route**, and that route has been removed: "I would rather
+   fill this in myself" led to the phase panel's own reflection field, which wrote over the top
+   through the leader's own path. The link is gone from every phase, so saying so in the conversation
+   is now the only way a leader changes what was recorded. The panels still exist and still write the
+   same slots; nothing routes a leader to them.
 
 `reclaim_reflection_p6` (the takeaway) is permitted on the same terms — it is the question the close
 asks, and the coach that asks it is the one that records the answer.
@@ -339,14 +388,16 @@ Refused, and each for its own reason:
   leader's words may be republished. An agent that can write consent can manufacture it.
 - **`reclaim_composite`** — the reconciled lane, whose whole story (I-composite) is that it is
   computed from the calendar and the estimates. A model-derived number there makes that false.
-- **`reclaim_calendar`, except two slugs.** The lane figures stay refused for I4's reason. But the
-  group also holds six _leader self-reports_, and the wholesale refusal was written for the lanes:
+- **`reclaim_calendar`, except three slugs.** The lane figures stay refused for I4's reason. But the
+  group also holds _leader self-reports_, and the wholesale refusal was written for the lanes:
   `completeness` and `period` are the answers to two questions the source explicitly tells the coach
   to **ask**, before any file exists, and the first decides how every later figure is framed. A
   conversation that cannot record the answer to a question it was told to ask captures nothing at the
-  point that matters. The exception is a named slug list
-  (`COACH_WRITABLE_SLOTS_IN_REFUSED_GROUPS`); the other four self-reports stay refused because they
-  are asked on the review screen, after the upload, where they belong.
+  point that matters. `declined` is the answer to the third: the branch is offered **once**, and with
+  nothing recording a no the briefing — rebuilt from the run's answers every turn — offered it again,
+  which is the one thing the offer's own wording promises it will not do. The exception is a named
+  slug list (`COACH_WRITABLE_SLOTS_IN_REFUSED_GROUPS`); the other four self-reports stay refused
+  because they are asked on the review screen, after the upload, where they belong.
 
   The grant therefore permits `reclaim_calendar` and the **code** keeps the lanes shut — the two
   layers deliberately not identical. `facetSchema` is strict on `{ groups, scopes }`, so a
@@ -381,6 +432,20 @@ live testing showed it is a hit rate however the prompt is worded: it takes a pa
 every time and drops the one-sentence answer to the question it just asked. An audit cannot be built
 on a hit rate.
 
+**A resumed turn sweeps before it generates as well** (added 2026-08-04). The sweep hangs off the
+`done` frame, so a turn the provider killed never swept at all — and the live cost of that was the
+coach asking again for something it had already been told. Asked how many hours of deep work they wanted,
+the leader said "10", the provider threw 429 before the coach spoke, and the resume built its briefing
+from a run that still held the reading as unasked. Everything downstream then worked correctly on that
+evidence and asked for the figure again, three lines under the answer. So a resume sweeps first: the
+reason for not sweeping a failed turn is that there is no settled transcript, and it is the **coach's**
+half that is missing — the leader's message is as settled as any other. The pass after `done` stays
+where it is, as the backstop for a first pass that could not run, which on a resume is a real
+possibility because a resume follows a provider that has just refused. Sweeping twice writes nothing
+twice: a reading already held is refused as `already_held`, and a superseding value identical to the
+stored one is refused as a rewrite. The pre-turn pass is awaited but never allowed to throw — capture
+is bookkeeping, and a turn is the leader's conversation.
+
 The sweep is a model call wrapped in code, and the code is the part that matters: it always runs, its
 worklist is computed from `phaseCaptureSlots` and the run's own answers, and every write goes through
 `checkSlotWrite` and `saveAnswer` exactly as the coach's do — so this invariant, I3 and I5 hold for
@@ -394,7 +459,8 @@ before the sweep existed.
 **Test:** `tests/unit/lib/app/programme/coach/capture-sweep.test.ts` (the guards, driven with the
 exchanges that were actually lost) and the sweep block in
 `tests/unit/app/api/v1/app/reclaim/coach-stream.route.test.ts` (that it runs, when, and that it
-cannot break a turn).
+cannot break a turn — including the order on a resume: sweep, drop the cached briefing, generate,
+sweep again, and a turn that still happens when the first pass throws).
 
 **Test:** `tests/unit/invariants/agent-caps.test.ts` — the grant set, the absence of
 `request_transition`, both exposure allowlists, the refused groups checked against the real slot
@@ -532,6 +598,28 @@ rewording reaches the conversation exactly as it reaches the screen. **The rule 
 reaches the coach as injected context read from `Module.config`, never as text written into the agent's
 prose fields.** A future session tempted to paste an area definition into `systemInstructions` to "help
 the model" would fork the single source of truth and slip past both hops of the chain above.
+
+### The report had the same hole, and this is now the pattern rather than the incident (2026-08-05)
+
+`report/agent.ts` said in its header and in its own system instructions that the frame and the nine
+areas "are supplied to you in context". Nothing supplied them: `runReport` composed the authored
+prose and the brief, and neither carried a word of her content. So the agent writing the document a
+leader keeps could see twenty two hours against delivery and had never been told the ceiling is 10-15%,
+still less that above it "is often a signal of under-delegation or difficulty letting go of an earlier
+identity as a practitioner". Every area description is a reading of what time there tends to mean, and
+the report was written without one of them.
+
+**The shape to recognise: I11 forbids restating her content in authored prose, and forbidding is not
+supplying.** Both times, the prose that promised the supply was written in the same commit as the
+prohibition that made it necessary, and nothing failed when the supply never arrived — the output was
+merely thin, which reads like a disappointing model rather than a defect. Any new agent that says it
+is "given" the content needs its own reader (`readReclaimReportContent`) and its own assertion that
+the content reaches the composed messages.
+
+**Test:** `tests/unit/invariants/report-content-supply.test.ts` asserts over the message list that
+actually reaches the provider, not over the imports: an import that is read and then not sent passes
+a grep and fails a leader. It also asserts the read comes from the module **row**, so hop 3 (Rashmir's
+own edits) reaches the report and not just the screen.
 
 ### The third hop is Rashmir's own, and it is not a violation (F10 t-4)
 
@@ -715,6 +803,19 @@ is not lives in the product (§7 of `content-source.md`).
 
 **Why load-bearing:** it is the line between a coaching instrument and an advice engine. Paired with
 the §0 frame, it is what keeps the tool from delivering verdicts.
+
+### The report's chapters are the product's vocabulary, not the model's
+
+`lib/app/programme/report/chapters.ts` fixes `CHAPTER_ORDER` and each chapter's heading in code. The
+report agent chooses which chapters an audit earned and what goes in them; it never chooses what a
+chapter _is_, where it sits, or what it is called. A model that could name a section would eventually
+write "Areas for improvement"; one that could sequence them would build to a finding — both are the
+advice engine this invariant exists to prevent, and `report/reading.ts` refuses any chapter key that
+is not one of the eight declared here. `what_holds_it` is deliberately the report's only analytic
+chapter, sitting after `the_distance` (a reading **of** the distance, never a substitute for it) and
+before `what_you_chose` (so a leader meets what they decided last, on their own terms) — a report with
+a whole analytic section stops being a mirror and starts being a diagnosis, which is the line this
+invariant draws.
 
 ---
 

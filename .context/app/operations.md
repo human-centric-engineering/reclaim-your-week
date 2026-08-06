@@ -102,15 +102,22 @@ it is in the client list, the published measures, and the anonymised aggregate c
 sent a quarterly reminder ninety days after it finishes an audit.
 
 **The states behind the door — `/admin/programme/preview`.** Create a test account, optionally driven
-straight to mid-audit or a completed audit, which is the only way to reach history, the summary, the
-PDF and sharing without doing a whole audit by hand. The password is shown once and is not stored.
-Leave the email blank and it uses a variation on your own address, so every message the product would
-send a leader arrives in your inbox.
+straight to mid-audit or **to the summary**, which is how you reach the summary, the PDF and sharing
+without answering every phase by hand. The password is shown once and is not stored. Leave the email
+blank and it uses a variation on your own address, so every message the product would send a leader
+arrives in your inbox.
+
+**"At the summary" stops before "finish my audit", on purpose.** All three of the summary, the report
+and the sharing choices are on that last screen; finishing moves the summary into the History
+read-back and takes sharing away altogether, and leaves the account back at the invitation to begin.
+So the audit is filled in and waiting there, and signing in opens on it. Press finish yourself when
+you want to see what finishing does — including the completion email it sends to the address in the
+first column.
 
 The fabricated answers are made up, but every one of them is written through the same service the
-audit itself uses, so what you see is what a leader would see. A completed test account has spent the
-audit it came with, so it also shows you the real "no audits left" refusal; asking for another state
-on the same account gives it a fresh one.
+audit itself uses, so what you see is what a leader would see. Finishing spends the audit the account
+came with, so a finished test account then shows you the real "no audits left" refusal; ask for
+another state on the same account and it is given a fresh one only if it has none left.
 
 **Removing one erases it**, through the same `eraseUser()` path a leader's own account deletion uses.
 Two things survive by design and both look like bugs: the terms it accepted are kept without a name

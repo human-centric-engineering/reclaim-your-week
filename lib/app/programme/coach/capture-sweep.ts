@@ -179,6 +179,8 @@ Take only what the leader said or plainly implied. Where they answered the quest
 
 Never invent. A reading you cannot support from the exchange is one you leave out, and leaving something out costs nothing because you run again on the next turn. An empty list is a correct and common answer.
 
+Leaving one out means returning nothing for it. It never means returning it with a value that says it was not answered. "The leader did not give their first name", "not provided", "unknown" and anything like them are not values: the leader is shown every value you return, under that reading's own name, as though they had said it. If the exchange did not answer a reading, it is simply not in your list.
+
 Where a reading needs a figure, a yes or no, or a date, put the bare value in the value field and nothing else: "25", "Yes", "No", "2026-07-28". A figure the leader hedged is still a figure if they named one, so "about twenty five" is 25. A figure they never named is not: if they said it varies and gave no number, leave the reading out rather than choosing one for them.
 
 Everything else goes in value as plain language, close to the leader's own words, with their own sentence in verbatim when you have it.

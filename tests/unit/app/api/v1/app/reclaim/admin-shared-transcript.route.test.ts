@@ -36,6 +36,7 @@ const TRANSCRIPT = {
   runId: RUN_ID,
   quarter: 'Q3 2026',
   sharedAt: '2026-07-01T00:00:00.000Z',
+  fabricated: false,
   turns: [
     {
       id: 't1',

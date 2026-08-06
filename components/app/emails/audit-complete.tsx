@@ -30,9 +30,14 @@
  * ## Why the link is login-gated
  *
  * It goes to `/programme/history/<runId>`, not to a tokenised URL and not to an attached PDF. The
- * summary carries their role, their hours and what they said their priorities were. `ReclaimShare`
- * tokens have no expiry and no revoke, which is a fair trade for a summary a leader chose to publish
- * and the wrong one for a link the system mails unasked. A sign-in is the correct friction here.
+ * report carries their role, their hours, what they said their priorities were and, since the
+ * report agent was allowed to read the audit, a reading written from what they said in it. A sign-in
+ * is the correct friction for that.
+ *
+ * **There is no longer a tokenised URL to weigh this against.** The public share link had no expiry
+ * and no revoke, and it has been removed rather than kept for the case where a leader chose it
+ * (`lib/app/programme/share.ts`). This paragraph used to call it a fair trade for a summary somebody
+ * published deliberately; the report is a different document now, and nothing publishes it.
  */
 
 import * as React from 'react';

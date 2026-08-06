@@ -23,6 +23,8 @@
  * imported now, and the capability calls it too.
  */
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, it, expect } from 'vitest';
 import {
   reclaimCoachAgent,
@@ -36,6 +38,7 @@ import {
   COACH_REFUSED_GROUPS,
   COACH_WRITABLE_GROUPS,
   COACH_WRITABLE_SLOTS_IN_REFUSED_GROUPS,
+  slotDefinitionFor,
 } from '@/lib/app/programme/coach/writable-slots';
 
 const grants = reclaimCoachAgent.capabilities;
@@ -60,12 +63,9 @@ function slugInGroup(group: string): string {
 }
 
 describe('I6 — granted capabilities', () => {
-  it('grants the read tools plus the one write, and nothing else', () => {
+  it('grants the one write and the one offer, and nothing else', () => {
     expect(new Set(slugs)).toEqual(
       new Set([
-        'get_journey_state',
-        'get_next_steps',
-        'get_state',
         RECLAIM_RECORD_ANSWERS_SLUG,
         // A read in every sense that matters here: it returns static option text and touches neither
         // the run nor a slot. It is on this list rather than exempt from it because I6 is a claim
@@ -88,10 +88,32 @@ describe('I6 — granted capabilities', () => {
     expect(slugs).not.toContain('fill_slot');
   });
 
-  it('the read tools carry no exposure restriction (the agent may read state)', () => {
+  it('never grants the framework reads — they answer across runs, this audit is one run', () => {
+    // Removed 2026-08-04, and this assertion is the I6 half of that change rather than the
+    // performance half. `get_state` answers from the leader's slot values across every audit they
+    // have ever run, undated and unscoped: on a live run it returned a `reclaim_reflection_p1` and a
+    // deep-work blocker captured in a *previous* audit. The briefing that replaced these tools is
+    // authoritative precisely because it is scoped to one run, and a second tool that can silently
+    // contradict it takes that property away. Beside `fill_slot` and `request_transition` because
+    // all three are absences that have to stay absences.
     for (const slug of ['get_journey_state', 'get_next_steps', 'get_state']) {
-      const grant = grants.find((c) => c.slug === slug);
-      expect(grant?.customConfig).toBeUndefined();
+      expect(slugs).not.toContain(slug);
+    }
+  });
+
+  it('names every retired grant in the seed that disables it, because a missing row is permissive', () => {
+    // The dispatcher synthesizes a default-allow binding for a missing pivot row, so removing a
+    // capability from the authored list is not what revokes it — `004-reclaim-coach-grants` writing
+    // `isEnabled: false` is. Its stale sweep only touches rows that exist, so a fresh install would
+    // never deny a tool it never granted. This pins the two lists together: anything I6 refuses by
+    // name must also be in `RETIRED`, or the denial ships as a no-op on new databases.
+    const seed = readFileSync(
+      join(process.cwd(), 'prisma/seeds/app-reclaim/004-reclaim-coach-grants.ts'),
+      'utf8'
+    );
+    const retired = /const RETIRED = \[([^\]]*)\]/.exec(seed)?.[1] ?? '';
+    for (const slug of ['fill_slot', 'get_journey_state', 'get_next_steps', 'get_state']) {
+      expect(retired).toContain(`'${slug}'`);
     }
   });
 
@@ -210,13 +232,36 @@ describe('I6 — record_answers takes its run from the server, so it may write t
     }
   });
 
-  it('permits the two questions the coach is told to ask before an upload', () => {
+  it('permits the leader-answered slugs inside the refused calendar group', () => {
     // `completeness` decides how every later figure is framed, and a conversation that cannot record
     // the answer to a question it was told to ask captures nothing at the point that matters.
+    // `declined` is the same argument about the other answer: the branch is offered once, and
+    // without somewhere to put a "no" the coach asks again.
+    //
+    // The typed value follows the slot's own data type, which is the point of reading the definition
+    // rather than passing `undefined`: a boolean exception that arrived with prose alone would be
+    // refused by the typed-value rule, and this test would be asserting the group check while
+    // silently passing for the wrong reason.
     for (const slug of COACH_WRITABLE_SLOTS_IN_REFUSED_GROUPS) {
       expect(facetAllowsWrite(write, 'reclaim_calendar')).toBe(true);
-      const check = checkSlotWrite(slug, undefined);
+      const definition = slotDefinitionFor(slug);
+      expect(definition, `${slug} must be a registered slot`).toBeDefined();
+      const typed = definition?.dataType === 'boolean' ? true : undefined;
+      const check = checkSlotWrite(slug, typed);
       expect(check.ok, `${slug} must be writable`).toBe(true);
+    }
+  });
+
+  it('records a declined calendar offer as the leader-facing "No"', () => {
+    // The prose is what the leader is shown beside the conversation, and a boolean whose sentence
+    // disagreed with its typed value is the failure `checkSlotWrite` normalises away. Pinned here
+    // because this slug is what stops a second offer: a row reading "Yes" over a stored `false`
+    // would leave the leader unable to see what the audit thinks they said.
+    const check = checkSlotWrite('reclaim_calendar_declined', true, { value: 'Not now' });
+    expect(check.ok).toBe(true);
+    if (check.ok) {
+      expect(check.accepted.valueJson).toBe(true);
+      expect(check.accepted.value).toBe('Yes');
     }
   });
 
@@ -377,16 +422,16 @@ describe('a number reading is stored as prose a leader can read', () => {
  * application to a column on the run, never to a slot: a slot value is what the *leader* said, and
  * writing the tool's own prose there would make every consumer that treats a slot as testimony wrong.
  */
-describe('I6 — the analyst is not a second writer', () => {
+describe('I6 — the report agent is not a second writer', () => {
   it('declares no capabilities at all', async () => {
-    const { reclaimAnalystAgent } = await import('@/lib/app/programme/analyst/agent');
+    const { reclaimReportAgent } = await import('@/lib/app/programme/report/agent');
     // Not "no write capability" — no capability field whatsoever. There is nothing to widen.
-    expect('capabilities' in reclaimAnalystAgent).toBe(false);
+    expect('capabilities' in reclaimReportAgent).toBe(false);
   });
 
   it('is seeded internal, so it can never resolve as a surface a leader could chat to', async () => {
     const seed = await import('node:fs').then((fs) =>
-      fs.readFileSync('prisma/seeds/app-reclaim/005-reclaim-analyst.ts', 'utf8')
+      fs.readFileSync('prisma/seeds/app-reclaim/007-reclaim-report.ts', 'utf8')
     );
     expect(seed).toContain("visibility: 'internal'");
     expect(seed).not.toContain("visibility: 'public'");
@@ -397,10 +442,10 @@ describe('I6 — the analyst is not a second writer', () => {
 
   it('never reaches a slot write path', async () => {
     const fs = await import('node:fs');
-    const dir = 'lib/app/programme/analyst';
+    const dir = 'lib/app/programme/report';
     for (const file of fs.readdirSync(dir)) {
       const code = fs.readFileSync(`${dir}/${file}`, 'utf8');
-      expect(code, `${file} writes slots — the analyst's output is not testimony`).not.toMatch(
+      expect(code, `${file} writes slots — the report agent's output is not testimony`).not.toMatch(
         /\bsaveAnswer\b|\bappendSlotValue\b|\bsaveRunAnswer\b/
       );
       // `streamChat` would persist an AiMessage, putting a non-conversational pass into the

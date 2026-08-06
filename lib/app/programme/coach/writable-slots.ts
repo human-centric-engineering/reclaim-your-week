@@ -11,7 +11,7 @@
  *   leader's words may be republished. An agent that can write consent can manufacture it.
  * - **`reclaim_calendar` and `reclaim_composite`** — computed lanes whose privacy story is that they
  *   hold deterministic per-bucket totals and nothing else. Model-derived numbers in there would make
- *   that story false. **Two slugs inside `reclaim_calendar` are the exception**; see
+ *   that story false. **Three slugs inside `reclaim_calendar` are the exception**; see
  *   `COACH_WRITABLE_SLOTS_IN_REFUSED_GROUPS` below.
  *
  * ## `reclaim_reflection` was the third refusal, and is now a narrowed permission
@@ -117,6 +117,14 @@ export const COACH_REFUSED_GROUPS: Readonly<Record<string, string>> = {
  * later figure is framed. A conversation that cannot record the answer to a question it was told to
  * ask captures nothing at the one point where the whole framing is decided.
  *
+ * `reclaim_calendar_declined` is the third, and it is the same argument about the *other* answer to
+ * the same question. The branch is offered once and a no is meant to end it, but the briefing is
+ * rebuilt from the run's answers on every turn, so nothing carried the refusal forward and the coach
+ * asked again — the one thing the offer's own wording promises it will not do. A leader's "no thank
+ * you" is their answer, not a computed figure, and it has to be recordable from the conversation it
+ * was said in. The leader can also press it on screen (the offer card's "Not now"), which is the
+ * deterministic half; this is the half that catches a decline said in prose.
+ *
  * The other four self-reports in this group (`switch_frequency`, `reactive_time`, `offcal_work`,
  * `messaging_load`) stay refused. They are asked on the review screen after the upload, which is
  * where they belong, and opening them here would hand the coach four questions with no beat to ask
@@ -128,6 +136,7 @@ export const COACH_REFUSED_GROUPS: Readonly<Record<string, string>> = {
 export const COACH_WRITABLE_SLOTS_IN_REFUSED_GROUPS: readonly string[] = [
   'reclaim_calendar_completeness',
   'reclaim_calendar_period',
+  'reclaim_calendar_declined',
 ];
 
 /**
@@ -281,8 +290,161 @@ export interface SlotWriteRefusal {
     | 'group_refused'
     | 'typed_value_required'
     | 'reflection_wrong_phase'
-    | 'reflection_not_inferred';
+    | 'reflection_not_inferred'
+    | 'not_an_answer'
+    | 'points_at_an_answer';
   message: string;
+}
+
+/**
+ * Placeholders a writer reaches for instead of leaving a reading out. The whole value, or nothing.
+ *
+ * Matched against the complete value rather than searched for inside one, because every word here is
+ * ordinary English that a real answer may contain. "Unknown" is the audit having nothing; "the part I
+ * do not have a name for yet is unknown to me" is a leader saying something.
+ *
+ * Deliberately **not** including a bare "no" or "none": those are answers. A boolean's prose is the
+ * word for its own value, and a text reading really can come back as "none" where the question is
+ * what the leader would drop.
+ */
+const PLACEHOLDER_VALUES: readonly string[] = [
+  'n/a',
+  'na',
+  'nil',
+  'unknown',
+  'unspecified',
+  'undisclosed',
+  'no answer',
+  'no response',
+  'not applicable',
+  'not answered',
+  'not available',
+  'not disclosed',
+  'not given',
+  'not known',
+  'not mentioned',
+  'not provided',
+  'not specified',
+  'not stated',
+  'not supplied',
+  'not yet',
+  'not yet known',
+  'not yet provided',
+];
+
+/**
+ * A writer narrating **about** the leader rather than recording what they said.
+ *
+ * Anchored at the start, and that is the whole of why it is safe. The failure looks like this, from a
+ * live audit: the capture sweep read a message that mentioned a role, a team and a location count, and
+ * returned `reclaim_profile_first_name` with the value "The leader did not provide their first name in
+ * this exchange." at confidence 9. Nothing refused it, and the leader's own screen then showed that
+ * sentence, in the row headed "Your first name", as though they had said it.
+ *
+ * A recorded value is the leader's content. Nothing they say about themselves opens "the leader" or
+ * "the participant", so an opening in the third person is the writer stepping outside its job. Left
+ * unanchored the same words would catch a real reflection — "I am not the leader I want to be" — which
+ * is exactly the reading this app is most careful about, so the anchor is load-bearing rather than
+ * tidy.
+ */
+// `person` is deliberately not in this set: unlike `leader`/`user`/`participant` (this product's own
+// vocabulary, which a leader would not use to describe themselves), "the person who..." is ordinary
+// English a real answer can open with — e.g. delegating a task to "the person who runs delivery".
+// Including it would refuse a real answer for the sake of a failure mode nobody has observed opening
+// with that word.
+const NARRATES_ABOUT_THE_LEADER = /^\s*(?:the|this)\s+(?:leader|user|participant)\b/i;
+
+/**
+ * "No first name was provided", "No figure was given" — the same non-answer in the passive.
+ *
+ * Anchored for the same reason, and it requires the verb as well as the opening, so a leader's own
+ * "no time was protected last quarter" does not read as a placeholder. That sentence is an answer
+ * about their week; this pattern wants a sentence about the record.
+ */
+const REPORTS_AN_ABSENCE =
+  /^\s*(?:no|none)\b[^.?!]{0,60}?\b(?:was|were|is|are|has been|have been)\s+(?:provided|given|mentioned|stated|specified|shared|supplied|offered|disclosed)\b/i;
+
+/**
+ * Whether this prose is a report that there was nothing to record, rather than a reading.
+ *
+ * Exported because it states a rule about *values*, and `checkSlotWrite` is not the only place that
+ * may one day need it. False negatives here cost nothing new — the value is stored, exactly as it was
+ * before this existed. A false positive discards something a leader said, so every test is anchored
+ * or exact and none of them searches inside a sentence.
+ *
+ * **It guards what a model writes, never what a leader types.** `checkSlotWrite` is reached only from
+ * `record_answers` and the capture sweep; the form panel writes through `saveAnswer` directly. So a
+ * leader who types "N/A" into a field has said "N/A", and the audit keeps it. The rule is about a
+ * writer reporting on the record, and only a model writes that way.
+ */
+/**
+ * An answer that only points at one, rather than being one.
+ *
+ * ## The failure, from a live audit
+ *
+ * The coach offered three ways in. The leader typed **"1"**. `reclaim_action_chosen` was recorded as
+ * `"1"`, and every reader downstream inherited it: the report's "What you will start" panel, the PDF a
+ * leader keeps, the email, and now the report agent, which was asked to write a chapter about what
+ * this person had decided to do and given the digit 1 to write it from.
+ *
+ * "1" was a true record of the keystroke and a useless record of the answer. The option's own words
+ * were on the leader's screen one line above, and the audit stored the pointer instead of the thing
+ * pointed at.
+ *
+ * ## Why this is not the tool putting words in anybody's mouth
+ *
+ * This is the rule `numberProse` already applies to figures, said about text: *a naked "5" under a
+ * label is the audit making the leader do the reading.* Same argument, same fix.
+ *
+ * It resolves a **reference**, and it never interprets a **meaning**. "1" becomes the option the
+ * coach itself offered, in the coach's own words. "Yes" becomes the proposition the leader agreed to,
+ * which is the question that was just asked. Neither is the tool deciding what somebody meant, which
+ * is what I6's "never inferred" forbids; both are the tool writing down what was said in a form that
+ * still says it when read on its own six months later, in a document with no conversation around it.
+ *
+ * ## What it deliberately does not catch
+ *
+ * **A bare "no" or "none".** `PLACEHOLDER_VALUES` explains why and the reasoning holds here: asked
+ * what they would drop, "none" is a complete answer with content in it. A bare *affirmative* never
+ * is — "yes" carries none of the thing agreed to — which is the asymmetry this list encodes.
+ *
+ * **Anything with a sentence around it.** "1, the protected mornings" is self-contained enough. Every
+ * pattern below matches the **whole** value, like every other rule in this file.
+ *
+ * **Booleans and numbers.** They have their own repairs above and "Yes" is the correct stored prose
+ * for a yes-or-no. This applies to text slots only.
+ */
+const POINTS_AT_AN_OPTION: readonly RegExp[] = [
+  // A bare index, with or without the words that usually dress one: "1", "2.", "option 3", "no. 2".
+  /^\s*(?:option|number|no\.?|#)?\s*\d{1,2}\s*[.):]?\s*$/i,
+  // A positional reference: "the first", "second one", "the last one".
+  /^\s*(?:the\s+)?(?:first|second|third|fourth|last)(?:\s+one)?\s*[.]?\s*$/i,
+  // A demonstrative standing in for the thing: "that one", "this one", "that".
+  /^\s*(?:that|this|it)(?:\s+one)?\s*[.]?\s*$/i,
+  // A bare affirmative. It agrees to something and carries none of it.
+  /^\s*(?:yes|yeah|yep|yup|ya|sure|ok|okay|k|correct|right|true|agreed|i\s+agree|absolutely|definitely|exactly|indeed|please|go\s+ahead)\s*[.!]?\s*$/i,
+];
+
+/**
+ * Whether this prose points at an answer instead of being one.
+ *
+ * Text slots only — the caller checks the data type. Exported so the rule can be asserted directly
+ * against every text slot in the audit rather than only through one code path.
+ */
+export function pointsAtAnAnswer(value: string): boolean {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return false;
+  return POINTS_AT_AN_OPTION.some((pattern) => pattern.test(trimmed));
+}
+
+export function isNotAnAnswer(value: string): boolean {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return true;
+  // Trailing punctuation only: a placeholder arrives as "N/A" or "Not provided." and both are the
+  // same non-answer. Inner punctuation is left alone so a real sentence is never reduced to one.
+  const bare = trimmed.replace(/[.!?,;:\s]+$/, '').toLowerCase();
+  if (PLACEHOLDER_VALUES.includes(bare)) return true;
+  return NARRATES_ABOUT_THE_LEADER.test(trimmed) || REPORTS_AN_ABSENCE.test(trimmed);
 }
 
 /** An accepted write, with the typed value resolved to what `saveAnswer` should store. */
@@ -399,8 +561,38 @@ export function checkSlotWrite(
     }
   }
 
+  // A reading nobody gave is a reading left out, not a sentence saying so.
+  //
+  // Checked before the typed rule and for every slot, though only a text slot can actually reach here
+  // with one: a typed slot whose prose narrates an absence has no typed value to go with it and is
+  // already refused below. Keeping the rule general means the two writers cannot find a way past it by
+  // sending a figure with a sentence about the figure's absence beside it.
+  if (conditions.value !== undefined && isNotAnAnswer(conditions.value)) {
+    return {
+      ok: false,
+      refusal: {
+        code: 'not_an_answer',
+        message: `"${slotSlug}" was not answered in what you read, so there is nothing to record. Leave it out. A note that the leader did not say is not a value, and it is shown to them under this reading's own name as though they had said it.`,
+      },
+    };
+  }
+
   const dataType = definition.dataType ?? SLOT_DATA_TYPE.text;
-  if (dataType === SLOT_DATA_TYPE.text) return { ok: true, accepted: { slotSlug } };
+  if (dataType === SLOT_DATA_TYPE.text) {
+    // A pointer is not an answer. The refusal names what to do instead, because the coach is the one
+    // holding the thing being pointed at: it offered the options, and it asked the question the
+    // leader said yes to.
+    if (conditions.value !== undefined && pointsAtAnAnswer(conditions.value)) {
+      return {
+        ok: false,
+        refusal: {
+          code: 'points_at_an_answer',
+          message: `"${conditions.value.trim()}" points at an answer instead of being one. Record what it refers to, in a sentence that still says something on its own: the words of the option they picked, or the thing they just agreed to. This reading is shown to the leader under its own name and goes into the report they keep, where there is no conversation around it to explain what "${conditions.value.trim()}" meant.`,
+        },
+      };
+    }
+    return { ok: true, accepted: { slotSlug } };
+  }
 
   // The typed form the caller sent, or the one its own prose plainly is. The fallback is why a coach
   // that answered "25" in the only field it had for the count no longer loses the reading over which

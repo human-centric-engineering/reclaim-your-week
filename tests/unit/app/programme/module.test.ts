@@ -41,8 +41,8 @@ describe('reclaimAuditModule definition', () => {
     expect(RECLAIM_COACH_ROLE).toBe('coach');
   });
 
-  it('declares the 106 slot definitions (t-2)', () => {
-    expect(reclaimAuditModule.slotDefinitions).toHaveLength(106);
+  it('declares the 107 slot definitions (t-2)', () => {
+    expect(reclaimAuditModule.slotDefinitions).toHaveLength(107);
   });
 });
 

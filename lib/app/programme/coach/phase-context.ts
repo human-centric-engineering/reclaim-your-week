@@ -28,8 +28,10 @@ import { hasCompletedAudit } from '@/lib/app/programme/compare';
 import {
   phaseCaptureSlots,
   slotApplies,
+  compoundQuestionSlugs,
   type PhaseSlot,
 } from '@/lib/app/programme/coach/phase-slots';
+import { phaseCoverage } from '@/lib/app/programme/coach/coverage';
 import { RECLAIM_PHASES } from '@/lib/app/programme/map';
 import {
   phaseNumber,
@@ -48,11 +50,15 @@ import {
   chartRevealed,
   everyVisibleAreaHasHours,
 } from '@/lib/app/programme/chart/reveal';
+// Naming the absence (Brief §5). Shared with the report, which must not tell a leader something
+// different about their own week from what the coach said out loud. See `chart/absence.ts`.
+import { nearZeroAreas } from '@/lib/app/programme/chart/absence';
 import {
   readReclaimCoachContent,
   readReclaimSignposts,
   type ReclaimCoachContent,
 } from '@/lib/app/programme/config';
+import { readReclaimQuestioning } from '@/lib/app/programme/coach/questioning';
 import { signpostFor, type PhaseSignpost } from '@/lib/app/programme/runs/signposts';
 import {
   presentAnswer,
@@ -290,61 +296,6 @@ function contentForPhase(
 }
 
 /**
- * The two areas the Brief singles out for naming the absence, in the order it names them.
- *
- * "If a category is near zero, especially recovery and white space or deep work, the tool gently
- * wonders about it rather than merely charting it." Everything else that is near zero is worth
- * mentioning; these two are worth mentioning first.
- */
-const ABSENCE_FIRST = ['recovery-white-space', 'deep-work'];
-
-/**
- * Areas that are near zero, which is not the same as zero.
- *
- * `ChartData.unallocated` is `hours === 0` exactly (`chart/series.ts`), which is the right definition
- * for a chart and the wrong one for this beat: a leader with one hour of recovery in a fifty-hour
- * week has, for every purpose the Brief cares about, none. The threshold is **derived from the area's
- * own benchmark** rather than invented here — below half of where the guide starts — so an operator
- * moving a benchmark moves this too, and there is no number in this file for anyone to argue with.
- *
- * Areas with no benchmark at all (fundraising, which is season-dependent) are never named this way:
- * there is nothing to be near-zero against.
- */
-function nearZeroAreas(chart: ReturnType<typeof buildChartData>, answers: Answers): string[] {
-  const near = chart.buckets.filter(
-    (b) =>
-      b.hours > 0 && b.status === 'under' && b.lowPercent !== null && b.percent < b.lowPercent / 2
-  );
-
-  // **Deep work needs its own test, and this is not a special case so much as the right measure.**
-  // The Brief names two areas to wonder about, recovery and deep work — but deep work is the one
-  // area the canonical content gives no percentage range to: "no percentage range. Measured by
-  // presence of protected blocks." So the percentage rule above can never flag it, and the beat
-  // written for it would have quietly never fired. The signal the content itself nominates is the
-  // protected-block reading, which this phase already asks for.
-  const noBlock =
-    truthy(answers['reclaim_current_deep_block_exists']) === false &&
-    answers['reclaim_current_deep_block_exists'] !== undefined;
-  const deepWork = chart.buckets.find((b) => b.slug === 'deep-work');
-  const deepWorkAbsent =
-    noBlock && deepWork !== undefined && !chart.unallocated.includes(deepWork.title)
-      ? [deepWork.title]
-      : [];
-
-  const named = [...chart.unallocated, ...near.map((b) => b.title), ...deepWorkAbsent];
-  // The Brief's two first, in its order, then everything else as it comes.
-  const priority = new Map(
-    ABSENCE_FIRST.map((slug, index) => [
-      chart.buckets.find((b) => b.slug === slug)?.title ?? slug,
-      index,
-    ])
-  );
-  return named.sort(
-    (a, b) => (priority.get(a) ?? ABSENCE_FIRST.length) - (priority.get(b) ?? ABSENCE_FIRST.length)
-  );
-}
-
-/**
  * The Brief's permission-based challenge: once per audit, asked, and only then delivered.
  *
  * **"Once per audit" is a discipline here and not a control, and that has to be said out loud** — in
@@ -523,11 +474,26 @@ async function closingContext(
   if (takeaway === undefined) {
     parts.push(
       '',
-      'They have not yet said what they are taking away, and the summary does not appear until they',
-      'have. Ask them, once, and let it land. When they answer, offer their own words back and record',
-      'it with record_answers as reclaim_reflection_p6, in their words, never inferred, and never',
-      'before they have said it. Do not produce a summary of the audit yourself and do not list what',
-      'they should have learned.'
+      'They have not yet said what they are taking away. Ask them, and let it land. Frame it as the',
+      'thing that comes before the artifact. Say something close to these words, so they know what',
+      'answering leads to:',
+      // One line, unbroken, because the card above the conversation says the same sentence
+      // (`signposts.ts`) and a phrase split across a newline is a phrase the guard cannot check.
+      '"Before offering you a downloadable summary, one last question."',
+      'When they answer, offer their own',
+      'words back and record it with record_answers as reclaim_reflection_p6, in their words,',
+      'never inferred, and never before they have said it.',
+      'Do not produce a summary of the audit yourself and do not list what they should have learned.',
+      '',
+      // The screen no longer waits for the recording, so the briefing must not tell the coach it
+      // does. The gate releases on the leader's *answer* (`phase6-panel.tsx`): a takeaway the coach
+      // heard but failed to write used to hold a leader at the last question of the audit with the
+      // summary behind it, and asking again is what that failure looked like from their side.
+      'Only once. If the conversation above already shows you asking this and them answering, then',
+      'the question has been asked and their summary is already on screen:',
+      'it is released by their answer, not by your recording of it.',
+      'Record what they said if it is still unrecorded, but do that silently: acknowledge them and go',
+      'on to the close. Asking a second time is asking them to say it again for the machine.'
     );
   } else {
     parts.push(
@@ -593,6 +559,7 @@ function momentForPhase(
     // whichever way the branch went. So both are assembled here rather than one returning early.
     const parts: string[] = [];
     const uploaded = truthy(answers['reclaim_calendar_uploaded']);
+    const declined = truthy(answers['reclaim_calendar_declined']);
     const completeness = answers['reclaim_calendar_completeness'];
     const everyAreaAnswered = everyVisibleAreaHasHours(answers);
 
@@ -626,6 +593,24 @@ function momentForPhase(
           );
         }
       }
+    } else if (declined) {
+      // The offer has been made and answered, and this is what "offered once" costs to keep true.
+      //
+      // The instruction below has always said "if they decline do not return to it", and the coach
+      // could not obey it: this briefing is rebuilt from the run's answers on every turn, so a
+      // decline that nothing recorded left the offer branch firing again a few turns later. A leader
+      // who had already said no was asked a second time, by a message whose own wording promises it
+      // is optional. The decline is now a reading (`reclaim_calendar_declined`), written either by
+      // the coach hearing the no or by the leader pressing "Not now" on the card, and this is the
+      // branch it buys.
+      parts.push(
+        '',
+        'They have already been offered the calendar branch and said no. That is a complete answer.',
+        'Do not offer it again, do not check whether they have changed their mind, and do not refer to',
+        'it in passing. If they raise it themselves, the way in is a button on their screen and they can',
+        'take it whenever they like; say so plainly and briefly, and carry on with the audit as it is.',
+        'What they estimated is the picture, and it is worth as much without a calendar behind it.'
+      );
     } else if (everyAreaAnswered) {
       // Gated on the data rather than on the model's sense of "have we finished", so the offer can
       // never arrive halfway through the areas.
@@ -635,6 +620,9 @@ function momentForPhase(
         'it once, close to these words, take no for an answer without persuading, and if they decline',
         'do not return to it:',
         RECLAIM_CALENDAR_OFFER,
+        'If they say no, or not now, record reclaim_calendar_declined as true with the boolean in',
+        'valueJson before you say anything else, and then let it go warmly. That reading is the whole of',
+        'what stops them being asked a second time, so it matters more than anything you would say next.',
         'It is optional and the audit is worth doing without it, so say so. If they say yes, ask two',
         'things before anything else: how much their calendar reflects their actual working life, and',
         'what period they would like analysed. Record both as reclaim_calendar_completeness and',
@@ -777,6 +765,11 @@ function momentForPhase(
 
     // Suppressed once the phase's own reflection is recorded: the challenge belongs before the pause,
     // not after it. Free, because `reflected` is already in this function's signature.
+    //
+    // It sits above the closing beat below, and the two gates are why it can. The challenge fires on
+    // `complete` — the spread — so it is usually offered and answered while the leader is still on the
+    // last two questions, long before the picture is drawn. Where both are live in the same turn, this
+    // order is the one the coach reads them in.
     if (reading.shouldChallenge && !reflected) {
       parts.push(
         '',
@@ -792,6 +785,46 @@ function momentForPhase(
         'change felt impossible rather than undesirable, so ask what would have to be true for it to',
         'look different, and let the answer stand. If they say this is the week they want, that is a',
         'real answer and the audit carries on from it. Do not offer this twice.'
+      );
+    }
+
+    // The section's closing picture, and the order it has to run in.
+    //
+    // This phase draws the designed week over the reported one once all four of its questions are
+    // answered — the total, the spread, the deep-work block and the protected commitment. The chart is
+    // placed in the transcript under the turn it appeared on, so the reflection cannot share that
+    // turn: a coach that records the last reading and asks what stands out in the same breath puts its
+    // question above the picture the question is about. That is what a tester met, and the only thing
+    // that separates the two beats is this instruction, because the model is the one deciding where
+    // the turn ends.
+    //
+    // The first branch is guidance and never a gate. A leader who will not put a figure on one area
+    // can still close this section — the reflection's own note below says so, and holding the closing
+    // question behind a reading nobody may ever give is the deadlock that note exists to avoid.
+    if (!reading.designComplete) {
+      parts.push(
+        '',
+        'There is no picture on their screen yet. This section ends with the week they have designed',
+        'drawn over the week they described, and it appears once all four of the questions in this',
+        'section are recorded. So finish the four first, and do not ask what stands out to them',
+        'before the picture is there for them to look at.'
+      );
+    } else if (!reflected) {
+      parts.push(
+        '',
+        'The week they designed is now drawn on their screen, over the week they described, area by',
+        'area. It arrived because the last of the four readings landed, which makes this the section',
+        'closing rather than another question inside it, and it comes before anything on the capture',
+        'list below.',
+        '',
+        'Say briefly what the picture shows: the total they are aiming at, and the two or three areas',
+        'that move the most, in hours and by name. Then ask one question, close to "what stands out to',
+        'you here?", and stop. Do not interpret it for them, do not add observations of your own, and',
+        'do not move them on. Their own noticing comes first, and your reading of it comes after.',
+        '',
+        'If the reading that completed the four has only just been recorded, this is the next turn and',
+        'not that one. Confirm what they said, and let the picture arrive: a turn that records the last',
+        'answer and asks what stands out in the same breath asks about a picture they have not seen.'
       );
     }
 
@@ -1149,7 +1182,12 @@ function howToAsk(next: NextQuestion): string[] {
     // instruction and the question it governs cannot come apart, because the same `NextQuestion`
     // produced both. The offer is only mentioned for a question that is actually being asked, so a
     // turn that follows the leader somewhere else carries no instruction to offer anything.
-    ...(hasChoices(next.slot.slug)
+    //
+    // And never for an anchor with followers riding along. The line above has just told the coach to
+    // ask this reading and its partner as one question; a set of answers under a two-part question
+    // answers half of it, and the leader is left looking at Yes / No beneath "how does that shape the
+    // way you lead?". See `compoundQuestionSlugs` for the failure this closes.
+    ...(next.alongside.length === 0 && hasChoices(next.slot.slug)
       ? [
           `This reading is answered from a fixed set, so call offer_choices for ${next.slot.slug} in`,
           'this same turn, straight after asking. The answers appear under your question on their',
@@ -1197,13 +1235,35 @@ function nextQuestionLines(next: NextQuestion[]): string[] {
     // pointer says the phase is finished and offers a way onward it cannot see. Both are forbidden a
     // few paragraphs above, and it said them anyway, because a rule about what not to do is no use to
     // a model that has nothing left to do instead.
+    //
+    // "Nothing else that belonged to it" is the second half, and it was written after a live audit
+    // took this branch correctly and still got the screen wrong: handed the period it had asked for,
+    // the coach recorded it, asked the fallback question, and called `offer_choices` for the period
+    // anyway, because the instruction to offer sits a few lines above under the reading it named. The
+    // leader met four periods to choose from under a question about what stands out to them. The
+    // capability now refuses that outright (`settled-reading.ts`) and this is the prose that stops it
+    // being attempted, which is worth having as well: a refusal costs the coach an iteration it can
+    // spend on the turn instead.
+    //
+    // It says "their last message" rather than "the message you are replying to", and the difference
+    // is a live audit. Asked how much deep work they wanted, the leader said "10"; the provider threw
+    // 429 before the coach spoke, and the client picked the turn back up. Nothing had swept the "10" —
+    // a turn that dies has no `done` frame to sweep from — so this block named deep work again, and
+    // the escape hatch below did not fire, because on a resumed turn the message being replied to is a
+    // stage direction (`COACH_RESUME_TRIGGER`) and not an answer to anything. The coach asked for a
+    // figure that was three lines above it in the transcript. The route now sweeps before it resumes,
+    // which is the half of the fix that does not depend on prose; this is the half that still holds
+    // when that sweep could not run, which after a provider refusal is exactly when it could not.
     ...(second === undefined
       ? []
       : [
           '',
-          'And if that one is what they have just answered in the message you are replying to, which is',
-          'likely, because it is the question you last asked: record what they said, do not ask it again,',
-          'and let the turn end on this instead:',
+          'And if that one is what they have already answered, which is likely, because it is the question',
+          'you last asked: record what they said, do not ask it again, and do not offer its answers either,',
+          'because the question they belonged to is over. Read their last message to decide that, not only',
+          'the message you are replying to: a turn you are picking back up is answered by the message before',
+          'the one that asked you to pick it up.',
+          'Then let the turn end on this instead:',
           namedQuestion(second),
           ...howToAsk(second),
         ]),
@@ -1218,11 +1278,19 @@ function nextQuestionLines(next: NextQuestion[]): string[] {
  * put a second copy in the model's context, which is the copy that eventually gets paraphrased into
  * the reply. The coach needs to know only that this question closes on a set, and to name the
  * reading; the screen does the rest.
+ *
+ * `insideCompound` is the one case where a reading that has a set must not be told it has one. The
+ * list draws those under "Ask these as one question", and the coach did exactly as it was told: it
+ * asked the pair in one breath *and* offered the anchor's yes-or-no, so a leader asked how a
+ * distributed team shapes their leadership got two buttons that answer a different question. The set
+ * belongs to the reading; the question on screen is the pair. See `compoundQuestionSlugs`.
  */
-function choiceNote(slug: string): string {
+function choiceNote(slug: string, insideCompound: boolean): string {
   // The line it is appended to ends on the label, which carries no full stop of its own, so this
   // opens with one. Without it the note runs straight on from the label into a sentence.
-  return hasChoices(slug) ? '. This one has a fixed set of answers, so offer them.' : '';
+  return !insideCompound && hasChoices(slug)
+    ? '. This one has a fixed set of answers, so offer them.'
+    : '';
 }
 
 /** What a typed slot needs before it may be recorded, in the words the coach should act on. */
@@ -1269,18 +1337,27 @@ function typedValueNote(dataType: string): string {
  * reading it is for, it sits beside a way to type instead, and taking that way out is reversible. A
  * mismatched offer is a visible, dismissible wrong guess rather than a silent one.
  *
- * `presentation` and pairing are passed as the shipped defaults because neither can change *which*
- * slot comes back: the first only formats a captured value for display, the second only decides which
- * followers ride along with an anchor. The selection itself is the ordering in `nextQuestionFor`.
+ * `presentation` is passed as the shipped default because it cannot change *which* slot comes back —
+ * it only formats a captured value for display. The selection itself is the ordering in
+ * `nextQuestionFor`.
+ *
+ * ## And it stands down for a two-part question
+ *
+ * Pairing, by contrast, does change what comes back, so it is read rather than assumed. An anchor with
+ * followers riding along is asked as one question with an open half in it, and a set of answers under
+ * that question answers the wrong half — the failure `compoundQuestionSlugs` documents. `alongside` is
+ * populated by the same call that chose the reading, so the fallback cannot offer a set for a question
+ * the coach was told to ask two ways at once.
  */
 export async function pendingChoiceOffer(input: {
   userId: string;
   runId: string;
   phaseKey: string;
 }): Promise<{ slotSlug: string; label: string; options: string[] } | null> {
-  const [answers, bucketLabels] = await Promise.all([
+  const [answers, bucketLabels, questioning] = await Promise.all([
     readRunAnswers(input.userId, input.runId),
     readBucketLabels(input.userId).catch(() => ({})),
+    readReclaimQuestioning(),
   ]);
   const slots = phaseCaptureSlots(input.phaseKey, {
     fundraisingRelevant: truthy(answers[FUNDRAISING_RELEVANT]),
@@ -1291,8 +1368,14 @@ export async function pendingChoiceOffer(input: {
   // The first of them, which is the reading the turn was told to end on. The fallback beside it is
   // for a coach that has just had this one answered, and the answers on screen follow the question
   // that was asked rather than the one that might be asked next.
-  const [next] = nextQuestionsFor(slots, answers, DEFAULT_PRESENTATION, true);
+  const [next] = nextQuestionsFor(
+    slots,
+    answers,
+    DEFAULT_PRESENTATION,
+    questioning.pairing === 'paired'
+  );
   if (next === undefined) return null;
+  if (next.alongside.length > 0) return null;
 
   const options = choicesFor(next.slot.slug);
   if (options === null) return null;
@@ -1363,6 +1446,9 @@ export async function buildCoachPhaseContext(userId: string): Promise<string> {
 
   const paired = content.questioning.pairing === 'paired';
 
+  // The readings that will be asked two-at-a-time, so neither half is told it has buttons behind it.
+  const compound = compoundQuestionSlugs(slots, answers, paired);
+
   // At most this many `short` flags per block. Deterministic, needs no extra read, and it is what
   // actually holds the restraint rule up: a coach shown eleven short readings and told to go back for
   // them is a coach conducting an interview. `unconfirmed` is not capped, because it is an honesty
@@ -1400,32 +1486,32 @@ export async function buildCoachPhaseContext(userId: string): Promise<string> {
     // Whether this reading is one the leader picks from. Only on the unasked lines, because it is a
     // note about how to *ask*: a reading already captured is not going to be asked again, and telling
     // the coach an answered question has four buttons behind it is an invitation to re-offer them.
-    return `${indent}- ${slot.slug}: not yet captured in this audit. ${slot.label}${suffix}${choiceNote(slot.slug)}`;
+    return `${indent}- ${slot.slug}: not yet captured in this audit. ${slot.label}${suffix}${choiceNote(slot.slug, compound.has(slot.slug))}`;
   };
 
   const byslug = new Map(slots.map((slot) => [slot.slug, slot]));
 
   /**
-   * Which followers get asked inside their anchor's question.
+   * Which followers get asked inside their anchor's question — the same set `compound` names.
    *
    * A pair whose follower does not apply to this leader is not a pair: asking someone who has a
    * protected deep-work block "and what gets in its way?" is asking about something that does not
-   * exist. But a follower dropped from its group must still appear on the list somewhere, marked as
-   * settled — silently removing it would leave the coach with no way to tell a reading that is
-   * finished from one nobody thought to include, which is the ambiguity this whole mechanism exists
-   * to remove.
+   * exist. Nor is a pair whose anchor this audit already holds, because the follower is then the
+   * outstanding reading and it is asked on its own. Either way the reading dropped from its group must
+   * still appear on the list somewhere, at its own position — silently removing it would leave the
+   * coach with no way to tell a reading that is finished from one nobody thought to include, which is
+   * the ambiguity this whole mechanism exists to remove.
+   *
+   * Read off `compound` rather than derived a second time, and that is the point: the header saying
+   * "ask these as one question" and the note saying "this one has a fixed set of answers" have to come
+   * from the same arithmetic, or the list contradicts itself in the way that put Yes / No under an
+   * open question.
    */
-  const groupedFollowers = new Set<string>();
-  if (paired) {
-    for (const slot of slots) {
-      for (const slug of slot.pairedWith ?? []) {
-        const follower = byslug.get(slug);
-        if (follower !== undefined && slotApplies(follower.askOnlyIf, answers) !== false) {
-          groupedFollowers.add(slug);
-        }
-      }
-    }
-  }
+  const groupedFollowers = new Set(
+    slots
+      .filter((slot) => slot.pairedTo !== undefined && compound.has(slot.slug))
+      .map((s) => s.slug)
+  );
 
   const lines: string[] = [];
   for (const slot of slots) {
@@ -1466,17 +1552,42 @@ export async function buildCoachPhaseContext(userId: string): Promise<string> {
   // opens. Every other phase gets the un-deadlockable wording instead of a threshold, because "enough
   // of the phase has been covered" is a judgement and inventing a fraction to stand in for it would
   // only move the arbitrary line rather than remove it.
+  // Phase 3 gets the same shape as phase 1 for the same reason, and it is the one other phase that
+  // can have it. Its closing beat is also a picture — the week they designed, drawn over the week they
+  // described — and that picture appears on an event rather than at a threshold: the last of the
+  // phase's four questions landing. So "the moment is here" is a fact about the run rather than a
+  // judgement, and the reflection can be told to follow it. Every other phase keeps the
+  // un-deadlockable wording below, because for them "enough has been covered" is a judgement and a
+  // fraction invented to stand in for it would only move the arbitrary line.
   const reflectionSlug = reflectionSlugForLeaving(currentPhaseKey);
   const reflectionRecorded = reflectionSlug === null ? undefined : answers[reflectionSlug];
-  const reflectionDueNow = currentPhaseKey === CHART_REVEAL_PHASE && revealed;
+
+  /**
+   * Whether the leader's screen is offering the way onward as this turn is built.
+   *
+   * The same three conditions the screen ANDs together (`phase-conversation.tsx`): coverage, the
+   * reflection where the phase has one (I9), and the chart having been seen where the phase reveals
+   * one (I12). Coverage comes from `coach/coverage.ts` so that the two surfaces cannot answer it
+   * differently — which they did, silently, until a leader was told they could move on by a coach
+   * that had no way of knowing whether they could.
+   *
+   * Read only. Nothing here writes, and nothing the model says reaches it.
+   */
+  const wayOnwardOffered =
+    phaseCoverage(slots, answers, content.phaseCoveredPercent).covered &&
+    (reflectionSlug === null || reflectionRecorded !== undefined) &&
+    (currentPhaseKey !== CHART_REVEAL_PHASE || revealed);
+  const reflectionDueNow =
+    (currentPhaseKey === CHART_REVEAL_PHASE && revealed) ||
+    (currentPhaseKey === 'phase-3-ideal' && readIdealWeek(answers, bucketLabels).designComplete);
   const reflectionNote =
     reflectionSlug === null
       ? 'This phase has no reflection pause.'
       : reflectionRecorded !== undefined
-        ? `The reflection for this phase is recorded (${reflectionSlug}): "${reflectionRecorded.value}". Do not ask for it again. The leader can change it beside the conversation whenever they like. Do not tell them the phase is over or that they can move on: their screen offers that itself, and until they take it there is still a question worth asking from the list above.`
+        ? `The reflection for this phase is recorded (${reflectionSlug}): "${reflectionRecorded.value}". Do not ask for it again. The leader can change it beside the conversation whenever they like. Whether you may mention moving on is settled below, from what their screen is actually offering; until they take it there is still a question worth asking from the list above.`
         : reflectionDueNow
-          ? `This phase closes with the leader's own reflection (${reflectionSlug}), and the phase cannot be left until it is recorded. They have now seen the picture, so that moment is here: ask the question, and ask it before you return to anything on the list above. Readings still missing are not a reason to hold it back. When they answer, offer back what you heard in their own words and record it with record_answers as ${reflectionSlug}. Never infer it and never write it before they have said it: an inferred reflection is refused. Then carry on with the readings that are still open: do not announce that the phase is done and do not invite them to move on, because their screen offers that itself once enough of the phase has been covered.`
-          : `This phase closes with the leader's own reflection (${reflectionSlug}), and the phase cannot be left until it is recorded. Completing the list is not the condition for closing: some readings only ever apply to some leaders, and waiting for those would be a gate nobody can pass. But a reading nobody asked about is not a reading that does not apply, so cover the substance of this phase first, and where most of it is still unasked, that is a phase that has not happened yet rather than one ready to close. When it has been covered, ask one genuine question, close to "what stands out to you here?", and stop. When they answer, offer back what you heard in their own words and record it with record_answers as ${reflectionSlug}. Never infer it and never write it before they have said it: an inferred reflection is refused. Then carry on with the readings that are still open: do not announce that the phase is done and do not invite them to move on, because their screen offers that itself once enough of the phase has been covered.`;
+          ? `This phase closes with the leader's own reflection (${reflectionSlug}), and the phase cannot be left until it is recorded. They have now seen the picture, so that moment is here: ask the question, and ask it before you return to anything on the list above. Readings still missing are not a reason to hold it back. When they answer, offer back what you heard in their own words and record it with record_answers as ${reflectionSlug}. Never infer it and never write it before they have said it: an inferred reflection is refused. Then carry on with the readings that are still open: do not announce that the phase is done. Whether you may mention moving on is settled below, from what their screen is actually offering.`
+          : `This phase closes with the leader's own reflection (${reflectionSlug}), and the phase cannot be left until it is recorded. Completing the list is not the condition for closing: some readings only ever apply to some leaders, and waiting for those would be a gate nobody can pass. But a reading nobody asked about is not a reading that does not apply, so cover the substance of this phase first, and where most of it is still unasked, that is a phase that has not happened yet rather than one ready to close. When it has been covered, ask one genuine question, close to "what stands out to you here?", and stop. When they answer, offer back what you heard in their own words and record it with record_answers as ${reflectionSlug}. Never infer it and never write it before they have said it: an inferred reflection is refused. Then carry on with the readings that are still open: do not announce that the phase is done. Whether you may mention moving on is settled below, from what their screen is actually offering.`;
 
   const cardLines = cardLinesFor(currentPhaseKey, signposts, opens);
 
@@ -1515,6 +1626,21 @@ export async function buildCoachPhaseContext(userId: string): Promise<string> {
     'Where you have their own sentence for something, send it as the verbatim alongside your reading of',
     'it, in their words and not tidied. Some of what they say here is read back to them later, and it',
     'should be theirs when it is.',
+    '',
+    // The failure this paragraph exists for, from a live audit: the coach offered three ways in, the
+    // leader typed "1", and `reclaim_action_chosen` was recorded as "1". Every reader downstream
+    // inherited the digit, including the report agent, which was asked to write a chapter about what
+    // this person had decided to do. The option's own words were one line up the screen.
+    //
+    // `checkSlotWrite` refuses these now (`pointsAtAnAnswer`), so this paragraph is what stops the
+    // coach learning the rule the slow way, one refusal at a time, mid-conversation.
+    'Record what an answer means, not the keystroke it arrived as. A leader who picks an option by',
+    'typing "1", or agrees to something by typing "yes", has answered; the answer is the option they',
+    'picked or the thing they agreed to, and that is what you record. You are the one holding it: you',
+    'offered the options and you asked the question. A value that only points at an answer is refused,',
+    'because these readings are shown to the leader under their own names and go into the report they',
+    'keep, where there is nothing around them to say what "1" meant. This is not tidying their words',
+    'and it is not deciding what they meant. Where they gave you a sentence, their sentence stands.',
     '',
     // The failure this paragraph exists for, observed on a live audit: the coach replied "I'll record
     // that you're the Head of Engineering, overseeing 25 people across 5 teams" and made no call, so
@@ -1603,12 +1729,36 @@ export async function buildCoachPhaseContext(userId: string): Promise<string> {
     'That hands the work back to the person who came to be taken through this, and they have no way of',
     'knowing what you are waiting for. If you know what is missing, ask for it by name.',
     '',
-    'And do not tell them the phase is finished, that you have gathered enough, or that they can move',
-    'on to the next one. Whether the way onward is offered is worked out from what has actually been',
-    'recorded, and their screen offers it at the moment it becomes true, with what is still open',
-    'written beside it. You cannot see that, so a turn that announces it either contradicts the screen',
-    'in front of them or closes a phase that is still open. Moving on is theirs to choose and the',
-    'product is what offers it. Your job is the next question.',
+    // What used to be here was a flat prohibition, resting on "you cannot see that". The coach was
+    // told never to mention the move onward, because a turn that announced it would either
+    // contradict the screen or close a phase that was still open. It announced it anyway — observed
+    // live on phase 5, "whenever you're ready, you can move on to the next section", beside a screen
+    // offering nothing, because a reading only the coach could author was holding the gate shut.
+    //
+    // A rule a model is asked to follow is a rule it follows most of the time, which is the same
+    // reasoning that put `runCaptureSweep` and the `offer_choices` fallback where they are. So the
+    // ignorance is removed instead of policed: the gate is computed here, from the same module and
+    // the same threshold the screen uses (`coach/coverage.ts`), and the coach is told which of the
+    // two states it is in. Mentioning the move is now safe in one of them and still refused in the
+    // other, and in both cases the coach and the screen are saying the same thing.
+    //
+    // The direction of trust is unchanged and load-bearing: this reports what is already true and
+    // never makes it true. Nothing the model says can open a phase.
+    ...(wayOnwardOffered
+      ? [
+          'Their screen is offering the way onward right now, with what is still open written beside',
+          'it. So you may say that moving on is available whenever they are ready, once, plainly, and',
+          'only after your question. Do not press it and do not repeat it on later turns: the offer is',
+          'on the screen and it is theirs to take. Do not tell them the phase is finished or that you',
+          'have gathered enough. What is still open is still worth asking for, and the button does not',
+          'mean the conversation is over.',
+        ]
+      : [
+          'Their screen is not offering the way onward yet, so do not tell them the phase is finished,',
+          'that you have gathered enough, or that they can move on to the next one. A turn that',
+          'announces it contradicts what is in front of them. Moving on is theirs to choose and the',
+          'product is what offers it. Your job is the next question.',
+        ]),
     '',
     // Three tiers, where there was one. The source's restraint rule ("Do not wait indefinitely or
     // probe repeatedly. The goal is to surface their own insight first, not to run a coaching

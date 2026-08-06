@@ -11,11 +11,17 @@ const { readAnswersMock, findRunMock } = vi.hoisted(() => ({
   findRunMock: vi.fn(),
 }));
 vi.mock('@/lib/app/programme/runs/answers', () => ({ readRunAnswers: readAnswersMock }));
-// F14: `buildSummary` now also reads the run row for the analyst's stored reading. It never
-// *generates* one — that is `ensureAnalystReading`, and keeping it out of here is what stops the
-// public share route and the PDF route from spending money.
+// `buildSummary` reads the run row for the stored reading, and the module row for the contact
+// address the report carries. It never *generates* a reading — that is `ensureReportReading`, and
+// keeping it out of here is what stops the PDF route from spending money.
+//
+// The module row is stubbed as empty, so `readReclaimConsultationEmail` falls through to the schema
+// default. That is the shape a real database has until an operator changes it on the config form.
 vi.mock('@/lib/db/client', () => ({
-  prisma: { reclaimAuditRun: { findFirst: findRunMock } },
+  prisma: {
+    reclaimAuditRun: { findFirst: findRunMock },
+    module: { findUnique: () => Promise.resolve(null) },
+  },
 }));
 
 import { buildSummary } from '@/lib/app/programme/summary';
@@ -82,7 +88,7 @@ describe('buildSummary', () => {
  * not pass today's refusals must not reach a public share simply because it was written before they
  * existed.
  */
-describe('buildSummary — the analyst reading', () => {
+describe('buildSummary — the report reading', () => {
   const clean = {
     gaps: [
       {
@@ -103,18 +109,18 @@ describe('buildSummary — the analyst reading', () => {
     reclaim_current_hours__delivery_operations: n(20),
   };
 
-  it('is null when the analyst has never run', async () => {
+  it('is null when the report agent has never run', async () => {
     readAnswersMock.mockResolvedValue(answers);
     findRunMock.mockResolvedValue({ analystReading: null });
-    expect((await buildSummary('u1', 'run-1')).analyst).toBeNull();
+    expect((await buildSummary('u1', 'run-1')).report).toBeNull();
   });
 
   it('carries a stored reading through', async () => {
     readAnswersMock.mockResolvedValue(answers);
     findRunMock.mockResolvedValue({ analystReading: clean });
     const summary = await buildSummary('u1', 'run-1');
-    expect(summary.analyst?.gaps).toHaveLength(2);
-    expect(summary.analyst?.pathway.map((s) => s.horizon)).toEqual(['now', 'next', 'later']);
+    expect(summary.report?.gaps).toHaveLength(2);
+    expect(summary.report?.pathway.map((s) => s.horizon)).toEqual(['now', 'next', 'later']);
   });
 
   it('drops a stored reading that today’s guards would refuse', async () => {
@@ -128,7 +134,7 @@ describe('buildSummary — the analyst reading', () => {
         ],
       },
     });
-    expect((await buildSummary('u1', 'run-1')).analyst).toBeNull();
+    expect((await buildSummary('u1', 'run-1')).report).toBeNull();
   });
 
   it('drops a reading naming a conditional area this leader was never asked about', async () => {
@@ -146,7 +152,7 @@ describe('buildSummary — the analyst reading', () => {
         ],
       },
     });
-    expect((await buildSummary('u1', 'run-1')).analyst).toBeNull();
+    expect((await buildSummary('u1', 'run-1')).report).toBeNull();
 
     // ...and the same reading is fine for a leader for whom fundraising *is* relevant.
     readAnswersMock.mockResolvedValue({
@@ -154,6 +160,6 @@ describe('buildSummary — the analyst reading', () => {
       reclaim_setup_fundraising_relevant: { value: 'Yes', valueJson: true },
       reclaim_current_hours__fundraising_capital: n(2),
     });
-    expect((await buildSummary('u1', 'run-1')).analyst).not.toBeNull();
+    expect((await buildSummary('u1', 'run-1')).report).not.toBeNull();
   });
 });

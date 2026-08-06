@@ -34,8 +34,8 @@ import {
 import { Prisma } from '@prisma/client';
 import { readRunAnswers } from '@/lib/app/programme/runs/answers';
 import { readBucketLabels } from '@/lib/app/programme/buckets/labels';
-import { buildAnalystBrief } from '@/lib/app/programme/analyst/brief';
-import { runAnalyst } from '@/lib/app/programme/analyst/reading';
+import { buildReportBrief } from '@/lib/app/programme/report/brief';
+import { runReport } from '@/lib/app/programme/report/reading';
 import { auditSummaryUrl } from '@/lib/app/programme/urls';
 import { sendEmail } from '@/lib/email/send';
 import AuditCompleteEmail from '@/components/app/emails/audit-complete';
@@ -111,8 +111,13 @@ export async function transitionRun(
  *
  * Scoped to the surface conversation rather than to the run: `AiConversation` carries no run id, and
  * a leader has at most one active module-surface conversation at a time by construction.
+ *
+ * **Exported for the preview fabricator**, which opens a conversation of its own and has to leave that
+ * "at most one" true. It is the same invariant with the same one-line answer, and a second copy of
+ * this `updateMany` living next to the fabricator is how the two would drift the day the surface gains
+ * another column to key on.
  */
-async function closeSurfaceConversation(userId: string): Promise<void> {
+export async function closeSurfaceConversation(userId: string): Promise<void> {
   await prisma.aiConversation.updateMany({
     where: {
       userId,
@@ -162,9 +167,9 @@ export async function completeRun(userId: string, runId: string): Promise<Reclai
   // F14: §10's last two sections. Best-effort, and wrapped exactly as the referral unlock above is —
   // a leader who has just pressed "finish my audit" must not be held at a spinner because a model
   // timed out, and must never see a failure for a section that did not exist a week ago.
-  await ensureAnalystReading(userId, runId);
+  await ensureReportReading(userId, runId);
 
-  // F15: the one message a finished audit sends. **After the analyst, deliberately** — the email
+  // F15: the one message a finished audit sends. **After the report agent, deliberately** — the email
   // links to the summary, and sending first would point a leader at a page missing the two sections
   // that had just been generated. That is the one ordering they would actually notice.
   await sendCompletionEmail(userId, runId);
@@ -275,7 +280,7 @@ async function sendCompletionEmail(userId: string, runId: string): Promise<void>
 }
 
 /**
- * Generate the analyst's reading for a run, once.
+ * Generate the report agent's reading for a run, once.
  *
  * Called from `completeRun`, and again lazily from the summary read — which is what covers the two
  * cases completion alone cannot: audits finished before F14 shipped, and generations that failed.
@@ -285,9 +290,24 @@ async function sendCompletionEmail(userId: string, runId: string): Promise<void>
  * would overwrite the first with a different reading of the same audit — the leader's artifact
  * changing under them between one refresh and the next.
  *
+ * ## The two nulls, and the silent cost leak between them
+ *
+ * `analystReading` is `Json?`, so the column has **two** empty states: SQL `NULL` (`Prisma.DbNull`)
+ * and the JSON value `null` (`Prisma.JsonNull`). Both read back as `null` in JavaScript, so the early
+ * return above cannot tell them apart and treats each as "never generated", which is right.
+ *
+ * The `where` below could tell them apart, and did. Matching only `DbNull` meant a row holding JSON
+ * `null` generated a reading on **every** summary read and stored none of them: the guard above let
+ * it through, the model was called, and the write matched no row. A leader refreshing their report
+ * would have seen no reading, every time, while each refresh spent money. Found by winding a run back
+ * for testing with `{ analystReading: null }`, which is exactly how a column ends up in that state.
+ *
+ * So the condition accepts either empty state. It still refuses to overwrite a real reading, which is
+ * the whole point of the write-once.
+ *
  * Never throws. Both call sites are places a leader is finishing or reading their own audit.
  */
-export async function ensureAnalystReading(userId: string, runId: string): Promise<void> {
+export async function ensureReportReading(userId: string, runId: string): Promise<void> {
   try {
     const run = await prisma.reclaimAuditRun.findFirst({
       where: { id: runId, userId },
@@ -302,16 +322,24 @@ export async function ensureAnalystReading(userId: string, runId: string): Promi
       readRunAnswers(userId, runId),
       readBucketLabels(userId),
     ]);
-    const reading = await runAnalyst(buildAnalystBrief(answers, bucketLabels));
+    const reading = await runReport(buildReportBrief(answers, bucketLabels));
     if (reading === null) return;
 
     await prisma.reclaimAuditRun.updateMany({
-      where: { id: runId, userId, analystReading: { equals: Prisma.DbNull } },
+      where: {
+        id: runId,
+        userId,
+        // Either empty state, never a row that already holds a reading. See the header.
+        OR: [
+          { analystReading: { equals: Prisma.DbNull } },
+          { analystReading: { equals: Prisma.JsonNull } },
+        ],
+      },
       data: { analystReading: reading as unknown as Prisma.InputJsonValue },
     });
   } catch (error: unknown) {
     logger.warn(
-      'Reclaim: the analyst reading could not be generated; the summary stands without it',
+      'Reclaim: the report reading could not be generated; the report stands without it',
       {
         runId,
         error: error instanceof Error ? error.message : String(error),

@@ -155,7 +155,6 @@ const props = {
   conversationId: 'conv-1',
   coachOpenings: [],
   onAdvanced: vi.fn(),
-  onSwitchToForm: vi.fn(),
 };
 
 beforeEach(() => {
@@ -230,13 +229,13 @@ describe('PhaseConversation', () => {
     await waitFor(() => expect(readAnswers).toHaveBeenCalledTimes(2));
   });
 
-  it('lets a leader who would rather fill in fields say so', async () => {
+  it('offers no way out to a form, because the conversation is the way through', async () => {
+    // "I would rather fill this in myself" sat under the captured panel on every phase and was the
+    // only door into the form panels. It is gone, from the column and from the drawer both.
     render(<PhaseConversation {...props} />);
     await waitFor(() => expect(readAnswers).toHaveBeenCalled());
 
-    await userEvent.click(screen.getAllByRole('button', { name: /fill this in myself/ })[0]);
-
-    expect(props.onSwitchToForm).toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: /fill this in myself/ })).not.toBeInTheDocument();
   });
 
   it('needs no reflection in the setup phase, which has no pause to enforce', async () => {
@@ -275,13 +274,33 @@ describe('PhaseConversation — when the way onward is offered', () => {
   });
 
   it('counts the last one down in the singular, because "1 things" is the product not reading it', async () => {
-    // Phase 2, where two readings are asked as one question, so one of them outstanding is a real
-    // state. On a fifteen-reading phase it is not: the threshold leaves room for exactly one, so the
-    // last one outstanding is already the phase being covered.
+    // An operator on 100%, which is the only setting where one reading outstanding is still a phase
+    // held open. At the shipped 90% the proportion rounds down, so the last one outstanding is
+    // already the phase being covered on every phase length — see `coach/coverage.ts`. Phase 2 is
+    // used because its two readings are asked as one question, so a single one left is a real state
+    // rather than a contrived one.
     readAnswers.mockResolvedValue(allOf(['reclaim_energy_peak_description']));
-    render(<PhaseConversation {...props} />);
+    render(<PhaseConversation {...props} coveredPercent={100} />);
 
     expect(await screen.findByText(/is one thing still to cover/i)).toBeInTheDocument();
+  });
+
+  it('rounds the proportion down, so a short phase gets the slack the long ones always had', async () => {
+    // The regression this exists for, observed live on phase 5. `Math.ceil(n × 0.9) === n` for every
+    // n up to nine, so the three short phases demanded every reading while the code beside them
+    // promised "room for one or two unanswered". A leader sat on five of six with the coach telling
+    // them they could move on and no button beside it.
+    //
+    // Phase 2 has two readings, where the old arithmetic needed both and this needs one. The
+    // reflection is answered because it is a separate hard gate (I9) and this is about coverage.
+    readAnswers.mockResolvedValue(
+      allOf(['reclaim_energy_peak_description', 'reclaim_reflection_p2'])
+    );
+    render(<PhaseConversation {...props} />);
+
+    expect(
+      await screen.findByRole('button', { name: /Continue to the next section/ })
+    ).toBeInTheDocument();
   });
 
   it('offers it with one still outstanding, so a leader is not held behind a single question', async () => {
@@ -554,8 +573,57 @@ describe('PhaseConversation — the beats of phase 1', () => {
     readAnswers.mockResolvedValue(everyArea());
     render(<PhaseConversation {...phase1} />);
 
-    const link = await screen.findByRole('link', { name: /Look at my calendar/ });
+    const link = await screen.findByRole('link', { name: /Yes, look at my calendar/ });
     expect(link).toHaveAttribute('href', '/programme/calendar');
+  });
+
+  /**
+   * The offer is made once and answered once; the step stays open for the whole section.
+   *
+   * Both halves were broken and they cost the leader the same thing twice. The card had no way to
+   * say no, so a decline was said to the coach and recorded nowhere — and the coach, whose briefing
+   * is rebuilt from the run's answers every turn, offered again a few turns later. Meanwhile the
+   * card is a beat: it scrolls away under the conversation that follows it, so someone who did want
+   * the calendar twenty minutes later had nothing to press.
+   */
+  it('records the decline when the leader says not now, and stops offering', async () => {
+    const user = userEvent.setup();
+    readAnswers.mockResolvedValue(everyArea());
+    saveAnswer.mockResolvedValue(undefined);
+    render(<PhaseConversation {...phase1} />);
+
+    await user.click(await screen.findByRole('button', { name: /Not now/ }));
+
+    expect(saveAnswer).toHaveBeenCalledWith('run-1', {
+      slotSlug: 'reclaim_calendar_declined',
+      value: 'Yes',
+      valueJson: true,
+    });
+  });
+
+  it('withdraws the card once they have declined, and keeps the way in', async () => {
+    readAnswers.mockResolvedValue({
+      ...everyArea(),
+      reclaim_calendar_declined: {
+        value: 'Yes',
+        valueJson: true,
+        sourceType: 'direct',
+        confidence: 10,
+      },
+    });
+    render(<PhaseConversation {...phase1} />);
+    await waitFor(() => expect(readAnswers).toHaveBeenCalled());
+
+    // The offer, and its "not now", are answered and gone.
+    expect(
+      screen.queryByRole('link', { name: /Yes, look at my calendar/ })
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Not now/ })).not.toBeInTheDocument();
+    // The door is not. A decline says "not this minute", not "take it away".
+    expect(screen.getByRole('link', { name: 'Look at my calendar' })).toHaveAttribute(
+      'href',
+      '/programme/calendar'
+    );
   });
 
   it('withdraws the offer once a calendar has been reconciled', async () => {
@@ -662,14 +730,14 @@ describe('PhaseConversation — the captured panel on a narrow screen', () => {
     expect(drawer()).toHaveAttribute('inert');
   });
 
-  it('offers the form path from inside the drawer, not only from the column', async () => {
+  it('carries no form path inside the drawer either, since there is no longer one to carry', async () => {
+    // The drawer renders the same panel as the column, so the link out used to appear twice. Both
+    // copies are gone; opening the drawer must not bring one of them back.
     render(<PhaseConversation {...props} />);
 
     await userEvent.click(await screen.findByRole('button', { name: /of \d+ noted/ }));
-    const switches = screen.getAllByRole('button', { name: /fill this in myself/ });
-    await userEvent.click(switches[switches.length - 1]);
 
-    expect(props.onSwitchToForm).toHaveBeenCalled();
+    expect(screen.queryAllByRole('button', { name: /fill this in myself/ })).toHaveLength(0);
   });
 });
 

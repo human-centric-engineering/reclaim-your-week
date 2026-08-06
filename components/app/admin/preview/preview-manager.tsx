@@ -25,6 +25,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { FieldHelp } from '@/components/ui/field-help';
+import { RECLAIM_PHASES } from '@/lib/app/programme/map';
 import {
   listPreviewAccounts,
   createPreviewAccount,
@@ -35,9 +36,57 @@ import {
   type PreviewCreated,
 } from '@/components/app/admin/actions';
 
+/**
+ * Where a fabricated audit stops: `fresh` for no audit at all, otherwise a phase key of the map.
+ *
+ * One value rather than the old `state` plus a separate phase, because to an operator they are one
+ * question with eight answers. The three-state control this replaces could only ever offer two of the
+ * seven screens, and its "Mid-audit" always meant phase 4 — the API had accepted a phase since the
+ * feature shipped and nothing on the screen ever sent one.
+ */
+type PreviewTarget = string;
+
+const LAST_PHASE_KEY = RECLAIM_PHASES[RECLAIM_PHASES.length - 1]?.key ?? 'phase-6-summary';
+
+/**
+ * The choices, in the order a leader meets them.
+ *
+ * Built from the map rather than typed out, so a phase added or renamed upstream appears here without
+ * anybody remembering to come and add it. The two ends are worded for what they *are* to the operator
+ * rather than by phase number: nobody wants "phase 6", they want the summary.
+ */
+const TARGET_OPTIONS: { value: PreviewTarget; label: string }[] = [
+  { value: 'fresh', label: 'Ready to begin (no audit yet)' },
+  ...RECLAIM_PHASES.map((phase, index) => ({
+    value: String(phase.key),
+    label:
+      phase.key === LAST_PHASE_KEY
+        ? `At the summary (phase ${index})`
+        : `Sitting at ${phase.label.toLowerCase()} (phase ${index})`,
+  })),
+];
+
+/**
+ * Turn one chosen target into the request body the API takes.
+ *
+ * The API kept its `to` / `toPhase` pair, so this is where the screen's one question is translated
+ * back into it. `summary` is not simply "phase 6": it is the target that writes the report agent's reading,
+ * so the last phase has to be sent under that name and not as a `toPhase`.
+ */
+function targetToRequest(target: PreviewTarget): { to: 'mid-audit' | 'summary'; toPhase?: string } {
+  if (target === LAST_PHASE_KEY) return { to: 'summary' };
+  return { to: 'mid-audit', toPhase: target };
+}
+
+/**
+ * `in_progress` reads as "In progress" rather than "Mid-audit" because an audit filled in *to the
+ * summary* is in progress too — it stops before the finish button on purpose — and calling that
+ * "Mid-audit" would point the operator at the wrong screen. Which phase it is on is not on this row:
+ * the phase lives in the journey's node states, one read per run, and this list is one enriched query.
+ */
 const STATE_LABEL: Record<PreviewAccountRow['state'], string> = {
   none: 'Not started',
-  in_progress: 'Mid-audit',
+  in_progress: 'In progress',
   complete: 'Completed',
   abandoned: 'Abandoned',
 };
@@ -62,7 +111,15 @@ export function PreviewManager() {
   const [loadFailed, setLoadFailed] = useState(false);
   const [label, setLabel] = useState('');
   const [email, setEmail] = useState('');
-  const [state, setState] = useState<'fresh' | 'mid-audit' | 'completed'>('fresh');
+  const [target, setTarget] = useState<PreviewTarget>('fresh');
+  /**
+   * The phase each existing row is about to be filled in to, keyed by account.
+   *
+   * Per row rather than one shared value because an operator working through a list is comparing
+   * screens: filling one account in to phase 2 and the next to phase 5 is the whole point, and a
+   * single selector would silently reset between them.
+   */
+  const [rowTargets, setRowTargets] = useState<Record<string, PreviewTarget>>({});
   const [adoptEmail, setAdoptEmail] = useState('');
   const [adoptLabel, setAdoptLabel] = useState('');
   const [busy, setBusy] = useState(false);
@@ -109,10 +166,12 @@ export function PreviewManager() {
     setNotice(null);
     setCreated(null);
     try {
+      const fill = target === 'fresh' ? null : targetToRequest(target);
       const result = await createPreviewAccount({
         label,
         ...(email.trim() === '' ? {} : { email: email.trim() }),
-        state,
+        state: fill === null ? 'fresh' : fill.to,
+        ...(fill?.toPhase === undefined ? {} : { toPhase: fill.toPhase }),
       });
       setCreated(result);
       setNotice(result.message);
@@ -214,29 +273,46 @@ export function PreviewManager() {
                   This is the one to use if you want to see what a leader actually does.
                 </p>
                 <p className="mt-2">
-                  <strong>Mid-audit</strong> fills in the first phases and stops part way, so you
-                  can look at the screens without answering everything first.
+                  Every other choice is a <strong>phase to stop at</strong>. The account is filled
+                  in as far as that phase and left sitting on it, holding exactly what a leader who
+                  had got that far would hold and nothing from later on. Pick the screen you want to
+                  look at.
                 </p>
                 <p className="mt-2">
-                  <strong>Completed audit</strong> finishes one, which is the only way to reach the
-                  summary, the report and sharing. It uses up the audit that account came with; ask
-                  for another state on the same account and it is given a fresh one.
+                  <strong>At the summary</strong> is the last of them, and it is where the summary,
+                  the report and the sharing choices live. It stops <em>before</em> &lsquo;finish my
+                  audit&rsquo;, deliberately. Finishing moves the summary into the history
+                  read-back, takes the sharing choices away entirely, and leaves the account back at
+                  the invitation to begin, so a test account driven past that button cannot show you
+                  any of the three. Press it yourself when you want to see what finishing does,
+                  including the email it sends.
                 </p>
                 <p className="mt-2">
                   The answers are made up, but everything is written the way the audit itself writes
-                  it, so what you see is what a leader would see.
+                  it, so what you see is what a leader would see. That now includes the
+                  conversation: the coach and the leader both have turns, made up in the same way,
+                  and marked as made up wherever anybody reads them back.
+                </p>
+                <p className="mt-2">
+                  Two things a filled-in account does <em>not</em> have. It never takes the calendar
+                  upload, so the perception-versus-reality chart stays empty, because a fabricator
+                  that always uploaded could not show you the path a leader who declines it walks.
+                  And nothing here presses share, so the sharing choices are untouched when you get
+                  there.
                 </p>
               </FieldHelp>
             </span>
             <select
               id="preview-state"
-              value={state}
-              onChange={(e) => setState(e.target.value as 'fresh' | 'mid-audit' | 'completed')}
+              value={target}
+              onChange={(e) => setTarget(e.target.value)}
               className="border-input bg-background w-full rounded-md border px-3 py-2 text-sm"
             >
-              <option value="fresh">Ready to begin</option>
-              <option value="mid-audit">Mid-audit</option>
-              <option value="completed">Completed audit</option>
+              {TARGET_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
           </div>
         </div>
@@ -395,7 +471,42 @@ export function PreviewManager() {
                   <th className="px-4 py-2.5 font-medium">Audit</th>
                   <th className="px-4 py-2.5 font-medium">Made by</th>
                   <th className="px-4 py-2.5 font-medium">Made</th>
-                  <th className="sr-only px-4 py-2.5 font-medium">Actions</th>
+                  {/*
+                    Visible, and named for what the control underneath writes. It used to be
+                    `sr-only`, which left the controls reading as `Mid-audit` next to a badge also
+                    reading `Mid-audit` — the same word twice in one row, once as a state and once
+                    as a command, with nothing to say which was which.
+                  */}
+                  <th className="px-4 py-2.5 text-right font-medium">
+                    <span className="flex items-center justify-end gap-1.5">
+                      Fill in an audit
+                      <FieldHelp title="What these do">
+                        <p>
+                          Pick a <strong>phase</strong> and press <strong>Fill in</strong>. It
+                          writes a whole audit for this account as far as that phase: made-up
+                          answers and a made-up conversation, both put through the same engine a
+                          leader&rsquo;s own answers go through, and it leaves the account sitting
+                          there.
+                        </p>
+                        <p className="mt-2">
+                          Each one starts a <strong>new</strong> audit rather than moving the one
+                          already there, and the badge in the Audit column is whichever is most
+                          recent. So an account already showing <strong>In progress</strong> has to
+                          be finished or let go first, from the account itself.
+                        </p>
+                        <p className="mt-2">
+                          <strong>At the summary</strong> is how you reach the summary, the report
+                          and the sharing choices, which all live on the last screen, before
+                          &lsquo;finish my audit&rsquo;. Nothing here presses that: finishing is
+                          what sends the <strong>completion email</strong> to the address in the
+                          first column, and it should be your decision to send it.
+                        </p>
+                        <p className="mt-2">
+                          <strong>Remove</strong> erases the account and everything it built up.
+                        </p>
+                      </FieldHelp>
+                    </span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -423,32 +534,58 @@ export function PreviewManager() {
                     <td className="text-muted-foreground px-4 py-2.5">
                       {formatDate(account.createdAt)}
                     </td>
+                    {/*
+                      A verb-first label, and bordered rather than underlined. Both are the same
+                      point: this writes a whole audit into an account, so it must not look like, or
+                      read like, somewhere to click through to. The phase sits beside it rather than
+                      inside a menu of buttons, because there are seven of them now.
+                    */}
                     <td className="px-4 py-2.5 text-right whitespace-nowrap">
+                      <label className="sr-only" htmlFor={`fill-phase-${account.userId}`}>
+                        How far to fill in {account.email}
+                      </label>
+                      <select
+                        id={`fill-phase-${account.userId}`}
+                        disabled={busy}
+                        value={rowTargets[account.userId] ?? LAST_PHASE_KEY}
+                        onChange={(e) =>
+                          setRowTargets((current) => ({
+                            ...current,
+                            [account.userId]: e.target.value,
+                          }))
+                        }
+                        className="border-input bg-background rounded-md border px-2 py-1 text-xs disabled:opacity-50"
+                      >
+                        {/*
+                          `fresh` is absent on purpose. It is a thing an account can be *created* as,
+                          not a thing this button could do to one: there is no fabrication that
+                          removes an audit, and offering it here would promise an undo that does not
+                          exist. Use Remove and make another.
+                        */}
+                        {TARGET_OPTIONS.filter((option) => option.value !== 'fresh').map(
+                          (option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          )
+                        )}
+                      </select>
                       <button
                         type="button"
                         disabled={busy}
                         onClick={() =>
                           void run(
-                            () => fastForwardPreviewAccount(account.userId, { to: 'mid-audit' }),
+                            () =>
+                              fastForwardPreviewAccount(
+                                account.userId,
+                                targetToRequest(rowTargets[account.userId] ?? LAST_PHASE_KEY)
+                              ),
                             'That account could not be advanced.'
                           )
                         }
-                        className="text-muted-foreground hover:text-foreground text-xs underline disabled:opacity-50"
+                        className="border-input hover:bg-muted ml-2 rounded-md border px-2 py-1 text-xs font-medium disabled:opacity-50"
                       >
-                        Mid-audit
-                      </button>
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() =>
-                          void run(
-                            () => fastForwardPreviewAccount(account.userId, { to: 'completed' }),
-                            'That account could not be advanced.'
-                          )
-                        }
-                        className="text-muted-foreground hover:text-foreground ml-3 text-xs underline disabled:opacity-50"
-                      >
-                        Complete
+                        Fill in
                       </button>
                       <button
                         type="button"
@@ -459,7 +596,7 @@ export function PreviewManager() {
                             'That test account could not be removed.'
                           )
                         }
-                        className="text-destructive ml-3 text-xs underline disabled:opacity-50"
+                        className="text-destructive ml-3 text-xs underline underline-offset-2 disabled:opacity-50"
                       >
                         Remove
                       </button>

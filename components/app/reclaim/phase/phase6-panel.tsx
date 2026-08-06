@@ -1,11 +1,38 @@
 'use client';
 
 /**
- * Phase 6 — summary + share (F7 t-4). The standalone artifact (§10), **downloadable** (print) and
- * **shareable** via a tokenised link. Sharing is **invited, never required** — the optional capture
- * (age band, demographics, the feedback line, and the **separate** quote consent) appears only after
- * the leader chooses to share, each optional. Finishing completes the run (I15). The consultation
- * offer + closing affirmation appear once, at the end.
+ * Section 6 — the last question, and then the report.
+ *
+ * Two states, and the boundary between them is the point of this file.
+ *
+ * ## Before: one question, asked in the conversation
+ *
+ * The audit asks "what are you taking away from this?" before it produces anything
+ * (`Prompt_Text.md:35`), and it asks it the way it has asked everything else — the coach asks, the
+ * leader answers. There is no field, here or on any other section.
+ *
+ * **The answer releases the report, not the recording of it.** The coach is asked to write the
+ * takeaway to `reclaim_reflection_p6`, and that write can fail in ways that have nothing to do with
+ * the leader: a refused write, a throttled turn, a model that answers a hard sentence warmly without
+ * deciding it was a takeaway. When the slot was the gate, those failures left a leader being asked
+ * the last question of their audit over and over with the finished thing behind it. So the gate is
+ * `answered` — read from this section's own window of the transcript, so it survives a reload.
+ *
+ * ## After: the conversation is gone from the screen
+ *
+ * Not hidden, not scrolled past. **Gone.** This used to keep a second `CoachChat` under the report
+ * for the warm close, which meant the screen still had a composer on it, still invited another turn,
+ * and still looked like the middle of something. A leader who has been handed the document the whole
+ * audit was for should be looking at the document, not at a text box asking what else they would
+ * like to say. The coach's closing words are the last thing it says in the beat above; the report is
+ * what comes after, and it is the whole screen.
+ *
+ * What is left is the artifact and the four honest things to do with it, each in its own component
+ * and each explaining itself: keep it (`report-actions.tsx`), share it with Rashmir
+ * (`share-with-coach.tsx`), pass it on (`ReferralInvite`), finish (`finish-audit.tsx`).
+ *
+ * Finishing completes the run (I15). The consultation offer and the closing affirmation appear once,
+ * after that.
  */
 
 import { useCallback, useEffect, useState } from 'react';
@@ -16,63 +43,53 @@ import {
 import { SummaryView } from '@/components/app/reclaim/summary/summary-view';
 import { CoachChat } from '@/components/app/reclaim/coach-chat';
 import { ReferralInvite } from '@/components/app/reclaim/referral-invite';
-import { DownloadReport } from '@/components/app/reclaim/report/download-report';
-import { TextAreaField, SelectField } from '@/components/app/reclaim/phase/fields';
-import {
-  fetchSummary,
-  shareSummary,
-  completeAudit,
-  readAnswers,
-  saveAnswer,
-  type ShareInput,
-} from '@/components/app/reclaim/phase/actions';
+import { ReportActions } from '@/components/app/reclaim/report/report-actions';
+import { ShareWithCoach } from '@/components/app/reclaim/report/share-with-coach';
+import { FinishAudit } from '@/components/app/reclaim/report/finish-audit';
+import { fetchSummary, readAnswers } from '@/components/app/reclaim/phase/actions';
 import type { AuditSummary } from '@/components/app/reclaim/summary/types';
-
-const AGE_BANDS = ['Prefer not to say', 'Under 35', '35–44', '45–54', '55–64', '65+'];
+import { FINAL_PHASE_KEY } from '@/lib/app/programme/runs/phases';
+import { loadTranscript } from '@/components/app/reclaim/coach/transcript';
+import { phaseWindow, sliceByWindow, type PhaseMarks } from '@/lib/app/programme/runs/phase-marks';
 
 export function Phase6Panel({
   runId,
   conversationId,
   coachOpenings,
+  phaseMarks,
   onAdvanced,
 }: {
   runId: string;
-  /** The run's transcript, so the closing beat continues the conversation rather than starting one. */
+  /** The run's transcript, so the last question continues the conversation rather than starting one. */
   conversationId: string | null;
   coachOpenings: string[];
+  /**
+   * Where this phase's part of the run's one conversation begins.
+   *
+   * The conversation below is cut to it, and until it was, this was the one screen in the audit that
+   * drew the whole transcript: the last question arrived underneath forty minutes of everything that
+   * led to it, so the leader met their own audit replayed back at them and had to find the question
+   * in it.
+   */
+  phaseMarks: PhaseMarks;
   onAdvanced: () => void;
 }) {
   const [summary, setSummary] = useState<AuditSummary | null>(null);
   /**
-   * The takeaway, asked before the summary exists (`Prompt_Text.md:35`).
+   * The takeaway, as recorded. `null` while unread, `''` when there is none.
    *
-   * `null` while unread, `''` when the leader has been asked and not yet answered. The summary does
-   * not render until it is saved: that ordering is the beat the source describes, and it is why this
-   * question is no longer buried in the sharing form where only people who chose to share ever saw it.
+   * No longer the gate (see the header) — the sharing panel quotes it, and that is now its whole
+   * job. Re-read after every turn, because the coach is what records it.
    */
   const [takeawayValue, setTakeawayValue] = useState<string | null>(null);
-  const [takeawayDraft, setTakeawayDraft] = useState('');
   /**
-   * Whether the leader has chosen the field over the conversation for this one question.
+   * Whether the leader has answered the last question, read from the transcript rather than a slot.
    *
-   * The conversation is the way through, and the form is the alternative — the same arrangement
-   * phases 0 to 5 have had since P18, and the reason there is no dead end here. If the coach cannot
-   * record the takeaway (a provider outage, a refused write), a leader who could only be asked would
-   * be stuck at the last question of the audit with the summary behind it.
+   * `null` until read, so the gate does not flash a conversation at someone who has already finished
+   * with it.
    */
-  const [writingItMyself, setWritingItMyself] = useState(false);
-  const [savingTakeaway, setSavingTakeaway] = useState(false);
+  const [answered, setAnswered] = useState<boolean | null>(null);
   const [failed, setFailed] = useState(false);
-  const [wantShare, setWantShare] = useState(false);
-  const [withCoach, setWithCoach] = useState(false);
-  /** F17: its own question, asked only once sharing with the coach is on. */
-  const [shareTranscript, setShareTranscript] = useState(false);
-  const [publicLink, setPublicLink] = useState(false);
-  const [ageBand, setAgeBand] = useState('');
-  const [quotable, setQuotable] = useState(false);
-  const [shareLink, setShareLink] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [finished, setFinished] = useState(false);
 
   useEffect(() => {
@@ -81,8 +98,6 @@ export function Phase6Panel({
       .catch(() => setFailed(true));
   }, [runId]);
 
-  // The takeaway, read back so a leader who saved it and reloaded is not asked again — and re-read
-  // after every coach turn, because the coach is now what usually records it.
   const refreshTakeaway = useCallback(async () => {
     try {
       const answers = await readAnswers(runId);
@@ -96,77 +111,41 @@ export function Phase6Panel({
     void refreshTakeaway();
   }, [refreshTakeaway]);
 
-  const saveTakeaway = async () => {
-    setSavingTakeaway(true);
-    setError(null);
-    try {
-      const value = takeawayDraft.trim();
-      // The leader-initiated path, like every other reflection: the coach may ask and may offer
-      // words back, and only this save writes one (I6, I9).
-      await saveAnswer(runId, { slotSlug: 'reclaim_reflection_p6', value });
-      setTakeawayValue(value);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Something went wrong.');
-    } finally {
-      setSavingTakeaway(false);
+  // Cut to this section's own window, for the same reason the conversation below is: an answer given
+  // in section 3 is not an answer to the question section 6 asked. A run with no conversation cannot
+  // have been answered, and a transcript that will not load reads as unanswered — the coach is then
+  // still there to ask, which is the safe way round.
+  const refreshAnswered = useCallback(async () => {
+    if (conversationId === null) {
+      setAnswered(false);
+      return;
     }
-  };
+    const messages = await loadTranscript(conversationId);
+    const section = sliceByWindow(messages, phaseWindow(phaseMarks, FINAL_PHASE_KEY));
+    setAnswered(section.some((m) => m.role === 'leader' && !m.synthetic));
+  }, [conversationId, phaseMarks]);
 
-  const saveShare = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      const input: ShareInput = {
-        publicLink,
-        withCoach,
-        // Withdrawn with its parent: sharing the exchange but not the summary it produced is a
-        // state nobody asked for, and the server enforces the same rule.
-        shareTranscript: withCoach && shareTranscript,
-        ageBand: ageBand && ageBand !== 'Prefer not to say' ? ageBand : undefined,
-        // Reuses what they already wrote rather than asking a near-identical question twice. The
-        // source asks the takeaway of everyone before the summary; Brief §3 asks sharers for "in a
-        // sentence, what did you take from this?" afterwards. Asking both verbatim reads as a repeat,
-        // so the sharing step carries their saved answer and asks only for permission to quote it.
-        takeaway: takeawayValue?.trim() || undefined,
-        quotable,
-      };
-      const token = await shareSummary(runId, input);
-      if (token) setShareLink(`${window.location.origin}/summary/${token}`);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Something went wrong.');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const finish = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      await completeAudit(runId);
-      setFinished(true);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Something went wrong.');
-      setBusy(false);
-    }
-  };
+  useEffect(() => {
+    void refreshAnswered();
+  }, [refreshAnswered]);
 
   if (failed) {
-    return (
-      <p className="text-muted-foreground text-sm">We could not load your summary just now.</p>
-    );
+    return <p className="text-muted-foreground text-sm">We could not load your report just now.</p>;
   }
-  if (summary === null) {
-    return <p className="text-muted-foreground text-sm tracking-wide">Gathering your summary…</p>;
+
+  // All three reads, not just the summary: the gate turns on them, and resolving it in stages would
+  // show the conversation for a moment to somebody who had already finished with it.
+  if (summary === null || takeawayValue === null || answered === null) {
+    return <p className="text-muted-foreground text-sm tracking-wide">Gathering your report…</p>;
   }
 
   if (finished) {
     return (
-      <div className="space-y-8 py-6 text-center">
-        <p className="text-foreground mx-auto max-w-xl text-xl leading-relaxed font-light">
+      <div className="mx-auto max-w-xl space-y-8 py-10 text-center">
+        <p className="text-foreground text-xl leading-relaxed font-light">
           {RECLAIM_CLOSING_AFFIRMATION}
         </p>
-        <p className="text-muted-foreground mx-auto max-w-md text-sm leading-relaxed">
+        <p className="text-muted-foreground text-sm leading-relaxed">
           If a 30-minute conversation would help you take this further, you can reach Rashmir at{' '}
           <a
             href={`mailto:${RECLAIM_CONSULTATION_EMAIL}`}
@@ -176,14 +155,6 @@ export function Phase6Panel({
           </a>
           . No pressure. The work is yours.
         </p>
-        {shareLink && (
-          <p className="text-muted-foreground text-sm">
-            Your shareable link:{' '}
-            <a href={shareLink} className="text-primary underline underline-offset-4">
-              {shareLink}
-            </a>
-          </p>
-        )}
         <button
           type="button"
           onClick={onAdvanced}
@@ -195,240 +166,56 @@ export function Phase6Panel({
     );
   }
 
-  // The source asks this before it produces anything, and so does this screen.
-  //
-  // **It is asked in the conversation now** (F16 t-3). This was the last textarea in a tool that had
-  // been rebuilt as a conversation, and it was asking the question the whole method rests on: "ask
-  // 'what are you taking away from this?' before producing the final summary" (`Prompt_Text.md:35`).
-  // A leader who has just spent forty minutes being listened to should not meet a form field and a
-  // Save button for the one answer that matters most.
-  //
-  // The field is still one click away, and that is not a hedge. The coach records this through
-  // `record_answers` under the same three conditions as every other reflection, and if that write
-  // cannot happen a leader who could only be asked would be stranded at the last question with the
-  // summary behind it.
-  if (takeawayValue === null || takeawayValue.trim().length === 0) {
-    if (!writingItMyself) {
-      return (
-        <div className="space-y-6">
-          <CoachChat
-            runId={runId}
-            conversationId={conversationId}
-            openMoment={coachOpenings.includes('phase-6-open') ? null : 'phase-6-open'}
-            // Every turn may be the one that records it, and the summary appears the moment it does.
-            onTurnComplete={() => {
-              void refreshTakeaway();
-              onAdvanced();
-            }}
-            className="border-border/60 h-[26rem] rounded-2xl border"
-          />
-          <button
-            type="button"
-            onClick={() => setWritingItMyself(true)}
-            className="text-muted-foreground hover:text-foreground text-xs underline underline-offset-4"
-          >
-            I would rather write it myself
-          </button>
-        </div>
-      );
-    }
-
+  // The one question. The conversation is the only route to this answer, and the turn the leader
+  // answers in is the turn that opens the report.
+  if (!answered) {
     return (
-      <div className="space-y-8">
-        <TextAreaField
-          id="takeaway-reflection"
-          label="What are you taking away from this?"
-          value={takeawayDraft}
-          onChange={setTakeawayDraft}
-          rows={4}
-        />
-        <p className="text-muted-foreground text-sm">
-          Whatever comes to mind. Your summary is ready and will be here as soon as you have written
-          it.
-        </p>
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
-          <button
-            type="button"
-            onClick={() => void saveTakeaway()}
-            disabled={savingTakeaway || takeawayDraft.trim().length === 0}
-            className="bg-primary text-primary-foreground rounded-full px-8 py-3 text-[0.95rem] font-medium disabled:opacity-40"
-          >
-            {savingTakeaway ? 'Saving…' : 'Save and see my summary'}
-          </button>
-          <button
-            type="button"
-            onClick={() => setWritingItMyself(false)}
-            className="text-muted-foreground hover:text-foreground text-xs underline underline-offset-4"
-          >
-            I would rather talk it through
-          </button>
-        </div>
-        {error !== null && (
-          <p className="text-muted-foreground text-sm" role="status">
-            {error} You can try again.
-          </p>
-        )}
-      </div>
+      <CoachChat
+        runId={runId}
+        conversationId={conversationId}
+        openMoment={coachOpenings.includes('phase-6-open') ? null : 'phase-6-open'}
+        phaseKey={FINAL_PHASE_KEY}
+        phaseMarks={phaseMarks}
+        onTurnComplete={() => {
+          void refreshTakeaway();
+          void refreshAnswered();
+          onAdvanced();
+        }}
+        className="border-border/60 h-[26rem] rounded-2xl border"
+      />
     );
   }
 
   return (
-    <div className="space-y-10">
-      <SummaryView summary={summary} />
-
-      {/*
-        The warm close. A coach turn rather than fixed copy because it is the part that varies: by
-        whether they already work with Rashmir, by whether they have done this before, and by what
-        they just said they were taking away.
-      */}
-      <div className="border-border/70 border-t pt-8 print:hidden">
-        {/*
-          An explicit height, because this one is not the frame's own column: the summary scrolls
-          above it and the sharing choices sit below, so the chat has to be a bounded box of its own
-          or its transcript pushes the composer down the page (see `CoachChat`'s `className`).
-        */}
-        <CoachChat
-          runId={runId}
-          conversationId={conversationId}
-          openMoment={coachOpenings.includes('phase-6-close') ? null : 'phase-6-close'}
-          onTurnComplete={onAdvanced}
-          className="border-border/60 h-[26rem] rounded-2xl border"
-        />
+    /*
+     * The arrival. One staggered reveal rather than scattered micro-animations: the report is a
+     * thing that appears at the end of forty minutes, and it should look like it arrived rather than
+     * like it was already there. The keyframes are in `app/brand-theme.css` (the leaf's stylesheet),
+     * opacity and transform only so nothing reflows, and off entirely under reduced motion.
+     */
+    <div className="space-y-14">
+      <div className="ryw-rise">
+        <SummaryView summary={summary} />
       </div>
 
-      <div className="border-border/70 flex flex-wrap gap-3 border-t pt-6 print:hidden">
-        {/* F15. This used to be one button labelled "Download / print", which did neither: it opened
-            the browser's print dialogue, from which a leader could reach "Save as PDF" if they knew
-            to. There is no print stylesheet in the repository, so what came out carried whatever the
-            screen had. The two are now separate and each does what it says. */}
-        <DownloadReport runId={runId} />
-        <button
-          type="button"
-          onClick={() => window.print()}
-          className="border-border text-foreground hover:bg-muted rounded-full border px-6 py-2.5 text-sm"
-        >
-          Print this page
-        </button>
-        <button
-          type="button"
-          onClick={() => setWantShare((v) => !v)}
-          className="border-border text-foreground hover:bg-muted rounded-full border px-6 py-2.5 text-sm"
-        >
-          {wantShare ? 'Hide sharing' : 'Share your results'}
-        </button>
-      </div>
-
-      {wantShare && (
-        <div className="border-border/70 bg-muted/30 space-y-5 rounded-2xl border px-6 py-5 print:hidden">
-          <p className="text-muted-foreground text-sm leading-relaxed">
-            Sharing is entirely optional, and everything below is too. It helps Rashmir understand
-            patterns across leaders, never used to identify you.
-          </p>
-          <label className="text-foreground flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={publicLink}
-              onChange={(e) => setPublicLink(e.target.checked)}
-            />
-            Create a link I can share
-          </label>
-          <label className="text-foreground flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={withCoach}
-              onChange={(e) => setWithCoach(e.target.checked)}
-            />
-            Share my results with Rashmir
-          </label>
-
-          {/*
-            F17. Its own question, and only asked once the first one is answered.
-
-            Sharing a summary is not sharing the exchange that produced it. A transcript holds what
-            someone said while working something out, in the order they worked it out, including the
-            parts they went back on. Brief §3 already draws this line for quoting; the conversation
-            deserves it at least as much, and until now there was no way for a leader to say yes to
-            one and no to the other.
-
-            Indented under its parent because that is what it is: unticking the box above withdraws
-            this one, on the server as well as here.
-          */}
-          {withCoach && (
-            <label className="text-foreground ml-6 flex items-start gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={shareTranscript}
-                onChange={(e) => setShareTranscript(e.target.checked)}
-                className="mt-1"
-              />
-              <span>
-                She may also read our conversation, not only the results.
-                <span className="text-muted-foreground block text-xs leading-relaxed">
-                  Everything you typed, in the order you typed it. Leave this unticked and she sees
-                  the summary only. You can change your mind here at any time.
-                </span>
-              </span>
-            </label>
-          )}
-          <SelectField
-            id="age-band"
-            label="Age range (optional)"
-            value={ageBand}
-            onChange={setAgeBand}
-            options={AGE_BANDS.map((b) => ({ value: b, label: b }))}
-          />
-          <div className="border-border/70 bg-muted/20 space-y-2 rounded-lg border p-4">
-            <p className="text-muted-foreground text-xs tracking-wide uppercase">
-              What you said you were taking away
-            </p>
-            <p className="text-foreground text-[0.98rem] leading-relaxed">{takeawayValue}</p>
-          </div>
-          <label className="text-foreground flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={quotable}
-              onChange={(e) => setQuotable(e.target.checked)}
-            />
-            Happy for this to be quoted anonymously
-          </label>
-          <button
-            type="button"
-            onClick={() => void saveShare()}
-            disabled={busy}
-            className="bg-primary text-primary-foreground rounded-full px-6 py-2.5 text-sm font-medium disabled:opacity-50"
-          >
-            {busy ? 'Saving…' : 'Save these choices'}
-          </button>
-          {shareLink && (
-            <p className="text-muted-foreground text-sm">
-              Your link:{' '}
-              <a href={shareLink} className="text-primary underline underline-offset-4">
-                {shareLink}
-              </a>
-            </p>
-          )}
+      <div className="mx-auto max-w-3xl space-y-12">
+        <div className="ryw-rise ryw-rise-2 border-border/70 border-t pt-10">
+          <ReportActions runId={runId} />
         </div>
-      )}
 
-      {error && (
-        <p className="text-muted-foreground text-sm" role="status">
-          {error} You can try again.
-        </p>
-      )}
+        <div className="ryw-rise ryw-rise-3">
+          <ShareWithCoach runId={runId} takeaway={takeawayValue} />
+        </div>
 
-      {/* F8 t-3. Placed after the sharing choice and before finishing: the one moment the leader has
-          just seen what the audit gave them. Collapsed by default — an invitation, not a nag (I16). */}
-      <ReferralInvite />
+        {/* F8 t-3. After the sharing choice and before finishing: the one moment the leader has just
+            seen what the audit gave them. Collapsed by default — an invitation, not a nag (I16). */}
+        <div className="ryw-rise ryw-rise-4">
+          <ReferralInvite />
+        </div>
 
-      <div className="print:hidden">
-        <button
-          type="button"
-          onClick={() => void finish()}
-          disabled={busy}
-          className="bg-primary text-primary-foreground rounded-full px-8 py-3 text-[0.95rem] font-medium disabled:opacity-50"
-        >
-          {busy ? 'Finishing…' : 'Finish my audit'}
-        </button>
+        <div className="ryw-rise ryw-rise-4">
+          <FinishAudit runId={runId} onFinished={() => setFinished(true)} />
+        </div>
       </div>
     </div>
   );

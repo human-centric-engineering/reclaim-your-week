@@ -10,7 +10,7 @@ const {
   shareUpsert,
   shareFindUnique,
   reportUpsert,
-  reportUpdateMany,
+  reportDeleteMany,
   feedbackFindFirst,
   feedbackCreate,
   feedbackUpdate,
@@ -18,7 +18,7 @@ const {
   shareUpsert: vi.fn(),
   shareFindUnique: vi.fn(),
   reportUpsert: vi.fn(),
-  reportUpdateMany: vi.fn(),
+  reportDeleteMany: vi.fn(),
   feedbackFindFirst: vi.fn(),
   feedbackCreate: vi.fn(),
   feedbackUpdate: vi.fn(),
@@ -26,7 +26,7 @@ const {
 vi.mock('@/lib/db/client', () => ({
   prisma: {
     reclaimShare: { upsert: shareUpsert, findUnique: shareFindUnique },
-    reclaimReportShare: { upsert: reportUpsert, updateMany: reportUpdateMany },
+    reclaimReportShare: { upsert: reportUpsert, deleteMany: reportDeleteMany },
     reclaimFeedback: {
       findFirst: feedbackFindFirst,
       create: feedbackCreate,
@@ -35,7 +35,7 @@ vi.mock('@/lib/db/client', () => ({
   },
 }));
 
-import { createShare, resolveShareToken } from '@/lib/app/programme/share';
+import { createShare } from '@/lib/app/programme/share';
 
 beforeEach(() => {
   // The upsert returns whatever row ends up in the table — either the one it created or the one that
@@ -47,37 +47,44 @@ beforeEach(() => {
     );
   shareFindUnique.mockReset();
   reportUpsert.mockReset().mockResolvedValue(undefined);
-  reportUpdateMany.mockReset().mockResolvedValue({ count: 0 });
+  reportDeleteMany.mockReset().mockResolvedValue({ count: 0 });
   feedbackFindFirst.mockReset().mockResolvedValue(null);
   feedbackCreate.mockReset().mockResolvedValue(undefined);
   feedbackUpdate.mockReset().mockResolvedValue(undefined);
 });
 
 describe('createShare', () => {
-  it('mints a new unguessable public token when a link is requested', async () => {
-    const { token } = await createShare('u1', 'run-1', { publicLink: true });
-    expect(token).toMatch(/^[a-f0-9]{64}$/);
-    // F10 t-1 gave both share tables a unique constraint, so idempotency is the database's job now
-    // rather than a findFirst that races itself (plan D8). `update: {}` is what keeps an already-sent
-    // link alive: touching the row must not rotate its token.
-    expect(shareUpsert).toHaveBeenCalledWith({
-      where: { userId_auditRunId: { userId: 'u1', auditRunId: 'run-1' } },
-      create: { userId: 'u1', auditRunId: 'run-1', token },
-      update: {},
-      select: { token: true },
+  /**
+   * The public link is gone, and this is the assertion that keeps it gone.
+   *
+   * A leader used to be able to mint an unguessable, **unrevokable** token that served the most
+   * personal document this product makes from a URL with no session behind it. Removing the UI would
+   * not have been enough — the mint lived here, and a route or a script could still have called it.
+   * `ReclaimShare` is untouched by this module now, and the table survives only so a leader who
+   * minted a link before the change can still see that they did, in their data export.
+   */
+  it('never touches the public share table, whatever it is asked for', async () => {
+    await createShare('u1', 'run-1', {
+      withCoach: true,
+      shareTranscript: true,
+      takeaway: 'A clearer week.',
+      quotable: true,
     });
+    expect(shareUpsert).not.toHaveBeenCalled();
+    expect(shareFindUnique).not.toHaveBeenCalled();
   });
 
-  it('reuses an existing token rather than minting a second link', async () => {
-    shareUpsert.mockResolvedValue({ token: 'existing-token' });
-    const { token } = await createShare('u1', 'run-1', { publicLink: true });
-    expect(token).toBe('existing-token');
-  });
-
-  it('does not mint a token when no public link was requested', async () => {
-    const { token } = await createShare('u1', 'run-1', { withCoach: true });
-    expect(token).toBeNull();
+  it('reports back whether the report is now shared with the coach', async () => {
+    await expect(createShare('u1', 'run-1', { withCoach: true })).resolves.toEqual({
+      sharedWithCoach: true,
+    });
     expect(reportUpsert).toHaveBeenCalled();
+  });
+
+  it('reports back a run that was saved without being shared', async () => {
+    await expect(createShare('u1', 'run-1', { withCoach: false })).resolves.toEqual({
+      sharedWithCoach: false,
+    });
   });
 
   it('records feedback with the SEPARATE quote consent (not implied by sharing)', async () => {
@@ -122,21 +129,22 @@ describe('createShare', () => {
       );
     });
 
-    it('withdraws it when they stop sharing the results at all', async () => {
-      // Sharing the exchange but not the summary it produced is a state nobody asked for.
+    it('deletes the row when they stop sharing the results at all', async () => {
+      // Sharing the exchange but not the summary it produced is a state nobody asked for, and row
+      // existence is the share — leaving it behind with `transcriptConsent: false` kept the leader
+      // listed in the coach's inbox as a "results only" sharer after they had unshared entirely.
       await createShare('u1', 'run-1', { withCoach: false, shareTranscript: true });
-      expect(reportUpdateMany).toHaveBeenCalledWith({
-        where: { userId: 'u1', auditRunId: 'run-1', transcriptConsent: true },
-        data: { transcriptConsent: false },
+      expect(reportDeleteMany).toHaveBeenCalledWith({
+        where: { userId: 'u1', auditRunId: 'run-1' },
       });
       expect(reportUpsert).not.toHaveBeenCalled();
     });
 
     it('leaves it alone when the request never mentions coach sharing', async () => {
-      // A save that only mints a public link must not revoke a consent nobody touched, and must not
-      // put a write on the database to discover that.
-      await createShare('u1', 'run-1', { publicLink: true });
-      expect(reportUpdateMany).not.toHaveBeenCalled();
+      // A save that only records the feedback line must not revoke a consent nobody touched, and
+      // must not put a write on the database to discover that.
+      await createShare('u1', 'run-1', { takeaway: 'A clearer week.' });
+      expect(reportDeleteMany).not.toHaveBeenCalled();
       expect(reportUpsert).not.toHaveBeenCalled();
     });
   });
@@ -154,17 +162,5 @@ describe('createShare', () => {
         quoteConsent: false,
       },
     });
-  });
-});
-
-describe('resolveShareToken', () => {
-  it('returns the run for a known token', async () => {
-    shareFindUnique.mockResolvedValue({ userId: 'u1', auditRunId: 'run-1' });
-    expect(await resolveShareToken('tok')).toEqual({ userId: 'u1', runId: 'run-1' });
-  });
-
-  it('returns null for an unknown token', async () => {
-    shareFindUnique.mockResolvedValue(null);
-    expect(await resolveShareToken('nope')).toBeNull();
   });
 });

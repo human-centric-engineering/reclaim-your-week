@@ -102,7 +102,7 @@ export const RECLAIM_PHASE_SIGNPOSTS: PhaseSignpost[] = [
     involves: 'What you are taking from this, gathered in one place to keep.',
     duration: 'a few minutes',
     opening: [
-      'Before the written summary, one last question, and it is the one that matters most. What are you taking away from this?',
+      'Before offering you a downloadable summary, one last question, and it is the one that matters most. What are you taking away from this?',
     ],
   },
 ];

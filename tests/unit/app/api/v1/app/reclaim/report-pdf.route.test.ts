@@ -52,6 +52,8 @@ const chart: ChartData = {
 
 const SUMMARY: AuditSummary = {
   firstName: 'Sam',
+  auditedOn: '2026-07-29T10:00:00.000Z',
+  contactEmail: 'rashmir@rashmir.net',
   role: 'Chief Executive',
   orgType: 'A social enterprise',
   period: 'last quarter',
@@ -59,7 +61,7 @@ const SUMMARY: AuditSummary = {
   current: chart,
   rows: [],
   action: { chosen: null, when: null, howKnown: null },
-  analyst: null,
+  report: null,
   footnote: 'A tool designed by Rashmir Balasubramaniam.',
 };
 

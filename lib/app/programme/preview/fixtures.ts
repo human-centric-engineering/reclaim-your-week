@@ -4,18 +4,19 @@
  * ## What this is for
  *
  * Everything in a finished audit falls out of the slot values a fabricator writes, except one field:
- * `ReclaimAuditRun.analystReading`, which is the only part of the summary a language model produces.
+ * `ReclaimAuditRun.analystReading` (the column kept its name; the agent that fills it did not), which
+ * is the only part of the report a language model produces.
  * Pre-writing it is what lets a fast-forwarded audit reach a complete, renderable state without
- * spending money on a provider call — `ensureAnalystReading` is write-once and returns early when the
+ * spending money on a provider call — `ensureReportReading` is write-once and returns early when the
  * column is already set, which `scripts/smoke/reclaim-report.ts` has relied on since F7.
  *
  * ## Why the reading is derived rather than written out
  *
- * `parseAnalystReading` refuses a gap anchored to an area the run's own buckets do not contain
- * (`analyst/reading.ts`, reached through `summary.ts`'s token set). A hard-coded token list would
+ * `parseReportReading` refuses a gap anchored to an area the run's own buckets do not contain
+ * (`report/reading.ts`, reached through `summary.ts`'s token set). A hard-coded token list would
  * therefore be correct only for as long as the fabricator's hour map stayed the same, and the day
  * somebody changed which buckets get filled in the fixture would be the day the summary quietly lost
- * its analyst section — with a refusal in the log and two empty panels on screen.
+ * its reading — with a refusal in the log and two empty panels on screen.
  *
  * So the gaps are computed from the hours actually written. The tokens can only be ones present, and
  * the observations describe the numbers they are about, which is also what makes a fabricated summary
@@ -52,18 +53,26 @@ export interface PreviewStep {
   difference: string;
 }
 
-export interface PreviewReading {
-  gaps: PreviewGap[];
-  pathway: PreviewStep[];
+/** One chapter of the arc, in the shape `parseReportReading` accepts. */
+export interface PreviewChapter {
+  section: 'the_week' | 'what_you_chose' | 'what_you_take';
+  paragraphs: string[];
 }
 
-/** How many gaps to name. `parseAnalystReading` accepts two to four; two is the honest minimum. */
+export interface PreviewReading {
+  chapters: PreviewChapter[];
+  gaps: PreviewGap[];
+  pathway: PreviewStep[];
+  closing: string;
+}
+
+/** How many gaps to name. `parseReportReading` accepts two to four; two is the honest minimum. */
 const GAP_COUNT = 2;
 
 /**
  * Hours in words, so an observation reads as prose rather than as a data dump.
  *
- * Words rather than digits because that is the register the analyst writes in, and because a single
+ * Words rather than digits because that is the register the report writes in, and because a single
  * sentence must not mix the two: "holds 22 hours, where ten was the intention" is the seam between two
  * styles showing. Compounds are built from these up to ninety-nine, which covers any hours a week can
  * hold; above that, digits, on the grounds that a sentence saying "104" beats one saying nothing.
@@ -112,7 +121,7 @@ function inWords(n: number): string {
   const remainder = rounded % 10;
   if (tens === undefined) return String(rounded);
   // "twenty two", not "twenty-two": the hyphen is correct English but reads as a range in a sentence
-  // full of hour counts, and the analyst's own fixture established the spaced form.
+  // full of hour counts, and the reading's own fixture established the spaced form.
   return remainder === 0 ? tens : `${tens} ${UNITS[remainder]}`;
 }
 
@@ -123,10 +132,10 @@ function areaPhrase(token: string): string {
 }
 
 /**
- * A reading in the analyst's shape, anchored to the two largest gaps in the hours supplied.
+ * A reading in the report agent's shape, anchored to the two largest gaps in the hours supplied.
  *
- * Largest-gap-first rather than an arbitrary two, because that is what the real analyst is asked to
- * do, and because a fabricated summary whose observations pick out the wrong areas is a worse test
+ * Largest-gap-first rather than an arbitrary two, because that is what the real agent is asked to
+ * do, and because a fabricated report whose observations pick out the wrong areas is a worse test
  * artefact than one that picks the right ones: the whole point of looking at the screen is to judge
  * whether it reads coherently.
  *
@@ -134,7 +143,7 @@ function areaPhrase(token: string): string {
  * should write no reading at all and let the summary show its own "not generated" state, rather than
  * pad the section with invented areas.
  */
-export function previewAnalystReading(
+export function previewReportReading(
   hoursByToken: Readonly<Record<string, PreviewHours>>
 ): PreviewReading | null {
   const ranked = Object.entries(hoursByToken)
@@ -155,6 +164,31 @@ export function previewAnalystReading(
   }));
 
   return {
+    // Two chapters short of the real thing's minimum, and that is the honest fixture: a fabricator
+    // that wrote a leader's narrative would be inventing the one part of this document that is
+    // supposed to come from what somebody actually said. An operator looking at a preview sees the
+    // structure and the register; they do not see a life story nobody lived.
+    chapters: [
+      {
+        section: 'the_week' as const,
+        paragraphs: [
+          'This is a fabricated preview, so the chapters a real report would carry are not written here. The figures, the areas and the shape of the page are all real.',
+        ],
+      },
+      {
+        section: 'what_you_chose' as const,
+        paragraphs: [
+          'A real report writes this chapter from what the leader said they were starting, and from what they said they would put down to make room for it.',
+        ],
+      },
+      {
+        section: 'what_you_take' as const,
+        paragraphs: [
+          'And it closes on their own words about what they are taking away, which are the last word on their own audit.',
+        ],
+      },
+    ],
+    closing: 'A preview, so this line stands in for the one a leader would read.',
     gaps,
     // Fixed, and deliberately generic. A pathway derived from the numbers would be the fabricator
     // pretending to reason, and this content is only ever read by somebody checking that the screen

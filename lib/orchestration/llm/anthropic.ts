@@ -220,7 +220,22 @@ export class AnthropicProvider implements LlmProvider {
 
     let stream: Stream<RawMessageStreamEvent>;
     try {
-      stream = await this.client.messages.create(params);
+      // Retried on the same terms as the non-streaming path above. See the matching note in
+      // `openai-compatible.ts`: the SDK's own retry is disabled here (`maxRetries: 0`) so that
+      // retry policy lives in `withRetry`, and a streamed turn that never asked for it was the one
+      // path where that policy did not apply — a provider 429 went straight to the caller.
+      //
+      // Only the open is retried. `create()` returns before any event is read, so a retry re-issues
+      // a request nothing has consumed; iteration below stays outside the wrapper, because a stream
+      // that fails mid-flight has already yielded tokens that a replay would repeat.
+      stream = await withRetry<Stream<RawMessageStreamEvent>>(
+        () => this.client.messages.create(params),
+        {
+          maxRetries: this.maxRetries,
+          ...(options.signal !== undefined ? { signal: options.signal } : {}),
+          operation: 'anthropic.messages.create (stream)',
+        }
+      );
     } catch (err) {
       throw toProviderError(err, 'Anthropic chat stream failed');
     }

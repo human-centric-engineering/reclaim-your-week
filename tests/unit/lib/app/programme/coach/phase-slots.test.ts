@@ -13,6 +13,7 @@ import {
   phaseCaptureSlots,
   slotLabel,
   slotApplies,
+  compoundQuestionSlugs,
 } from '@/lib/app/programme/coach/phase-slots';
 import {
   COACH_WRITABLE_GROUPS,
@@ -231,6 +232,79 @@ describe('what a reading is called on screen', () => {
 
       expect(slotApplies(condition, { reclaim_setup_in_transition: { value: 'Yes' } })).toBe(true);
       expect(slotApplies(condition, { reclaim_setup_in_transition: { value: 'No' } })).toBe(false);
+    });
+  });
+
+  /**
+   * A pair is one question, so neither half of it is a choice.
+   *
+   * The failure these hold shut, observed on a live audit: the coach asked "with a team split between
+   * two locations, how does having a distributed team shape your leadership?" and the composer drew
+   * **Yes / No** beneath it. The anchor really is a yes-or-no; the *question* was the pair, and half
+   * of that pair is answered in the leader's own words.
+   */
+  describe('compoundQuestionSlugs — the readings that are half of a question', () => {
+    const YES = { value: 'Yes', valueJson: true };
+    const setup = () => phaseCaptureSlots('phase-0-setup');
+
+    it('names both halves of every pair this run has still to ask', () => {
+      const inside = compoundQuestionSlugs(setup(), {}, true);
+
+      expect(inside.has('reclaim_profile_distributed_team')).toBe(true);
+      expect(inside.has('reclaim_profile_distributed_impact')).toBe(true);
+      expect(inside.has('reclaim_setup_in_transition')).toBe(true);
+      expect(inside.has('reclaim_setup_transition_detail')).toBe(true);
+    });
+
+    it('leaves a reading asked on its own out of it', () => {
+      // The period is a four-way choice with no partner, and it is exactly the case this whole
+      // mechanism was built for. A rule that swept it up would undo the feature to fix the bug.
+      expect(compoundQuestionSlugs(setup(), {}, true).has('reclaim_setup_audit_period')).toBe(
+        false
+      );
+    });
+
+    it('releases the follower once the anchor has landed', () => {
+      // The anchor is answered, so the follower is the outstanding reading and it is asked alone.
+      // Its own set — "I have a development team" / "I carry it myself" — is a real choice again.
+      const inside = compoundQuestionSlugs(
+        setup(),
+        { reclaim_setup_fundraising_relevant: YES },
+        true
+      );
+
+      expect(inside.has('reclaim_setup_fundraising_relevant')).toBe(false);
+      expect(inside.has('reclaim_setup_fundraising_support')).toBe(false);
+    });
+
+    it('releases the anchor when its follower does not apply to this leader', () => {
+      // Phase 1's pair, where the condition comes back the other way: a leader with a protected block
+      // is never asked what gets in its way, so the anchor is a lone yes-or-no.
+      const inside = compoundQuestionSlugs(
+        phaseCaptureSlots('phase-1-current'),
+        { reclaim_current_deep_block_exists: YES },
+        true
+      );
+
+      expect(inside.has('reclaim_current_deep_block_blocker')).toBe(false);
+    });
+
+    it('is empty when the deployment asks every reading on its own', () => {
+      // `one-at-a-time` is the escape hatch, and under it there is no compound question to be half of.
+      expect(compoundQuestionSlugs(setup(), {}, false).size).toBe(0);
+    });
+
+    it('agrees with the pairing the capture list actually draws', () => {
+      // The rule and the question have to come from the same arithmetic or they drift: a reading told
+      // it has buttons while the list groups it into a two-part question is the original bug back.
+      for (const slot of setup()) {
+        const inside = compoundQuestionSlugs(setup(), {}, true);
+        if ((slot.pairedWith ?? []).length === 0) continue;
+        expect(inside.has(slot.slug), `${slot.slug} anchors a pair`).toBe(true);
+        for (const follower of slot.pairedWith ?? []) {
+          expect(inside.has(follower), `${follower} follows ${slot.slug}`).toBe(true);
+        }
+      }
     });
   });
 

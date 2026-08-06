@@ -13,7 +13,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useEffect } from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 
 /*
  * The bar's two corner controls stand in as nothing here. Both reach for a provider this suite has no
@@ -37,21 +37,12 @@ const mounts = vi.hoisted(() => ({ conversation: 0 }));
 // The phase surfaces are exercised by their own suites; here they stand in as markers, so this test
 // is about the frame rather than about what the frame contains.
 vi.mock('@/components/app/reclaim/coach/phase-conversation', () => ({
-  PhaseConversation: ({
-    onSwitchToForm,
-    onAdvanced,
-  }: {
-    onSwitchToForm: () => void;
-    onAdvanced: () => void;
-  }) => {
+  PhaseConversation: ({ onAdvanced }: { onAdvanced: () => void }) => {
     useEffect(() => {
       mounts.conversation += 1;
     }, []);
     return (
       <div data-testid="conversation">
-        <button type="button" onClick={onSwitchToForm}>
-          I would rather fill this in myself
-        </button>
         <button type="button" onClick={onAdvanced}>
           advance
         </button>
@@ -72,7 +63,13 @@ vi.mock('@/components/app/reclaim/phase/setup-panel', () => ({
   SetupPanel: () => <div data-testid="setup-panel" />,
 }));
 vi.mock('@/components/app/reclaim/phase/phase6-panel', () => ({
-  Phase6Panel: () => <div data-testid="summary-panel" />,
+  Phase6Panel: ({ onAdvanced }: { onAdvanced: () => void }) => (
+    <div data-testid="summary-panel">
+      <button type="button" onClick={onAdvanced}>
+        advance from the panel
+      </button>
+    </div>
+  ),
 }));
 vi.mock('@/components/app/reclaim/phase/phase1-panel', () => ({
   Phase1Panel: () => <div data-testid="panel-phase-1-current" />,
@@ -87,6 +84,11 @@ vi.mock('@/components/app/reclaim/phase/phase5-panel', () => ({
   Phase5Panel: () => <div data-testid="panel-phase-5-action" />,
 }));
 vi.mock('@/components/app/reclaim/repeat/trend-lines', () => ({ TrendLines: () => null }));
+// A finished phase opened again has its own suite. Here it stands in as a marker naming the phase it
+// was given, which is what the tests about going back to a section are actually asserting on.
+vi.mock('@/components/app/reclaim/phase-review', () => ({
+  PhaseReview: ({ phaseKey }: { phaseKey: string }) => <div data-testid={`review-${phaseKey}`} />,
+}));
 vi.mock('@/components/app/reclaim/begin-audit', () => ({
   BeginAudit: ({ onStarted }: { onStarted: () => void }) => (
     <div data-testid="begin-audit">
@@ -238,23 +240,19 @@ describe('ProgrammeShell — the frame around a run', () => {
     expect(screen.queryByTestId('form-panel')).not.toBeInTheDocument();
   });
 
-  it('switches to the form and remembers the choice, per leader', async () => {
+  it('offers no way out of the conversation to a form, and remembers no such choice', async () => {
+    // The link out — "I would rather fill this in myself" — is gone from every phase, and so is the
+    // remembered preference behind it. A leader arriving with `form` still written into their browser
+    // from before the change gets the conversation, not the phase panel they can no longer leave by
+    // any link this shell renders.
+    window.localStorage.setItem('reclaim.phase-mode.v1', JSON.stringify('form'));
     respond(runState());
-    const { unmount } = render(<ProgrammeShell />);
-
-    await userEvent.click(await screen.findByRole('button', { name: /fill this in myself/ }));
-    expect(await screen.findByTestId('form-panel')).toBeInTheDocument();
-    // The form path keeps the door back open.
-    expect(screen.getByRole('button', { name: /talk this through/ })).toBeInTheDocument();
-
-    unmount();
     render(<ProgrammeShell />);
-    // Remembered in localStorage, so the choice does not have to be made again at every phase.
-    expect(await screen.findByTestId('form-panel')).toBeInTheDocument();
 
-    // And the door back is a door, not a label.
-    await userEvent.click(screen.getByRole('button', { name: /talk this through/ }));
     expect(await screen.findByTestId('conversation')).toBeInTheDocument();
+    expect(screen.queryByTestId('form-panel')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /fill this in myself/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /talk this through/ })).not.toBeInTheDocument();
   });
 
   it('keeps the conversation mounted while it re-reads, or the transcript goes with it', async () => {
@@ -318,8 +316,9 @@ describe('ProgrammeShell — the frame around a run', () => {
   });
 
   it('re-reads the run when a phase advances, on either surface', async () => {
+    // Both surfaces the shell still renders: the conversation for phases 0 to 5, and phase 6's panel.
     respond(runState());
-    render(<ProgrammeShell />);
+    const { unmount } = render(<ProgrammeShell />);
 
     await userEvent.click(await screen.findByRole('button', { name: 'advance' }));
     await waitFor(() =>
@@ -328,9 +327,13 @@ describe('ProgrammeShell — the frame around a run', () => {
       ).toBeGreaterThan(1)
     );
 
-    await userEvent.click(screen.getByRole('button', { name: /fill this in myself/ }));
+    unmount();
+    respond(runState({ currentPhaseKey: 'phase-6-summary' }));
+    render(<ProgrammeShell />);
+
+    await screen.findByTestId('summary-panel');
     const before = fetchMock.mock.calls.filter(([u]) => String(u).includes('/runs/current')).length;
-    await userEvent.click(await screen.findByRole('button', { name: 'advance from the form' }));
+    await userEvent.click(screen.getByRole('button', { name: 'advance from the panel' }));
     await waitFor(() =>
       expect(
         fetchMock.mock.calls.filter(([u]) => String(u).includes('/runs/current')).length
@@ -354,12 +357,12 @@ describe('ProgrammeShell — the frame around a run', () => {
     expect(await screen.findByText('Section 4 · Gap analysis')).toBeInTheDocument();
   });
 
-  it('opens the setup phase as a conversation too, once the leader prefers fields', async () => {
+  it('opens the setup phase as a conversation, like every other phase but the last', async () => {
     respond(runState({ currentPhaseKey: 'phase-0-setup' }));
-    window.localStorage.setItem('reclaim.phase-mode.v1', JSON.stringify('form'));
     render(<ProgrammeShell />);
 
-    expect(await screen.findByTestId('setup-panel')).toBeInTheDocument();
+    expect(await screen.findByTestId('conversation')).toBeInTheDocument();
+    expect(screen.queryByTestId('setup-panel')).not.toBeInTheDocument();
   });
 
   it('keeps the summary phase a panel, because consent is not something a coach may record', async () => {
@@ -373,21 +376,24 @@ describe('ProgrammeShell — the frame around a run', () => {
     expect(screen.queryByRole('button', { name: /talk this through/ })).not.toBeInTheDocument();
   });
 
-  it.each(['phase-1-current', 'phase-3-ideal', 'phase-4-gap', 'phase-5-action'])(
-    'routes %s to its own form panel, so no phase falls through to the fallback',
+  it.each(['phase-0-setup', 'phase-1-current', 'phase-3-ideal', 'phase-4-gap', 'phase-5-action'])(
+    'routes %s to the conversation, so no phase falls through to the fallback',
     async (phaseKey) => {
+      // These used to be checked against their form panels, which is where the shell sent them once a
+      // leader took the link out. There is no link out, so the assertion is the same one moved: every
+      // seeded phase but the last has a surface of its own and none of them lands on "not available".
       respond(runState({ currentPhaseKey: phaseKey }));
-      window.localStorage.setItem('reclaim.phase-mode.v1', JSON.stringify('form'));
       render(<ProgrammeShell />);
 
-      expect(await screen.findByTestId(`panel-${phaseKey}`)).toBeInTheDocument();
+      expect(await screen.findByTestId('conversation')).toBeInTheDocument();
       expect(screen.queryByText(/not available just now/i)).not.toBeInTheDocument();
     }
   );
 
   it('says the map has moved rather than opening a conversation with no phase behind it', async () => {
     // An unknown phase key means the journey map changed under a live run. A chat window would be a
-    // worse answer than a sentence.
+    // worse answer than a sentence — and with the form mode gone, "not the last phase" would have sent
+    // an unknown key straight into the conversation, which is why the shell tests the seven by name.
     respond(
       runState({
         currentPhaseKey: 'phase-9-unknown',
@@ -397,10 +403,139 @@ describe('ProgrammeShell — the frame around a run', () => {
         ],
       })
     );
-    window.localStorage.setItem('reclaim.phase-mode.v1', JSON.stringify('form'));
     render(<ProgrammeShell />);
 
     expect(await screen.findByText(/not available just now/i)).toBeInTheDocument();
     expect(screen.queryByTestId('conversation')).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * The register: sections the leader has stood in stay open to them.
+ *
+ * Both rails render (CSS picks one), and the compact strip is the one with an explicit label per
+ * section, so that is what these press. They are the same component with the same handler.
+ */
+describe('ProgrammeShell — sections the leader has already reached', () => {
+  it('goes back to a finished section and returns to the live one', async () => {
+    respond(runState());
+    render(<ProgrammeShell />);
+    await screen.findByTestId('conversation');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Go to section 1, Current reality' }));
+    expect(await screen.findByTestId('review-phase-1-current')).toBeInTheDocument();
+    expect(screen.getByText('Section 1 · Current reality')).toBeInTheDocument();
+
+    // The way back lands on the live conversation, not on a read-only copy of it.
+    await userEvent.click(screen.getByRole('button', { name: 'Go to section 2, Energy' }));
+    expect(await screen.findByTestId('conversation')).toBeInTheDocument();
+    expect(screen.getByText('Section 2 · Energy')).toBeInTheDocument();
+  });
+
+  it('keeps a reached section open when a later read says the audit is behind', async () => {
+    // The reported defect, from the leader's side: continue to section 2, look back at section 1,
+    // and section 2 has gone inert because the copy of the run on screen is behind. What the run
+    // says can go backwards; what the leader has been through cannot.
+    respond(runState());
+    render(<ProgrammeShell />);
+    await screen.findByTestId('conversation');
+
+    respond(
+      runState({
+        currentPhaseKey: 'phase-1-current',
+        phases: PHASES.map((phase) =>
+          phase.key === 'phase-1-current'
+            ? { ...phase, status: 'active' as const }
+            : phase.key === 'phase-2-energy'
+              ? { ...phase, status: 'upcoming' as const }
+              : phase
+        ),
+      })
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'advance' }));
+    await waitFor(() =>
+      expect(screen.getByText('Section 1 · Current reality')).toBeInTheDocument()
+    );
+
+    // Still a door rather than a row of text, because the register saw the leader there.
+    const energy = screen.getByRole('button', { name: 'Go to section 2, Energy' });
+
+    // And taking it re-reads the run rather than opening a read-only review of a live phase.
+    respond(runState());
+    await userEvent.click(energy);
+    await waitFor(() => expect(screen.getByText('Section 2 · Energy')).toBeInTheDocument());
+    expect(screen.getByTestId('conversation')).toBeInTheDocument();
+  });
+
+  it('offers no section the leader has never been in', async () => {
+    // The register only ever remembers where the audit has been seen to get to. Moving it on is the
+    // button at the foot of the conversation, and the server owns that gate (I9).
+    respond(runState());
+    render(<ProgrammeShell />);
+    await screen.findByTestId('conversation');
+
+    expect(
+      screen.queryByRole('button', { name: 'Go to section 3, Ideal week' })
+    ).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * Two reads of the run in flight at once, which is ordinary rather than exotic: the conversation
+ * re-reads after every coach turn, and the leader presses "continue" seconds later.
+ */
+describe('ProgrammeShell — overlapping reads', () => {
+  it('lets the last read asked for win, so a slow one cannot walk the audit back', async () => {
+    const atPhase1 = runState({
+      currentPhaseKey: 'phase-1-current',
+      phases: PHASES.map((phase) =>
+        phase.key === 'phase-1-current'
+          ? { ...phase, status: 'active' as const }
+          : phase.key === 'phase-2-energy'
+            ? { ...phase, status: 'upcoming' as const }
+            : phase
+      ),
+    });
+
+    /** Each `/runs/current` call, held open until the test says what it answers and when. */
+    const inFlight: Array<(state: unknown) => void> = [];
+    fetchMock.mockImplementation((url: string) => {
+      if (String(url).includes('/runs/current')) {
+        return new Promise((resolve) => {
+          inFlight.push((state) =>
+            resolve({ ok: true, json: async () => ({ success: true, data: state }) })
+          );
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ success: true, data: { strategyMirror: false, phaseSignposts: [] } }),
+      });
+    });
+
+    render(<ProgrammeShell />);
+    await waitFor(() => expect(inFlight).toHaveLength(1));
+    inFlight[0](atPhase1);
+    await screen.findByTestId('conversation');
+
+    // The read after a coach turn, still in flight when the leader moves on.
+    await userEvent.click(screen.getByRole('button', { name: 'advance' }));
+    await waitFor(() => expect(inFlight).toHaveLength(2));
+    // The read after the move, asked for second and answering first.
+    await userEvent.click(screen.getByRole('button', { name: 'advance' }));
+    await waitFor(() => expect(inFlight).toHaveLength(3));
+    inFlight[2](runState());
+    expect(await screen.findByText('Section 2 · Energy')).toBeInTheDocument();
+
+    // The older read finally lands, carrying the run as it was before the move. Settled inside
+    // `act`, so what follows is looking at the state after it rather than racing it.
+    await act(async () => {
+      inFlight[1](atPhase1);
+    });
+
+    // It is dropped. Left to win, it would have put the leader back in section 1 without their
+    // having asked to go anywhere, which is how the whole defect presented.
+    expect(screen.getByText('Section 2 · Energy')).toBeInTheDocument();
+    expect(screen.getByTestId('conversation')).toBeInTheDocument();
   });
 });

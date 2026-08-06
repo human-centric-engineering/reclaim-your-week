@@ -248,7 +248,28 @@ export class OpenAiCompatibleProvider implements LlmProvider {
 
     let stream: AsyncIterable<ChatCompletionChunk>;
     try {
-      stream = await this.client.chat.completions.create(params);
+      // Retried on the same terms as the non-streaming path, which is what the header comment on
+      // this file has always claimed ("429s are still retried") and what `withRetry` was written
+      // for. Without it a provider 429 — the one failure a second of backoff reliably clears — was
+      // terminal for a streamed turn, because the SDK's own retry is off (`maxRetries: 0`) and the
+      // only recovery above this layer is switching to a *different* provider, which an agent with
+      // no `fallbackProviders` does not have. The user-visible cost was a rate-limit notice on a
+      // turn that would have succeeded on its second attempt.
+      //
+      // **Only the open is retried, and that is the whole point.** `create()` here returns before a
+      // single chunk is read, so a retry re-issues a request nothing has consumed yet. Iteration
+      // stays outside: a stream that fails part-way has already yielded tokens to the caller, and
+      // replaying it from the start would repeat them. That failure belongs to the fallback-provider
+      // path above, which knows to emit `content_reset` before it re-speaks.
+      stream = await withRetry<AsyncIterable<ChatCompletionChunk>>(
+        () => this.client.chat.completions.create(params),
+        {
+          maxRetries: this.maxRetries,
+          isLocal: this.isLocal,
+          ...(options.signal !== undefined ? { signal: options.signal } : {}),
+          operation: 'openai.chat.completions.create (stream)',
+        }
+      );
     } catch (err) {
       throw toProviderError(err, 'OpenAI-compatible chat stream failed');
     }

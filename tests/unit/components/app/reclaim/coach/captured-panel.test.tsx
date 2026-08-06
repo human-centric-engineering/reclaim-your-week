@@ -390,9 +390,9 @@ describe('CapturedPanel', () => {
   });
 
   /**
-   * One route asks the question, one route types it. A leader who would rather write their own
-   * reflection takes "I would rather fill this in myself" and gets the phase panel's field; a second
-   * textarea here would be the form creeping back in beside the conversation they chose instead.
+   * The coach asks the question and the leader answers it in the conversation, which is the only
+   * route through a phase now that "I would rather fill this in myself" has gone. A textarea here
+   * would be the form creeping back in beside the conversation it was removed in favour of.
    */
   it('offers no way to type a reflection, recorded or not', () => {
     const { rerender } = render(

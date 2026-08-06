@@ -79,10 +79,15 @@ export function Phase3Panel({ runId, onAdvanced }: { runId: string; onAdvanced: 
    * Held back until every visible area has a figure, the gate `readIdealWeek` applies for the same
    * reason: a half-typed week is mostly zeroes, so the chart would be a picture of how far down the
    * table the leader has got rather than of the week they are designing.
+   *
+   * **`isHours` and not `> 0`, which is the same defect the conversation surface had.** A typed "0" is
+   * an answer — `isHours` exists to say so, and this was the one reader that asked the question the
+   * other way round. A leader who wants no delivery and operations at all in the week they are
+   * designing filled the table in completely and watched the chart never appear.
    */
   const idealChart = useMemo(() => {
     const complete =
-      visible.length > 0 && visible.every((b) => parseHours(ideal[bucketToken(b.slug)] ?? '') > 0);
+      visible.length > 0 && visible.every((b) => isHours(ideal[bucketToken(b.slug)]?.trim() ?? ''));
     if (!complete) return null;
     const typed: Answers = { ...(base as Answers) };
     for (const b of visible) {

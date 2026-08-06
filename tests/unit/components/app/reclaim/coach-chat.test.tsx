@@ -13,7 +13,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { CoachChat } from '@/components/app/reclaim/coach-chat';
 import { COACH_OPENING_TRIGGER } from '@/lib/app/programme/coach/opening';
@@ -44,7 +44,11 @@ function sseBody(text: string): ReadableStream<Uint8Array> {
  * `streamChat` writes the user row before it calls the model — so a failure after it is a different
  * situation from one before it, and the two must not be recovered the same way.
  */
-function sseFailsAfterStart(): ReadableStream<Uint8Array> {
+function sseFailsAfterStart(
+  code = 'MODEL_ERROR',
+  message = 'The model stopped.',
+  spoken?: string
+): ReadableStream<Uint8Array> {
   return new ReadableStream({
     start(controller) {
       controller.enqueue(
@@ -52,15 +56,71 @@ function sseFailsAfterStart(): ReadableStream<Uint8Array> {
           `event: start\ndata: ${JSON.stringify({ type: 'start', conversationId: 'conv-9' })}\n\n`
         )
       );
+      // Some turns die mid-sentence rather than before the first token, and the two leave different
+      // wreckage on screen. `spoken` is what the leader had already read when the stream stopped.
+      if (spoken !== undefined) {
+        controller.enqueue(
+          encoder.encode(
+            `event: content\ndata: ${JSON.stringify({ type: 'content', delta: spoken })}\n\n`
+          )
+        );
+      }
       controller.enqueue(
         encoder.encode(
           // `code` is required by the shared client union; a frame without it is dropped silently.
-          `event: error\ndata: ${JSON.stringify({ type: 'error', code: 'MODEL_ERROR', message: 'The model stopped.' })}\n\n`
+          // It is also what the client reads to decide whether a failure is worth trying again by
+          // itself, so the value matters here rather than being any old string.
+          `event: error\ndata: ${JSON.stringify({ type: 'error', code, message })}\n\n`
         )
       );
       controller.close();
     },
   });
+}
+
+/** The response that carries it, since a failure mid-stream is still an `ok` response. */
+const sseFailing = (...args: Parameters<typeof sseFailsAfterStart>) => ({
+  ok: true,
+  status: 200,
+  headers: new Headers({ 'content-type': 'text/event-stream' }),
+  body: sseFailsAfterStart(...args),
+});
+
+/**
+ * A stream that refuses before the `start` frame — nothing was persisted and nothing was generated.
+ *
+ * The other side of the same line `sseFailsAfterStart` is about: this is what a provider throttling
+ * the account looks like from the client, and on an opening turn it is the whole of the beat.
+ */
+const sseRefused = (code = 'http_429', message = 'The AI provider is throttling requests.') => ({
+  ok: true,
+  status: 200,
+  headers: new Headers({ 'content-type': 'text/event-stream' }),
+  body: new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(
+        encoder.encode(
+          `event: error\ndata: ${JSON.stringify({ type: 'error', code, message })}\n\n`
+        )
+      );
+      controller.close();
+    },
+  }),
+});
+
+/**
+ * Send a message the way `userEvent` would, without needing a clock.
+ *
+ * `userEvent` schedules its own delays between keystrokes, so under `vi.useFakeTimers()` it waits for
+ * a clock nobody is advancing and the test times out rather than failing. Every test about the retry
+ * *is* about a clock, so they type this way instead: two synchronous events, no timers of their own,
+ * leaving the fake clock free to mean only what the component put on it.
+ */
+function sendMessage(text: string): void {
+  fireEvent.change(screen.getByRole('textbox', { name: 'Your message' }), {
+    target: { value: text },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Send' }));
 }
 
 const json = (data: unknown) => ({ ok: true, json: async () => ({ success: true, data }) });
@@ -401,6 +461,120 @@ describe('CoachChat — the coach opening a moment', () => {
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/chat/conversations/conv-1/messages');
+  });
+});
+
+/**
+ * An opening the provider refused, which is the one failure with no leader in it.
+ *
+ * Reported from a live audit: section 3 opened, the provider was throttling, and the screen said "Your
+ * message is back in the box below, just as you wrote it" over an empty column and an empty box, to a
+ * leader who had not written one. The sentence was the `else` of a boolean that only ever asked "was
+ * the leader owed a reply", and an opening is neither owed nor returned — nothing of theirs is at
+ * stake. What is missing is the beat, and only the coach can give it.
+ */
+describe('CoachChat — an opening the coach could not manage', () => {
+  it('never tells a leader who has not spoken that their message is safe', async () => {
+    // `transport_500` is deliberately not retried by itself, so this is the screen at rest.
+    fetchMock.mockResolvedValue({ ok: false, status: 500, body: null });
+
+    render(<CoachChat runId="run-1" conversationId={null} openMoment="phase-4-gap" />);
+
+    expect(await screen.findByText(/Nothing you have written is affected/i)).toBeInTheDocument();
+    expect(screen.queryByText(/back in the box/i)).not.toBeInTheDocument();
+    // The empty column says what happened, once, and stops promising an opener that is not coming.
+    expect(screen.getByText(/did not manage to open this part/i)).toBeInTheDocument();
+    expect(screen.queryByText(/coach is opening this part/i)).not.toBeInTheDocument();
+  });
+
+  it('offers the beat again, since it is the coach’s to give and nobody else’s', async () => {
+    fetchMock
+      .mockResolvedValueOnce({ ok: false, status: 500, body: null })
+      .mockResolvedValueOnce(sse('Now we put the two weeks side by side.'));
+
+    render(<CoachChat runId="run-1" conversationId={null} openMoment="phase-4-gap" />);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Try again' }));
+
+    expect(await screen.findByText('Now we put the two weeks side by side.')).toBeInTheDocument();
+    // The same request, so the server's own ledger decides whether the moment is still owed.
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      '/api/v1/app/reclaim/runs/run-1/coach/stream',
+      expect.objectContaining({
+        body: JSON.stringify({ kind: 'opening', moment: 'phase-4-gap' }),
+      })
+    );
+  });
+
+  it('asks once by itself when the provider is only busy, and says that it is going to', async () => {
+    // The reported failure exactly: a 429 on the opening turn. A leader watching an empty column
+    // should not have to press anything to get past a provider that is busy for six seconds.
+    vi.useFakeTimers();
+    try {
+      fetchMock
+        .mockResolvedValueOnce(sseRefused())
+        .mockResolvedValueOnce(sse('Now we design the week you would want.'));
+
+      render(<CoachChat runId="run-1" conversationId={null} openMoment="phase-3-open" />);
+
+      await vi.waitFor(() =>
+        expect(screen.getByText(/Trying again for you in a moment/)).toBeInTheDocument()
+      );
+
+      await vi.advanceTimersByTimeAsync(6_500);
+      await vi.waitFor(() =>
+        expect(screen.getByText('Now we design the week you would want.')).toBeInTheDocument()
+      );
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+
+      // One attempt, not a chain: a provider that is refusing is not hammered by a browser.
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('stands its attempt down when the leader opens the phase themselves', async () => {
+    // Somebody who says hello into the silence has started the phase. Firing the scripted opener on
+    // top of them would answer a question nobody asked, above the one they did.
+    vi.useFakeTimers();
+    try {
+      fetchMock.mockResolvedValueOnce(sseRefused()).mockResolvedValue(sse('Good to meet you.'));
+
+      render(<CoachChat runId="run-1" conversationId={null} openMoment="phase-3-open" />);
+      await vi.waitFor(() =>
+        expect(screen.getByText(/Trying again for you in a moment/)).toBeInTheDocument()
+      );
+
+      sendMessage('hello?');
+      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock).toHaveBeenLastCalledWith(
+        '/api/v1/app/reclaim/runs/run-1/coach/stream',
+        expect.objectContaining({
+          body: JSON.stringify({ kind: 'leader', message: 'hello?' }),
+        })
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps a part-said opener and does not offer to say it twice', async () => {
+    // Past the `start` frame the phase has been opened, however badly. Asking again would open it a
+    // second time, so the leader is told to carry on rather than handed a button that duplicates.
+    fetchMock.mockResolvedValue(sseFailing('stream_error', 'The stream stopped.', 'Now we design'));
+
+    render(<CoachChat runId="run-1" conversationId={null} openMoment="phase-3-open" />);
+
+    expect(await screen.findByText(/did not finish opening this part/i)).toBeInTheDocument();
+    // What the leader had read stays where it is, rather than being cleared away under them.
+    expect(await screen.findByText('Now we design')).toBeInTheDocument();
+    expect(screen.queryByText(/back in the box/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
   });
 });
 
@@ -1017,5 +1191,222 @@ describe('CoachChat — a turn that failed', () => {
     await userEvent.clear(box);
     await userEvent.type(box, 'second thought');
     expect(box).toHaveValue('second thought');
+  });
+
+  it('holds on to the words it cannot put back, rather than dropping them', async () => {
+    // The box was written in while the turn was in flight, so there is nowhere to put the sentence
+    // that failed. It used to be discarded silently *and* announced as being in the box below.
+    let refuse: () => void = () => {};
+    fetchMock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          refuse = () => resolve({ ok: false, status: 500, body: null });
+        })
+    );
+
+    render(<CoachChat runId="run-1" conversationId={null} />);
+    const box = screen.getByRole('textbox', { name: 'Your message' });
+    await userEvent.type(box, 'about nine hours of delivery work');
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await userEvent.type(box, 'and two of planning');
+
+    refuse();
+
+    // What they were writing stays theirs, and what did not send is in front of them to keep.
+    expect(await screen.findByText(/This did not send/)).toBeInTheDocument();
+    expect(box).toHaveValue('and two of planning');
+    expect(screen.getByText('about nine hours of delivery work')).toBeInTheDocument();
+    expect(screen.queryByText(/back in the box below/)).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * A turn the leader was owed, and the two ways it comes back.
+ *
+ * The wording used to end at "ask the coach to pick it up whenever you are ready", which sounds like
+ * a recovery and is really an instruction to compose a nudge: somebody who had just been told their
+ * words were safe had to write more words to get an answer to them. Worse, the failure it most often
+ * followed was a provider throttling the account for a few seconds, so the leader was being asked to
+ * do work in place of a wait.
+ *
+ * So there are two answers, and they cover different failures. A provider that is momentarily busy is
+ * asked once more, by the app, without anybody being told to do anything. Everything else gets a
+ * button, because a second identical attempt at a blocked message or an exhausted budget is a second
+ * failure and a second bill.
+ */
+describe('CoachChat — picking up a turn that was lost', () => {
+  it('asks for the turn rather than sending the leader’s words a second time', async () => {
+    fetchMock.mockResolvedValueOnce(sseFailing()).mockResolvedValueOnce(sse('Thank you for that.'));
+
+    render(<CoachChat runId="run-1" conversationId={null} />);
+    await userEvent.type(
+      screen.getByRole('textbox', { name: 'Your message' }),
+      'ten hours, mostly meetings'
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await screen.findByRole('status');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+
+    expect(await screen.findByText('Thank you for that.')).toBeInTheDocument();
+    // **The whole point.** The request carries no message at all: their sentence is already in the
+    // conversation, and sending it again would put it in the audit twice and invite the coach to
+    // record the same reading twice with it.
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      '/api/v1/app/reclaim/runs/run-1/coach/stream',
+      expect.objectContaining({ body: JSON.stringify({ kind: 'resume' }) })
+    );
+    // And it is still the only copy of what they said.
+    expect(screen.getAllByText('ten hours, mostly meetings')).toHaveLength(1);
+  });
+
+  it('clears away the answer that never arrived, so the reply lands once and whole', async () => {
+    // A turn cut off mid-sentence leaves a fragment on screen. Keeping it would put a truncated
+    // half-answer immediately above the full one, and make the coach look like it repeated itself.
+    fetchMock
+      .mockResolvedValueOnce(sseFailing('MODEL_ERROR', 'The model stopped.', 'Thank you for sha'))
+      .mockResolvedValueOnce(sse('Thank you for sharing that.'));
+
+    render(<CoachChat runId="run-1" conversationId={null} />);
+    await userEvent.type(screen.getByRole('textbox', { name: 'Your message' }), 'eight hours');
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+    expect(await screen.findByText('Thank you for sha')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+
+    expect(await screen.findByText('Thank you for sharing that.')).toBeInTheDocument();
+    expect(screen.queryByText('Thank you for sha')).not.toBeInTheDocument();
+  });
+
+  it('asks once by itself when the provider is only busy, and says that it is going to', async () => {
+    // The observed failure: `http_429` after the leader's message was already written. Nothing about
+    // the request was wrong, so making somebody read an apology and then type a nudge is asking them
+    // to do the waiting as work.
+    vi.useFakeTimers();
+    try {
+      fetchMock
+        .mockResolvedValueOnce(
+          sseFailing('http_429', 'The AI provider is throttling requests right now.')
+        )
+        .mockResolvedValueOnce(sse('Thank you for that.'));
+
+      render(<CoachChat runId="run-1" conversationId={null} />);
+      sendMessage('ten hours');
+
+      await vi.waitFor(() =>
+        expect(screen.getByRole('status')).toHaveTextContent(/Trying again for you in a moment/)
+      );
+      // Nothing has happened yet, and the button is up meanwhile for anybody who would rather not
+      // wait for it.
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+
+      await vi.advanceTimersByTimeAsync(6_500);
+
+      await vi.waitFor(() => expect(screen.getByText('Thank you for that.')).toBeInTheDocument());
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock).toHaveBeenLastCalledWith(
+        '/api/v1/app/reclaim/runs/run-1/coach/stream',
+        expect.objectContaining({ body: JSON.stringify({ kind: 'resume' }) })
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('stops at one automatic attempt rather than hammering a provider that is refusing', async () => {
+    // A provider that is throttling wants a pause, not a faster question. Past the first retry the
+    // button is the leader's, and the app stops acting on its own.
+    vi.useFakeTimers();
+    try {
+      // A fresh body per call: a `ReadableStream` can only be read once, so a single mocked response
+      // reused across two turns would have the second one meet an already-drained stream.
+      fetchMock.mockImplementation(async () =>
+        sseFailing('http_429', 'The AI provider is throttling.')
+      );
+
+      render(<CoachChat runId="run-1" conversationId={null} />);
+      sendMessage('ten hours');
+
+      await vi.waitFor(() =>
+        expect(screen.getByRole('status')).toHaveTextContent(/Trying again for you in a moment/)
+      );
+      await vi.advanceTimersByTimeAsync(6_500);
+      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+      // The resume failed the same way, and that is where it stops.
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      // Still owed, so the button is still there — the leader can keep asking; the app will not.
+      await vi.waitFor(() =>
+        expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument()
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('never asks again by itself when trying again cannot help', async () => {
+    // A blocked message, an exhausted budget, a model that does not exist: a second identical attempt
+    // changes none of them, and spending the leader's money to prove it is not a recovery.
+    vi.useFakeTimers();
+    try {
+      fetchMock.mockImplementation(async () =>
+        sseFailing('budget_exceeded', 'This agent has reached its monthly budget.')
+      );
+
+      render(<CoachChat runId="run-1" conversationId={null} />);
+      sendMessage('ten hours');
+
+      await vi.waitFor(() =>
+        expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument()
+      );
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(screen.getByRole('status')).not.toHaveTextContent(/Trying again/);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('offers nothing to pick up when the words are back in the box', async () => {
+    // Nothing was owed: the server never received the message, so the recovery is the sentence in
+    // the composer and one press of Send. A second button here would send the same thing twice.
+    fetchMock.mockResolvedValue({ ok: false, status: 500, body: null });
+
+    render(<CoachChat runId="run-1" conversationId={null} />);
+    await userEvent.type(screen.getByRole('textbox', { name: 'Your message' }), 'four hours');
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await screen.findByRole('status');
+
+    expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent(/back in the box below/);
+  });
+
+  it('stands the automatic attempt down when the leader gets there first', async () => {
+    // Somebody who answers, or presses the button, while a retry is pending is no longer waiting for
+    // one to happen by itself. Letting it fire anyway would put a second turn on top of theirs.
+    vi.useFakeTimers();
+    try {
+      fetchMock
+        .mockResolvedValueOnce(sseFailing('http_429', 'The AI provider is throttling.'))
+        .mockResolvedValue(sse('Thank you for that.'));
+
+      render(<CoachChat runId="run-1" conversationId={null} />);
+      sendMessage('ten hours');
+      await vi.waitFor(() =>
+        expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument()
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+      // The pending one is gone rather than queued behind it.
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -17,6 +17,7 @@ const {
   loadPhaseProgress,
   readCoachContent,
   readSignposts,
+  readQuestioning,
   grantFindFirst,
   hasCompletedAudit,
 } = vi.hoisted(() => ({
@@ -26,6 +27,7 @@ const {
   loadPhaseProgress: vi.fn(),
   readCoachContent: vi.fn(),
   readSignposts: vi.fn(),
+  readQuestioning: vi.fn(),
   grantFindFirst: vi.fn(),
   hasCompletedAudit: vi.fn(),
 }));
@@ -40,6 +42,11 @@ vi.mock('@/lib/app/programme/runs/journey', () => ({ loadPhaseProgress }));
 vi.mock('@/lib/app/programme/config', () => ({
   readReclaimCoachContent: readCoachContent,
   readReclaimSignposts: readSignposts,
+}));
+// The pairing rule reads the module row on its own, out of `coach/questioning.ts` — see that file for
+// why a capability cannot reach it through `config.ts`.
+vi.mock('@/lib/app/programme/coach/questioning', () => ({
+  readReclaimQuestioning: readQuestioning,
 }));
 
 /** Content as an operator's config would supply it — the two areas are enough to show the shape. */
@@ -121,6 +128,9 @@ beforeEach(() => {
   grantFindFirst.mockResolvedValue({ tier: 'standard' });
   hasCompletedAudit.mockResolvedValue(false);
   readCoachContent.mockResolvedValue(content);
+  // The shipped default. `pendingChoiceOffer` reads it on its own rather than through the coach's
+  // content, because whether a reading is asked with a partner decides whether it is offered at all.
+  readQuestioning.mockResolvedValue({ pairing: 'paired', opportunistic: true });
 });
 
 describe("the content the phase needs — Rashmir's words, from the operator's config", () => {
@@ -328,12 +338,12 @@ describe('buildCoachPhaseContext', () => {
 
     expect(block).toContain('reclaim_reflection_p2');
     expect(block).toContain('what stands out to you here?');
-    // The two rules that replaced the blanket refusal: it is theirs to say, and it is theirs to
-    // leave. The second is now stated as a prohibition rather than as a hand-off, because "leave the
-    // move to them" was read as "tell them they may move", and the coach cannot see whether the
-    // screen is offering it.
+    // The reflection is theirs to say, and the move onward is theirs to take. The second used to be
+    // restated here as a blanket prohibition; it is now settled in one place, from what the screen
+    // is actually offering, so this note defers rather than repeating a rule that is conditional.
     expect(block).toContain('Never infer it');
-    expect(block).toContain('do not invite them to move on');
+    expect(block).toContain('do not announce that the phase is done');
+    expect(block).toContain('settled below, from what their screen is actually offering');
   });
 
   it('stops asking for a reflection this run already holds', async () => {
@@ -464,13 +474,17 @@ describe('buildCoachPhaseContext — who speaks first, and how a turn ends', () 
     expect(block).toContain('Never end on an');
   });
 
-  it('refuses the open invitation and the announcement that a phase is done', async () => {
+  it('refuses the open invitation, and refuses the move onward while the screen withholds it', async () => {
+    // This fixture's run has barely started, so the way onward is not offered and the briefing says
+    // so as fact rather than as a rule the coach is asked to keep. The prohibition used to rest on
+    // "you cannot see that", and the coach announced the move anyway — see `coach/coverage.ts`.
     const block = await buildCoachPhaseContext('u1');
 
     expect(block).toContain('anything else they');
     expect(block).toContain('ask for it by name');
+    expect(block).toContain('is not offering the way onward yet');
     expect(block).toContain('do not tell them the phase is finished');
-    expect(block).toContain('their screen offers it at the moment it becomes true');
+    expect(block).not.toContain('you may say that moving on is available');
   });
 
   it('says that a sentence about recording is not a recording', async () => {
@@ -574,13 +588,29 @@ describe('buildCoachPhaseContext — the close', () => {
     confidence: 10,
   };
 
-  it('holds the summary back until the leader has said what they are taking away', async () => {
+  it('asks the last question once, and does not ask it again for the machine', async () => {
     readRunAnswers.mockResolvedValue({});
 
     const block = await buildCoachPhaseContext('u1');
 
-    expect(block).toContain('the summary does not appear until they');
+    // The screen releases the summary on the leader's *answer*, not on the coach's recording of it
+    // (`phase6-panel.tsx`). This briefing used to tell the coach the opposite — "the summary does not
+    // appear until they have" — so a takeaway it heard and failed to write left it asking a leader who
+    // had already answered, with their finished audit sitting behind the question.
+    expect(block).toContain('released by their answer, not by your recording of it');
+    expect(block).toContain('Only once');
+    expect(block).not.toContain('the summary does not appear until they');
     expect(block).toContain('not produce a summary of the audit yourself');
+  });
+
+  it('tells the leader what answering leads to, in the words the card uses', async () => {
+    readRunAnswers.mockResolvedValue({});
+
+    // The card above the conversation says it too (`signposts.ts`): one question, and then the thing
+    // they can download. A last question with no stated end reads as another one of many.
+    expect(await buildCoachPhaseContext('u1')).toContain(
+      'Before offering you a downloadable summary'
+    );
   });
 
   it('answers their takeaway in their own words once they have written it', async () => {
@@ -700,6 +730,29 @@ describe('buildCoachPhaseContext — the branches out of phase 1', () => {
     expect(block).toContain('reclaim_calendar_period');
     // Never the better option: the audit is worth doing without it.
     expect(block).toContain('optional');
+  });
+
+  it('tells the coach to record a decline, which is what stops a second offer', async () => {
+    readRunAnswers.mockResolvedValue(everyAreaAnswered());
+
+    expect(await buildCoachPhaseContext('u1')).toContain('reclaim_calendar_declined');
+  });
+
+  it('never offers the calendar again once the leader has said no', async () => {
+    // The bug this closes: the briefing is rebuilt from the run's answers on every turn, so with
+    // nothing recording the refusal the offer branch fired again and the leader was asked twice —
+    // by a message whose own wording says it is optional and asks once.
+    readRunAnswers.mockResolvedValue({
+      ...everyAreaAnswered(),
+      reclaim_calendar_declined: { ...direct('Yes'), valueJson: true },
+    });
+
+    const block = await buildCoachPhaseContext('u1');
+
+    expect(block).not.toContain('calendar branch is offered');
+    expect(block).toContain('already been offered the calendar branch and said no');
+    // The step is not taken away, so the coach may answer honestly if the leader raises it.
+    expect(block).toContain('button on their screen');
   });
 
   it('stops asking the two questions once they have been answered', async () => {
@@ -1005,8 +1058,12 @@ describe('buildCoachPhaseContext — the texture of an area, not only its hours'
       expect(block).toContain(
         '- reclaim_current_deep_block_blocker: does not apply to this leader, so it is complete as it stands. Do not ask it.'
       );
-      // Its sibling, which applies to exactly the other leader, is still outstanding and still paired.
-      expect(block).toContain('  - reclaim_current_deep_block_when: not yet captured');
+      // Its sibling, which applies to exactly the other leader, is still outstanding — and listed at
+      // its own position rather than indented under the anchor, because the anchor is already held.
+      // A pair is one question only while both halves are still to be asked; once the anchor is in,
+      // the follower is what gets asked, on its own.
+      expect(block).toContain('- reclaim_current_deep_block_when: not yet captured');
+      expect(block).not.toContain('  - reclaim_current_deep_block_when: not yet captured');
     });
 
     it('leaves a conditional reading outstanding while its condition is unanswered', async () => {
@@ -1872,10 +1929,33 @@ describe('buildCoachPhaseContext — the reading to fall to when the named one h
       'Your first name (reclaim_profile_first_name), which nobody has asked in this audit yet.'
     );
     // The second is the next one nobody has asked, and it arrives with the condition attached.
-    expect(block).toContain('what they have just answered in the message you are replying to');
+    expect(block).toContain('what they have already answered');
     expect(block).toContain('Your role (reclaim_profile_role), which nobody has asked');
     // And the fallback carries its own instructions, including the answers on screen.
     expect(block).toContain('call offer_choices for reclaim_profile_role');
+  });
+
+  /**
+   * The condition points at the leader's last message, not at the message being replied to.
+   *
+   * **The failure this answers, observed on a live audit.** Asked how many hours of deep work they
+   * wanted, the leader said "10". The provider threw 429 before the coach spoke, and the client picked
+   * the turn back up. Nothing had swept the "10" — a turn that dies never reaches the `done` frame the
+   * sweep hangs off — so this block named deep work again, and the condition below did not fire,
+   * because on a resumed turn the message being replied to is `COACH_RESUME_TRIGGER` and not an answer
+   * to anything. The coach asked, word for word, for a figure already in the transcript above it.
+   *
+   * The route now sweeps before it resumes, which is the half of the fix that does not depend on a
+   * model reading anything correctly. This is the half that still holds when that sweep could not run
+   * — which, on a resume that follows a provider refusal, is exactly when it could not.
+   */
+  it('points the condition at the leader’s last message, so a resumed turn is covered too', async () => {
+    readRunAnswers.mockResolvedValue({});
+
+    const block = await buildCoachPhaseContext('u1');
+
+    expect(block).toContain('Read their last message to decide that, not only');
+    expect(block).toContain('a turn you are picking back up is answered by the message before');
   });
 
   it('falls to a thin reading when everything that applies has been asked', async () => {
@@ -2006,11 +2086,8 @@ describe('buildCoachPhaseContext — the questions that have answers to pick fro
   it('marks the closed readings on the list, and leaves the open ones alone', async () => {
     const block = await buildCoachPhaseContext('u1');
 
-    // A yes-or-no, and the period. Both are answered by picking, and the note reads as its own
-    // sentence rather than running on from the label the line ends with.
-    expect(block).toContain(
-      'reclaim_setup_in_transition: not yet captured in this audit. In a period of change (needs a yes or a no). This one has a fixed set of answers, so offer them.'
-    );
+    // The period is asked on its own and answered by picking, and the note reads as its own sentence
+    // rather than running on from the label the line ends with.
     expect(block).toContain(
       'reclaim_setup_audit_period: not yet captured in this audit. The period being audited. This one has a fixed set of answers, so offer them.'
     );
@@ -2018,6 +2095,47 @@ describe('buildCoachPhaseContext — the questions that have answers to pick fro
     // answering on their behalf.
     expect(block).toContain('reclaim_setup_keeping_me_up: not yet captured in this audit.');
     expect(block).not.toMatch(/reclaim_setup_keeping_me_up.*This one has a fixed set of answers/);
+  });
+
+  it('marks neither half of a two-part question, whichever half has the set', async () => {
+    // The bug, as a leader met it: the coach asked "with a team split between two locations, how does
+    // having a distributed team shape your leadership?" and the screen put **Yes / No** under it. The
+    // anchor really is a yes-or-no, so nothing about the *reading* was wrong — but the list had just
+    // told the coach to ask it in one breath with a reading answered in the leader's own words, and a
+    // set of buttons under a two-part question answers the wrong half of it.
+    const block = await buildCoachPhaseContext('u1');
+
+    expect(block).toContain('- Ask these as one question, in this order:');
+    expect(block).not.toMatch(
+      /reclaim_profile_distributed_team.*This one has a fixed set of answers/
+    );
+    expect(block).not.toMatch(/reclaim_setup_in_transition.*This one has a fixed set of answers/);
+    // And not the follower either. The fundraising pair is the case where the *second* half carries
+    // the set ("I have a development team" / "I carry it myself"), and it is the same failure wearing
+    // different buttons.
+    expect(block).not.toMatch(
+      /reclaim_setup_fundraising_support.*This one has a fixed set of answers/
+    );
+  });
+
+  it('marks a half whose partner has landed, because the question now stands alone', async () => {
+    // A pair is a compound question only while both halves are outstanding. Once the anchor is
+    // captured the follower is asked on its own, and a lone closed question keeps its buttons —
+    // suppressing them there would cost a leader the offer for no reason.
+    readRunAnswers.mockResolvedValue({
+      reclaim_setup_fundraising_relevant: {
+        value: 'Yes',
+        valueJson: true,
+        sourceType: 'direct',
+        confidence: 10,
+      },
+    });
+
+    const block = await buildCoachPhaseContext('u1');
+
+    expect(block).toMatch(
+      /reclaim_setup_fundraising_support.*This one has a fixed set of answers, so offer them\./
+    );
   });
 
   it('never puts the answers themselves in the model’s context', async () => {

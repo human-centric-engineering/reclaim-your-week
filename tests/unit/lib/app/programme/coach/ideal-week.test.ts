@@ -53,6 +53,61 @@ describe('readIdealWeek — nothing fires until the week is designed', () => {
 
     expect(readIdealWeek(answers).complete).toBe(true);
   });
+
+  it('counts a deliberate nought as an answer, because it is one', () => {
+    // The defect this replaced: `complete` was read off the built series as `hours > 0`, and
+    // `chartSeries` coerces a missing slot to 0 — so "nobody has said yet" and "no time at all, on
+    // purpose" arrived as the same number. A leader who wants no delivery and operations in the week
+    // they are designing answered every question and was never complete: the chart of their week
+    // never drew, and the challenge below never fired.
+    const answers = week({}, { delivery_operations: 0 });
+
+    const reading = readIdealWeek(answers);
+
+    expect(reading.complete).toBe(true);
+    // And the reading is genuinely usable, not merely flagged: delivery moving 5h → 0h is a real
+    // redesign, so it is not in the unmoved list.
+    expect(reading.unmoved.map((a) => a.want)).not.toContain(0);
+  });
+});
+
+describe('readIdealWeek — the section closes on the picture', () => {
+  /** The three readings beyond the spread that the phase's four questions ask for. */
+  const closing: Answers = {
+    reclaim_ideal_total_hours: n(40),
+    reclaim_ideal_deep_block_when: { value: 'mornings, Monday to Wednesday', valueJson: null },
+    reclaim_ideal_protected_commitment: { value: 'my lunchtime run', valueJson: null },
+  };
+
+  it('is not design-complete on the spread alone', () => {
+    // The spread lands two questions before the section ends. A chart drawn there sits above the
+    // deep-work block and the protected commitment, so by the time the coach asks what stands out
+    // the picture has scrolled away from the question about it.
+    const reading = readIdealWeek(week({}, {}));
+
+    expect(reading.complete).toBe(true);
+    expect(reading.designComplete).toBe(false);
+  });
+
+  it('is design-complete once all four questions are answered', () => {
+    expect(readIdealWeek(week({}, {}, closing)).designComplete).toBe(true);
+  });
+
+  it('still waits for the spread when only the other three are in', () => {
+    const answers = week({}, {}, closing);
+    delete answers['reclaim_ideal_hours__team_development'];
+
+    const reading = readIdealWeek(answers);
+
+    expect(reading.complete).toBe(false);
+    expect(reading.designComplete).toBe(false);
+  });
+
+  it('treats a nought in the spread as answered here too', () => {
+    // The same distinction as above, at the gate that decides when the picture is drawn — otherwise
+    // the one leader who zeroes an area reaches the end of the section with no chart at all.
+    expect(readIdealWeek(week({}, { delivery_operations: 0 }, closing)).designComplete).toBe(true);
+  });
 });
 
 describe('readIdealWeek — the week that has not moved', () => {

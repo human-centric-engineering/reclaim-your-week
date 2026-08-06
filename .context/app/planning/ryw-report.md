@@ -44,7 +44,7 @@ A leader finishes the one thing the product is for and hears nothing.
 | Who may download               | **The leader, signed in.** `withAuth` + `loadOwnedRun`. The report carries their role, their hours and what they said their priorities were.                                                                                                                                                                               |
 | The email's link               | **To the app, login-gated** — `/programme/history/<runId>`, not a bearer token and not an attachment. A sign-in is the correct friction for personal data; a `ReclaimShare`-style token has no expiry and no revoke, which is acceptable for a summary a leader chose to publish and not for one the system mails unasked. |
 | The email kind                 | **Not registered.** `EmailPropsMap` is a closed interface of four auth kinds (sunrise#468). `quarterly-nudge` already established the workaround: import the component, call `sendEmail`.                                                                                                                                  |
-| When the email sends           | **After the analyst attempt**, inside `completeRun`, wrapped so it cannot fail the completion. Sending first would link to a summary missing the two sections F14 just added — the one ordering a leader would actually notice.                                                                                            |
+| When the email sends           | **After the report agent attempt**, inside `completeRun`, wrapped so it cannot fail the completion. Sending first would link to a summary missing the two sections F14 just added — the one ordering a leader would actually notice.                                                                                       |
 | The public share and the PDF   | **Neither triggers generation.** Both reach `buildSummary`; F14's lazy path lives only on the leader's own summary route. An export must never be the thing that first spends money.                                                                                                                                       |
 
 ## This is not P13
@@ -60,17 +60,18 @@ It says the audit is finished, here is where it lives, and stops.
 
 ## Tasks
 
-| t-N | What                                     | Files                                                                                                                               | Status  | PR  |
-| --- | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ------- | --- |
-| t-1 | The document and the render helper.      | `components/app/reclaim/report/summary-pdf-document.tsx`, `runs/[runId]/_lib/{render-summary-pdf.tsx,pdf-response.ts}`, render test | done    | —   |
-| t-2 | The route and the two download controls. | `runs/[runId]/report.pdf/route.ts`, `phase/phase6-panel.tsx`, `history/run-review.tsx`                                              | done    | —   |
-| t-3 | The completion email.                    | `components/app/emails/audit-complete.tsx`, `runs/service.ts`                                                                       | ready ▲ | —   |
+| t-N | What                                                                                                                                                                                                         | Files                                                                                                                                                                                                       | Status | PR  |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | --- |
+| t-1 | The document and the render helper.                                                                                                                                                                          | `components/app/reclaim/report/summary-pdf-document.tsx`, `runs/[runId]/_lib/{render-summary-pdf.tsx,pdf-response.ts}`, render test                                                                         | done   | —   |
+| t-2 | The route and the two download controls.                                                                                                                                                                     | `runs/[runId]/report.pdf/route.ts`, `phase/phase6-panel.tsx`, `history/run-review.tsx`                                                                                                                      | done   | —   |
+| t-3 | The completion email.                                                                                                                                                                                        | `components/app/emails/audit-complete.tsx`, `runs/service.ts`                                                                                                                                               | done   | —   |
+| t-4 | The transcript twin (PDF + plain text) and the three-identical-pills redesign — one sentence per control instead of unexplained buttons, and finishing split out from the things a leader merely takes away. | `runs/[runId]/{transcript.pdf,transcript.txt}/route.ts`, `runs/[runId]/_lib/render-transcript-pdf.tsx`, `report/{report-actions,download-button,finish-audit,share-with-coach,transcript-pdf-document}.tsx` | done   | —   |
 
 ## Invariants this feature touches
 
 - **I8** — the PDF's bars are hours, with the percentage as a derived note, exactly as `ReclaimChart`
   does it. A PDF is where a percentage axis would be most tempting and least correct.
-- **I12** — the document renders the figures and the analyst's sections, and adds no reading of its
+- **I12** — the document renders the figures and the report agent's sections, and adds no reading of its
   own. No "your biggest problem is", no highlighted worst bar, no summary sentence the screen does
   not also carry.
 - **I16 / I17** — the email, and the absence of everything it does not say.
@@ -85,7 +86,7 @@ It says the audit is finished, here is where it lives, and stops.
 `NEXT_PUBLIC_APP_URL` but not `BETTER_AUTH_URL` could have working nudge links and broken completion
 links with nothing to say why. `lib/app/programme/urls.ts` now holds it, and the nudge uses it too.
 Third time this pattern has come up in three features, after `composite.ts`'s thresholds and the
-analyst's imperative openers.
+report agent's imperative openers.
 
 **`product-voice.test.ts` earned its keep twice.** It caught all three new files as unclassified,
 which is its completeness assertion doing its job. Classifying the PDF document then failed a second
@@ -95,7 +96,7 @@ allowlist.
 
 ## Notes / deferrals
 
-- **`smoke:reclaim-report`** renders from a hand-written reading and **never calls the analyst**, so
+- **`smoke:reclaim-report`** renders from a hand-written reading and **never calls the report agent**, so
   it needs no provider key and gates in CI from the day it lands. The expensive proof and the cheap
   one deliberately do not share a script.
 - **The chart is redrawn, not screenshotted.** `ReclaimChart` is hand-rolled divs rather than a chart

@@ -41,11 +41,11 @@
  * the leader can see the sentence, in their own words, at all times. So it sits apart from the
  * readings, always shown, whether or not the coach was confident.
  *
- * **It is shown, not edited.** This panel offers no box to type in — one route asks the question and
- * one route types it, and the leader chooses which. In the conversation the coach asks and the leader
- * answers; a leader who would rather write it themselves takes "I would rather fill this in myself"
- * and gets the phase panel's own reflection field. Putting a second textarea here would be the form
- * creeping back in beside the conversation the leader chose instead.
+ * **It is shown, not edited.** This panel offers no box to type in. The coach asks the question and the
+ * leader answers it in the conversation, which is the only route through a phase now that the link out
+ * to the form panels has gone. Putting a textarea here would be the form creeping back in beside the
+ * conversation it was removed in favour of. A leader who wants the sentence changed says so, and the
+ * coach records the new one.
  */
 
 import { useCallback, useState } from 'react';
