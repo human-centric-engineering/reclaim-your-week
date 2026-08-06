@@ -48,7 +48,7 @@ import { previewUserIdSet } from '@/lib/app/programme/preview/accounts';
  * cross-user access" is greppable. The caller passes the authenticated admin's own id, which is what
  * makes the override attributable to a person rather than to a boolean.
  */
-function supportViewer(adminUserId: string): JourneyViewer {
+export function supportViewer(adminUserId: string): JourneyViewer {
   return { userId: adminUserId, isAdminSupport: true };
 }
 
@@ -235,6 +235,11 @@ async function programmeUserIds(only?: string[]): Promise<string[]> {
   return [...ids];
 }
 
+/** A phase key's own label, or `null` for a key that is not a phase of the map. */
+export function phaseLabelForKey(key: string | undefined): string | null {
+  return RECLAIM_PHASES.find((phase) => phase.key === key)?.label ?? null;
+}
+
 /**
  * The phase a leader is sitting in, per run — **two batched queries for the whole list**, not one per
  * run (`admin-queries.ts`'s discipline). "Where they are" is the active node, else the last completed
@@ -245,8 +250,13 @@ async function programmeUserIds(only?: string[]): Promise<string[]> {
  * a direct query over journey ids **the gate has already authorised**, because `getNodeStates` is
  * per-journey and would make this N+1. Stated plainly rather than papered over: the authorisation
  * happens once, on the journeys; the second query only expands rows within that set.
+ *
+ * Returns the phase **key**, not its label. It used to return the label, which was all this screen
+ * needed; the preview list then wanted the phase *number* as well ("phase 4"), and deriving that by
+ * searching the map for a matching label would be a lookup that breaks the day two phases are worded
+ * alike. The key is the identity, so callers that want words ask `phaseLabelForKey` for them.
  */
-async function currentPhaseByRun(
+export async function currentPhaseByRun(
   viewer: JourneyViewer,
   runIds: string[]
 ): Promise<Map<string, string>> {
@@ -279,7 +289,7 @@ async function currentPhaseByRun(
     const active = RECLAIM_PHASES.find((p) => byKey.get(p.key) === 'active');
     const lastDone = [...RECLAIM_PHASES].reverse().find((p) => byKey.get(p.key) === 'completed');
     const phase = active ?? lastDone ?? RECLAIM_PHASES[0];
-    if (phase !== undefined) out.set(journey.contextKey, phase.label);
+    if (phase !== undefined) out.set(journey.contextKey, phase.key);
   }
   return out;
 }
@@ -533,7 +543,7 @@ export async function listClients(
         invite?.invitedByUserId != null ? (referrerName.get(invite.invitedByUserId) ?? null) : null,
       inviteTier: invite?.tier ?? null,
       status,
-      currentPhaseLabel: active !== null ? (phaseByRun.get(active.id) ?? null) : null,
+      currentPhaseLabel: active !== null ? phaseLabelForKey(phaseByRun.get(active.id)) : null,
       completedRuns,
       lastActivityAt: iso(lastActivity),
       chatCostUsd: totalCost(userRuns, costByRun),
@@ -591,7 +601,7 @@ export async function getClientDetail(
       quarter: run.quarter,
       startedAt: run.startedAt.toISOString(),
       completedAt: iso(run.completedAt),
-      currentPhaseLabel: phaseByRun.get(run.id) ?? null,
+      currentPhaseLabel: phaseLabelForKey(phaseByRun.get(run.id)),
       chatCostUsd: costByRun.has(run.id) ? (costByRun.get(run.id) ?? 0) : null,
     })),
     journeyHref: '/admin/framework/journeys',

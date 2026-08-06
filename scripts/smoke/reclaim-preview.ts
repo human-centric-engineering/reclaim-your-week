@@ -155,7 +155,7 @@ async function main(): Promise<void> {
     console.log(`[5] the summary carries ${summary.report.gaps.length} gaps and a pathway`);
 
     // ── 6. The operator can see it ──
-    const listed = await listPreviewAccounts();
+    const listed = await listPreviewAccounts(admin.id);
     const row = listed.find((a) => a.userId === previewId);
     if (row === undefined) fail('the test account is missing from the preview list');
     if (row.state !== 'complete') fail(`the list reports ${row.state}, not complete`);

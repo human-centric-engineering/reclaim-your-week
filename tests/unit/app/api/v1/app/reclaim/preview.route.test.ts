@@ -36,12 +36,14 @@ vi.mock('@/app/api/v1/app/reclaim/admin/preview/_lib/fabricate', async (importAc
   ...(await importActual<object>()),
   provisionPreviewAccount: vi.fn(),
   fastForwardPreviewAccount: vi.fn(),
+  resetPreviewAccountPassword: vi.fn(),
 }));
 
 import { GET, POST } from '@/app/api/v1/app/reclaim/admin/preview/route';
 import { POST as ADOPT } from '@/app/api/v1/app/reclaim/admin/preview/adopt/route';
 import { DELETE } from '@/app/api/v1/app/reclaim/admin/preview/[userId]/route';
 import { POST as FAST_FORWARD } from '@/app/api/v1/app/reclaim/admin/preview/[userId]/fast-forward/route';
+import { POST as RESET_PASSWORD } from '@/app/api/v1/app/reclaim/admin/preview/[userId]/password/route';
 import { auth } from '@/lib/auth/config';
 import { prisma } from '@/lib/db/client';
 import { listPreviewAccounts } from '@/lib/app/programme/admin/preview-list';
@@ -50,12 +52,14 @@ import { eraseUser } from '@/lib/privacy/erase-user';
 import {
   provisionPreviewAccount,
   fastForwardPreviewAccount,
+  resetPreviewAccountPassword,
 } from '@/app/api/v1/app/reclaim/admin/preview/_lib/fabricate';
 
 const ADMIN_ID = 'admin-1';
 const ADMIN_EMAIL = 'ada@example.org';
 const PREVIEW_ID = 'preview-1';
 const PASSWORD = 'Rwqwertyuiop7!';
+const NEW_PASSWORD = 'RwAsDfGhJkL7!';
 
 const req = (body?: unknown): NextRequest =>
   ({
@@ -91,6 +95,7 @@ beforeEach(() => {
     transcript: 'written',
   });
   vi.mocked(eraseUser).mockResolvedValue({ receiptId: 'r1', erasedAt: new Date() });
+  vi.mocked(resetPreviewAccountPassword).mockResolvedValue(NEW_PASSWORD);
 });
 
 describe('GET preview', () => {
@@ -104,6 +109,9 @@ describe('GET preview', () => {
       createdByName: 'Ada',
       state: 'complete' as const,
       latestRunId: 'run-1',
+      phaseKey: null,
+      phaseLabel: null,
+      phaseNumber: null,
     };
     vi.mocked(listPreviewAccounts).mockResolvedValue([row]);
 
@@ -112,6 +120,9 @@ describe('GET preview', () => {
 
     expect(res.status).toBe(200);
     expect(body.data.accounts).toEqual([row]);
+    // The phase read is a journey read, and the framework's cross-user widening is an explicit
+    // input. The acting admin's own id has to reach it, or the override is attributable to nobody.
+    expect(vi.mocked(listPreviewAccounts)).toHaveBeenCalledWith(ADMIN_ID);
   });
 });
 
@@ -241,6 +252,83 @@ describe('adopt', () => {
 
     expect(res.status).toBe(400);
     expect(registerPreviewAccount).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST preview password', () => {
+  const asPreviewUser = () =>
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      email: 'test@example.org',
+      role: 'USER',
+    } as never);
+
+  it('returns the new password and the account it belongs to', async () => {
+    // The whole point of the endpoint: an operator who no longer has the password from creation can
+    // get back into an account that still holds the audit they wanted to look at.
+    asPreviewUser();
+
+    const res = await RESET_PASSWORD(req(), ctx());
+    const body = (await res.json()) as {
+      data: { password: string; account: { email: string }; signInUrl: string };
+    };
+
+    expect(res.status).toBe(200);
+    expect(body.data.password).toBe(NEW_PASSWORD);
+    expect(body.data.account.email).toBe('test@example.org');
+    expect(body.data.signInUrl).toMatch(/\/login$/);
+  });
+
+  it('never writes the new password to a log', async () => {
+    // Same rule as the password at creation, for the same reason: logs travel further than a
+    // response body, and outlive the one render the credential was meant for.
+    asPreviewUser();
+
+    await RESET_PASSWORD(req(), ctx());
+
+    const logged = JSON.stringify([...logInfo.mock.calls, ...logWarn.mock.calls]);
+    expect(logged).not.toContain(NEW_PASSWORD);
+    expect(logged).toContain(PREVIEW_ID);
+  });
+
+  it('404s for an account outside the registry, without touching the password', async () => {
+    // This check is what stops a leaf route with a leaf rate limit from being a general-purpose
+    // "reset any user's password" endpoint. It runs before anything else.
+    vi.mocked(isPreviewAccount).mockResolvedValue(false);
+
+    const res = await RESET_PASSWORD(req(), ctx('someone-real'));
+
+    expect(res.status).toBe(404);
+    expect(resetPreviewAccountPassword).not.toHaveBeenCalled();
+  });
+
+  it('refuses the acting admin’s own account', async () => {
+    // Unreachable in practice — `adopt` will not put an admin in the registry — so reaching it means
+    // something is wrong, and locking yourself out of this screen is not how to discover that.
+    const res = await RESET_PASSWORD(req(), ctx(ADMIN_ID));
+
+    expect(res.status).toBe(400);
+    expect(resetPreviewAccountPassword).not.toHaveBeenCalled();
+  });
+
+  it('refuses an admin account even when the registry claims it', async () => {
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      email: 'other-admin@example.org',
+      role: 'ADMIN',
+    } as never);
+
+    const res = await RESET_PASSWORD(req(), ctx());
+
+    expect(res.status).toBe(400);
+    expect(resetPreviewAccountPassword).not.toHaveBeenCalled();
+  });
+
+  it('404s when the account has gone between the registry read and the user read', async () => {
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+
+    const res = await RESET_PASSWORD(req(), ctx());
+
+    expect(res.status).toBe(404);
+    expect(resetPreviewAccountPassword).not.toHaveBeenCalled();
   });
 });
 

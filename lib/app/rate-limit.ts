@@ -46,9 +46,16 @@ const reclaimJoinLimiter = createRateLimiter({
  *
  * Leaf paths fall through to the catch-all rule, which is the loosest in the table: 100 a minute. A
  * stuck button, a double-click on a slow connection, or a retry loop in a browser extension would
- * therefore be free to create a hundred accounts in a minute, each with a mailbox behind it. Ten an
- * hour is far above what an operator doing this by hand ever needs and far below anything that could
- * make a mess worth cleaning up.
+ * therefore be free to create a hundred accounts in a minute, each with a mailbox behind it. Twenty
+ * an hour is far above what an operator doing this by hand ever needs and far below anything that
+ * could make a mess worth cleaning up.
+ *
+ * **It was ten, and the password reset is why it is not.** Every write on the screen shares this one
+ * budget, and the newest of them — **Sign-in details**, which mints a fresh password — is the one an
+ * operator reaches for precisely *because* they are stuck. An operator who spent a tight budget
+ * filling accounts in and then could not get back into any of them would be locked out by the
+ * mechanism meant to protect them, which is the opposite of what a recovery action is for. The reset
+ * itself is cheap besides: one hash and one row update, and it sends nothing.
  *
  * **Writes only — and the `skip` below is what makes the number above true.** A rule matches on path
  * and carries no method, so without it the screen's own list read would spend the same budget. That
@@ -65,7 +72,7 @@ const reclaimJoinLimiter = createRateLimiter({
  */
 const reclaimPreviewLimiter = createRateLimiter({
   interval: 60 * 60 * 1000,
-  maxRequests: 10,
+  maxRequests: 20,
 });
 
 export function registerAppRateLimits(): void {

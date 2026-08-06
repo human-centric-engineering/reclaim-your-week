@@ -23,6 +23,8 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   isPreviewAccount: vi.fn(),
+  hashPassword: vi.fn(),
+  updatePassword: vi.fn(),
   registerPreviewAccount: vi.fn(),
   createRun: vi.fn(),
   saveRunAnswers: vi.fn(),
@@ -58,7 +60,17 @@ vi.mock('@/lib/framework/guidance/surface', () => ({
   MODULE_SURFACE_CONTEXT_TYPE: 'module',
   resolveModuleSurface: mocks.resolveModuleSurface,
 }));
-vi.mock('@/lib/auth/config', () => ({ auth: { api: { signUpEmail: mocks.signUpEmail } } }));
+vi.mock('@/lib/auth/config', () => ({
+  auth: {
+    api: { signUpEmail: mocks.signUpEmail },
+    // `$context` is better-auth's handle on the running instance. Mocked as the two things the
+    // password reset actually uses, so the test asserts what is written rather than how it is hashed.
+    $context: Promise.resolve({
+      password: { hash: mocks.hashPassword },
+      internalAdapter: { updatePassword: mocks.updatePassword },
+    }),
+  },
+}));
 vi.mock('@/lib/app/programme/preview/accounts', () => ({
   isPreviewAccount: mocks.isPreviewAccount,
   registerPreviewAccount: mocks.registerPreviewAccount,
@@ -92,6 +104,7 @@ vi.mock('@/app/api/v1/app/reclaim/runs/service', () => ({
 import {
   provisionPreviewAccount,
   fastForwardPreviewAccount,
+  resetPreviewAccountPassword,
   describeFabrication,
 } from '@/app/api/v1/app/reclaim/admin/preview/_lib/fabricate';
 import { passwordSchema } from '@/lib/validations/auth';
@@ -108,6 +121,8 @@ const writtenSlugs = (): string[] =>
 beforeEach(() => {
   for (const mock of Object.values(mocks)) mock.mockReset();
   mocks.isPreviewAccount.mockResolvedValue(true);
+  mocks.hashPassword.mockImplementation((plain: string) => Promise.resolve(`hashed:${plain}`));
+  mocks.updatePassword.mockResolvedValue(undefined);
   mocks.readConsent.mockResolvedValue({ accepted: false, policyVersion: 'draft-1' });
   mocks.createRun.mockResolvedValue({ id: 'run-1' });
   // The account as it is the moment after provisioning: one standard audit, unused. Nothing to top up.
@@ -253,6 +268,48 @@ describe('provisionPreviewAccount', () => {
 
     expect(mocks.mintGrant).not.toHaveBeenCalled();
     expect(mocks.registerPreviewAccount).not.toHaveBeenCalled();
+  });
+});
+
+describe('resetPreviewAccountPassword', () => {
+  it('writes a hash, never the password itself', async () => {
+    // The reason this endpoint exists rather than a stored password: nothing keeps the plaintext,
+    // here or on any row. What reaches the account row is whatever this install's hasher produced.
+    const password = await resetPreviewAccountPassword(USER);
+
+    expect(mocks.hashPassword).toHaveBeenCalledWith(password);
+    expect(mocks.updatePassword).toHaveBeenCalledWith(USER, `hashed:${password}`);
+  });
+
+  it('mints a password the sign-up schema would accept', async () => {
+    // Generated the same way as the one at creation, so an operator is never handed a password the
+    // login form refuses — a failure they meet at random and cannot reproduce.
+    const password = await resetPreviewAccountPassword(USER);
+
+    expect(password).toMatch(/[A-Z]/);
+    expect(password).toMatch(/[a-z]/);
+    expect(password).toMatch(/[0-9]/);
+    expect(password).toMatch(/[^A-Za-z0-9]/);
+    expect(password.length).toBeGreaterThanOrEqual(8);
+  });
+
+  it('gives a different password each time', async () => {
+    const first = await resetPreviewAccountPassword(USER);
+    const second = await resetPreviewAccountPassword(USER);
+
+    expect(first).not.toBe(second);
+  });
+
+  it('refuses an account that is not a registered test account, before any write', async () => {
+    // The same interlock the fabricator has, and what stops this being a "reset any user's
+    // password" function reachable from a leaf route.
+    mocks.isPreviewAccount.mockResolvedValue(false);
+
+    await expect(resetPreviewAccountPassword('a-real-leader')).rejects.toThrow(
+      /not a test account/i
+    );
+
+    expect(mocks.updatePassword).not.toHaveBeenCalled();
   });
 });
 

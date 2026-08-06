@@ -220,6 +220,10 @@ const previewAccountSchema = z.object({
   createdByName: z.string().nullable(),
   state: z.enum(['none', 'in_progress', 'complete', 'abandoned']),
   latestRunId: z.string().nullable(),
+  /** Where the audit is sitting. Null when there is no audit, or when it is finished. */
+  phaseKey: z.string().nullable(),
+  phaseLabel: z.string().nullable(),
+  phaseNumber: z.number().nullable(),
 });
 
 const previewListSchema = z.object({ accounts: z.array(previewAccountSchema) });
@@ -230,6 +234,17 @@ const previewListSchema = z.object({ accounts: z.array(previewAccountSchema) });
  */
 const previewCreatedSchema = z.object({
   account: z.object({ userId: z.string(), email: z.string(), label: z.string() }),
+  password: z.string(),
+  signInUrl: z.string(),
+  message: z.string(),
+});
+
+/**
+ * What resetting one returns — the same shape as creation minus the label, because the panel that
+ * renders it is the same panel. `password` carries a live credential and lives for one render.
+ */
+const previewPasswordSchema = z.object({
+  account: z.object({ userId: z.string(), email: z.string() }),
   password: z.string(),
   signInUrl: z.string(),
   message: z.string(),
@@ -255,6 +270,7 @@ export type ReachOutView = z.infer<typeof reachOutViewSchema>;
 export type ReachOutRecord = z.infer<typeof reachOutRecordSchema>;
 export type PreviewAccountRow = z.infer<typeof previewAccountSchema>;
 export type PreviewCreated = z.infer<typeof previewCreatedSchema>;
+export type PreviewPassword = z.infer<typeof previewPasswordSchema>;
 
 /** Read the server's message from a failed response, or a fallback. Never throws. */
 async function failureMessage(res: Response, fallback: string): Promise<string> {
@@ -455,6 +471,22 @@ export async function fastForwardPreviewAccount(
   // allowing a step it used to allow. Passed through verbatim.
   if (!res.ok) throw new Error(await failureMessage(res, 'That account could not be advanced.'));
   return parseEnvelope(await res.json(), previewMessageSchema).message;
+}
+
+/**
+ * Give a test account a new password, so an operator can sign in as it again.
+ *
+ * A new one rather than the old one: nothing stores the password from creation, and storing it would
+ * put a live credential in the database for the sake of a screen. The old password stops working,
+ * which is why the caller warns before calling.
+ */
+export async function resetPreviewAccountPassword(userId: string): Promise<PreviewPassword> {
+  const res = await fetch(
+    `/api/v1/app/reclaim/admin/preview/${encodeURIComponent(userId)}/password`,
+    { method: 'POST' }
+  );
+  if (!res.ok) throw new Error(await failureMessage(res, 'That password could not be reset.'));
+  return parseEnvelope(await res.json(), previewPasswordSchema);
 }
 
 /** Erase a test account and everything it accumulated. */

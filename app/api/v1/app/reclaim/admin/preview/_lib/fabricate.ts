@@ -240,6 +240,50 @@ export async function provisionPreviewAccount(input: ProvisionInput): Promise<Pr
 }
 
 /**
+ * Give a test account a **new** password, and hand it back.
+ *
+ * ## Why a new one rather than the old one
+ *
+ * The password shown at creation is shown once and is gone: `provisionPreviewAccount` generates it,
+ * returns it in one response body, and stores nothing. An operator who closed the panel, or who came
+ * back a week later, had no way back into an account that still held the audit they wanted to look
+ * at — the only route was Remove and start again, which threw the audit away to recover the login.
+ *
+ * The obvious fix is to keep the password on the registry row so the screen can show it again. That is
+ * a live credential sitting in plaintext in the database, readable by anything that can read the
+ * table and by every backup of it, and it would be the only such row in the app. Minting a fresh one
+ * on demand answers the same need — "let me back in" — and leaves nothing behind to leak. The cost is
+ * that the old password stops working, which is why the screen says so before it is pressed.
+ *
+ * ## The write
+ *
+ * `auth.$context` is better-auth's own handle on the running instance, so the hash is produced by
+ * whatever hasher this install is configured with rather than by a second implementation here, and
+ * `updatePassword` targets the `credential` account row the same way a reset flow would. Going
+ * through `auth.api.resetPassword` instead would mean minting and consuming a verification token to
+ * reach the identical write, with an emailed link as the only other way to obtain one.
+ *
+ * Refuses anything that is not a registered preview account — the same interlock the fabricator has,
+ * and the thing that stops this being a "reset any user's password" endpoint under a leaf path.
+ */
+export async function resetPreviewAccountPassword(userId: string): Promise<string> {
+  if (!(await isPreviewAccount(userId))) {
+    throw new Error(
+      'preview: refusing to reset the password of an account that is not a test account'
+    );
+  }
+
+  const password = generatePassword();
+  const ctx = await auth.$context;
+  await ctx.internalAdapter.updatePassword(userId, await ctx.password.hash(password));
+
+  // The new password is not in this line, and not on any row. It exists in the response body once.
+  logger.info('Reclaim: preview account password reset', { userId });
+
+  return password;
+}
+
+/**
  * The one sentence both routes report back, so "what just happened" is worded once.
  *
  * It used to be a ternary in each route, and they had already drifted: one said "driven to mid-audit"

@@ -107,6 +107,18 @@ without answering every phase by hand. The password is shown once and is not sto
 blank and it uses a variation on your own address, so every message the product would send a leader
 arrives in your inbox.
 
+**Lost the password?** **Sign-in details** on the account's row mints a **new** one and shows it. It
+is a new password rather than the old one because nothing keeps the old one — putting a live password
+on the registry row so a screen could re-show it would be a plaintext credential in the database and
+in every backup of it. The old password stops working; the audit on the account is untouched.
+
+**Each row says where the account actually is**, under the state badge — "nothing filled in", or the
+phase an open audit is sitting at. That is read from the run, so it stays right after you sign in as
+the account and carry on by hand. **Fill in** is the command that changes it: it starts on no phase
+at all and confirms before it writes, because filling an account in spends one of its audits and
+cannot be undone. (The row used to default that control to the last phase, which read as a _state_:
+an account set up ready-to-begin appeared to announce "At the summary".)
+
 **"At the summary" stops before "finish my audit", on purpose.** All three of the summary, the report
 and the sharing choices are on that last screen; finishing moves the summary into the History
 read-back and takes sharing away altogether, and leaves the account back at the invitation to begin.
