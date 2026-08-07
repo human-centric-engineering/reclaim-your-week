@@ -380,8 +380,13 @@ describe('preview accounts (F19)', () => {
     label: 'Checking the summary',
     createdAt: '2026-07-30T00:00:00.000Z',
     createdByName: 'Rashmir',
-    state: 'none' as const,
-    latestRunId: null,
+    // A row parked mid-audit, so the phase fields carry values rather than only proving they parse
+    // as null. `preview-list.ts` fills all three from the run's active node.
+    state: 'in_progress' as const,
+    latestRunId: 'run-1',
+    phaseKey: 'phase-2-energy',
+    phaseLabel: 'Energy',
+    phaseNumber: 2,
   };
 
   it('unwraps the enriched list', async () => {

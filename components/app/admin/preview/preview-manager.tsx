@@ -19,6 +19,18 @@
  * client from its first minute. So the two paths are split by what each is good at, and **Mark an
  * existing account** is what makes the front-door walk safe afterwards.
  *
+ * ## Two things the table learned the hard way
+ *
+ * **It says where each account actually is.** The only phase on a row used to be the one sitting in
+ * the Fill in dropdown, which defaulted to the last phase — so an account set up ready-to-begin
+ * announced &lsquo;At the summary&rsquo; next to a badge reading &lsquo;Not started&rsquo;. That is a
+ * command being read as a state. The dropdown now starts empty and the state is stated in words.
+ *
+ * **A lost password is no longer a lost account.** The password from creation is shown once and
+ * stored nowhere, which is right, but it left an operator who closed the panel with a choice between
+ * an account they could not open and removing the audit they wanted to look at. **Sign-in details**
+ * mints a new one instead.
+ *
  * The table renders from one enriched `GET` (repo rule: no per-row fetches).
  */
 
@@ -31,9 +43,9 @@ import {
   createPreviewAccount,
   adoptPreviewAccount,
   fastForwardPreviewAccount,
+  resetPreviewAccountPassword,
   removePreviewAccount,
   type PreviewAccountRow,
-  type PreviewCreated,
 } from '@/components/app/admin/actions';
 
 /**
@@ -47,6 +59,17 @@ import {
 type PreviewTarget = string;
 
 const LAST_PHASE_KEY = RECLAIM_PHASES[RECLAIM_PHASES.length - 1]?.key ?? 'phase-6-summary';
+const LAST_PHASE_NUMBER = RECLAIM_PHASES.length - 1;
+
+/**
+ * What the per-row phase control holds until the operator picks something.
+ *
+ * A real phase used to be the default, and it was the whole of the confusion this screen caused: a
+ * fresh account, set up ready to begin, showed &lsquo;At the summary (phase 6)&rsquo; in its row —
+ * which reads as where the account *is*, not as what pressing the button beside it would do. An empty
+ * placeholder cannot be mistaken for a state, and it makes filling in a two-step, deliberate act.
+ */
+const NO_TARGET = '';
 
 /**
  * The choices, in the order a leader meets them.
@@ -81,8 +104,8 @@ function targetToRequest(target: PreviewTarget): { to: 'mid-audit' | 'summary'; 
 /**
  * `in_progress` reads as "In progress" rather than "Mid-audit" because an audit filled in *to the
  * summary* is in progress too — it stops before the finish button on purpose — and calling that
- * "Mid-audit" would point the operator at the wrong screen. Which phase it is on is not on this row:
- * the phase lives in the journey's node states, one read per run, and this list is one enriched query.
+ * "Mid-audit" would point the operator at the wrong screen. The phase it is on sits underneath, from
+ * `whereItIs` — the badge answers "is an audit open", which is not the question an operator has.
  */
 const STATE_LABEL: Record<PreviewAccountRow['state'], string> = {
   none: 'Not started',
@@ -106,6 +129,41 @@ function formatDate(iso: string): string {
   });
 }
 
+/**
+ * Where an account actually is, in a sentence, under the state badge.
+ *
+ * This is the answer to "how was this set up", and it is **read from the run** rather than remembered
+ * from the form that made it: an account created ready-to-begin and filled in an hour later would
+ * otherwise still be described by the choice made at creation. It is also the fix for the confusion
+ * this column caused — the only thing the row said about where an account stood was the phase sitting
+ * in the *Fill in* dropdown, which is a command, not a state, and read as one.
+ */
+function whereItIs(account: PreviewAccountRow): string {
+  switch (account.state) {
+    case 'none':
+      return 'Nothing filled in — it opens at the terms, then the invitation to begin.';
+    case 'complete':
+      return 'The audit was finished, so the summary is in the history read-back.';
+    case 'abandoned':
+      return 'The audit was let go, so the account can begin another one.';
+    case 'in_progress':
+      if (account.phaseLabel === null) return 'An audit is open on it.';
+      return account.phaseNumber === LAST_PHASE_NUMBER
+        ? 'Sitting at the summary (phase ' +
+            String(account.phaseNumber) +
+            '), before ‘finish my audit’.'
+        : `Sitting at ${account.phaseLabel.toLowerCase()} (phase ${String(account.phaseNumber)}).`;
+  }
+}
+
+/** The credential this screen is holding, and which action produced it. */
+interface SignInDetails {
+  email: string;
+  password: string;
+  signInUrl: string;
+  source: 'created' | 'reset';
+}
+
 export function PreviewManager() {
   const [accounts, setAccounts] = useState<PreviewAccountRow[] | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -125,9 +183,31 @@ export function PreviewManager() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // The credential, held for exactly one render. Never re-fetched, because it is not stored anywhere.
-  const [created, setCreated] = useState<PreviewCreated | null>(null);
+  /**
+   * Which of the three sections the last message belongs under.
+   *
+   * Every message used to render beside the **Create** button, wherever it came from — so filling in
+   * or removing an account, at the bottom of a page tall enough to scroll, answered somewhere the
+   * operator was not looking, and the action read as having done nothing.
+   */
+  const [feedbackAt, setFeedbackAt] = useState<'create' | 'adopt' | 'table'>('create');
+  /**
+   * The credential, held in memory only. Nothing stores it, so nothing re-fetches it — but an
+   * operator who loses it is no longer stuck with an account they cannot open: **Sign-in details**
+   * on the row mints a new one. That is why this is one piece of state for both actions rather than
+   * a create-only panel.
+   */
+  const [signIn, setSignIn] = useState<SignInDetails | null>(null);
   const [copied, setCopied] = useState(false);
+
+  /** The message for one section, or nothing when the last message belongs to a different one. */
+  const feedback = (where: 'create' | 'adopt' | 'table') =>
+    feedbackAt !== where ? null : (
+      <>
+        {notice !== null && <p className="text-muted-foreground text-sm">{notice}</p>}
+        {error !== null && <p className="text-destructive text-sm">{error}</p>}
+      </>
+    );
 
   const load = useCallback(async () => {
     try {
@@ -146,10 +226,18 @@ export function PreviewManager() {
   }, [load]);
 
   /** Run a mutation, keeping the notice/error handling in one place. */
-  const run = async (action: () => Promise<string>, fallback: string) => {
+  const run = async (
+    action: () => Promise<string>,
+    fallback: string,
+    where: 'create' | 'adopt' | 'table' = 'table'
+  ) => {
     setBusy(true);
     setError(null);
     setNotice(null);
+    setFeedbackAt(where);
+    // Any other action puts the credential panel away. Left up, it would sit under the table showing
+    // the sign-in details of an account that Remove had just erased.
+    setSignIn(null);
     try {
       setNotice(await action());
       await load();
@@ -164,7 +252,8 @@ export function PreviewManager() {
     setBusy(true);
     setError(null);
     setNotice(null);
-    setCreated(null);
+    setSignIn(null);
+    setFeedbackAt('create');
     try {
       const fill = target === 'fresh' ? null : targetToRequest(target);
       const result = await createPreviewAccount({
@@ -173,7 +262,12 @@ export function PreviewManager() {
         state: fill === null ? 'fresh' : fill.to,
         ...(fill?.toPhase === undefined ? {} : { toPhase: fill.toPhase }),
       });
-      setCreated(result);
+      setSignIn({
+        email: result.account.email,
+        password: result.password,
+        signInUrl: result.signInUrl,
+        source: 'created',
+      });
       setNotice(result.message);
       setLabel('');
       setEmail('');
@@ -185,16 +279,129 @@ export function PreviewManager() {
     }
   };
 
-  const copyPassword = async () => {
-    if (created === null) return;
+  /**
+   * Mint a fresh password for an existing account and show it.
+   *
+   * Confirmed first, because it is not free: the previous password stops working, so a window still
+   * signed in as the account will be asked for a password nobody has any more. Cheap to recover from
+   * — press it again — but not something to discover after the fact.
+   */
+  const resetPassword = async (account: PreviewAccountRow) => {
+    const ok = window.confirm(
+      `Give ${account.email} a new password?\n\nThe old one stops working. Anything still signed in as this account will need the new one. The audit on the account is untouched.`
+    );
+    if (!ok) return;
+
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    setSignIn(null);
+    setFeedbackAt('table');
     try {
-      await navigator.clipboard.writeText(created.password);
+      const result = await resetPreviewAccountPassword(account.userId);
+      setSignIn({
+        email: result.account.email,
+        password: result.password,
+        signInUrl: result.signInUrl,
+        source: 'reset',
+      });
+      setNotice(result.message);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'That password could not be reset.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /**
+   * Fill an existing account in, after saying plainly what that does to it.
+   *
+   * The confirmation names the account and the phase rather than asking "are you sure": this writes a
+   * whole made-up audit and spends one of the account's audits, and there is no undo for either.
+   */
+  const fillIn = async (account: PreviewAccountRow) => {
+    const chosen = rowTargets[account.userId] ?? NO_TARGET;
+    if (chosen === NO_TARGET) return;
+
+    const targetLabel = TARGET_OPTIONS.find((option) => option.value === chosen)?.label ?? chosen;
+    const ok = window.confirm(
+      `Fill in an audit for ${account.email}, up to ‘${targetLabel}’?\n\nThis writes a whole made-up audit — answers and conversation — and leaves the account sitting there. It is where the account is from now on: the walk from the start is gone, and there is no undo. Remove the account and make another if you want that back.`
+    );
+    if (!ok) return;
+
+    await run(
+      () => fastForwardPreviewAccount(account.userId, targetToRequest(chosen)),
+      'That account could not be advanced.'
+    );
+  };
+
+  const copyPassword = async () => {
+    if (signIn === null) return;
+    try {
+      await navigator.clipboard.writeText(signIn.password);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 2000);
     } catch {
       setError('The password could not be copied. Select it and copy it by hand.');
     }
   };
+
+  /**
+   * The sign-in details, rendered wherever the operator's eye already is — under the create form
+   * after creating, under the table after a reset. One component, two places, because a panel that
+   * appeared 800 pixels away from the button that produced it would be missed.
+   */
+  const signInPanel = (
+    <div className="bg-muted/40 mt-5 rounded-md border p-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 className="text-sm font-medium">
+          {signIn?.source === 'reset' ? 'New password for this account' : 'Sign in as this account'}
+        </h3>
+        <button
+          type="button"
+          onClick={() => setSignIn(null)}
+          className="text-muted-foreground hover:text-foreground text-xs underline"
+        >
+          Hide
+        </button>
+      </div>
+      <p className="text-muted-foreground mt-1 text-xs">
+        Shown once — the password is not stored anywhere, so this exact one cannot be shown again.
+        If you lose it, <strong>Sign-in details</strong> on the account&rsquo;s row gives it a new
+        one. Open{' '}
+        <a href={signIn?.signInUrl} className="underline" target="_blank" rel="noreferrer">
+          the sign-in page
+        </a>{' '}
+        in a private window (e.g. open a browser window in &apos;incognito&apos; mode), so you stay
+        signed in as yourself here.
+      </p>
+      <dl className="mt-3 space-y-2 text-sm">
+        <div className="flex flex-wrap items-center gap-2">
+          <dt className="text-muted-foreground w-20 text-xs uppercase">Email</dt>
+          <dd className="min-w-0 flex-1">
+            <code className="bg-background block truncate rounded border px-2 py-1.5 text-xs">
+              {signIn?.email}
+            </code>
+          </dd>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <dt className="text-muted-foreground w-20 text-xs uppercase">Password</dt>
+          <dd className="flex min-w-0 flex-1 items-center gap-2">
+            <code className="bg-background min-w-0 flex-1 truncate rounded border px-2 py-1.5 text-xs">
+              {signIn?.password}
+            </code>
+            <button
+              type="button"
+              onClick={() => void copyPassword()}
+              className="border-input rounded-md border px-3 py-1.5 text-xs font-medium"
+            >
+              {copied ? 'Copied' : 'Copy'}
+            </button>
+          </dd>
+        </div>
+      </dl>
+    </div>
+  );
 
   const canCreate = label.trim().length > 0 && !busy;
   const canAdopt = adoptEmail.trim().length > 3 && adoptLabel.trim().length > 0 && !busy;
@@ -326,62 +533,15 @@ export function PreviewManager() {
           >
             {busy ? 'Working…' : 'Create test account'}
           </button>
-          {notice !== null && <p className="text-muted-foreground text-sm">{notice}</p>}
-          {error !== null && <p className="text-destructive text-sm">{error}</p>}
+          {feedback('create')}
         </div>
 
         {/*
           The sign-in details, shown once. The password is generated and never stored — there is no
-          row it could be read back from — so the wording has to say so plainly, or the reasonable
-          assumption is that it can be looked up again later.
+          row it could be read back from — so the wording says so plainly, and points at the row
+          control that mints a replacement rather than leaving "cannot be shown again" as a dead end.
         */}
-        {created !== null && (
-          <div className="bg-muted/40 mt-5 rounded-md border p-4">
-            <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <h3 className="text-sm font-medium">Sign in as this account</h3>
-              <button
-                type="button"
-                onClick={() => setCreated(null)}
-                className="text-muted-foreground hover:text-foreground text-xs underline"
-              >
-                Hide
-              </button>
-            </div>
-            <p className="text-muted-foreground mt-1 text-xs">
-              Shown once. The password is not stored anywhere, so it cannot be shown again. Open{' '}
-              <a href={created.signInUrl} className="underline" target="_blank" rel="noreferrer">
-                the sign-in page
-              </a>{' '}
-              in a private window (e.g. open a browser window in &apos;incognito&apos; mode), so you
-              stay signed in as yourself here.
-            </p>
-            <dl className="mt-3 space-y-2 text-sm">
-              <div className="flex flex-wrap items-center gap-2">
-                <dt className="text-muted-foreground w-20 text-xs uppercase">Email</dt>
-                <dd className="min-w-0 flex-1">
-                  <code className="bg-background block truncate rounded border px-2 py-1.5 text-xs">
-                    {created.account.email}
-                  </code>
-                </dd>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <dt className="text-muted-foreground w-20 text-xs uppercase">Password</dt>
-                <dd className="flex min-w-0 flex-1 items-center gap-2">
-                  <code className="bg-background min-w-0 flex-1 truncate rounded border px-2 py-1.5 text-xs">
-                    {created.password}
-                  </code>
-                  <button
-                    type="button"
-                    onClick={() => void copyPassword()}
-                    className="border-input rounded-md border px-3 py-1.5 text-xs font-medium"
-                  >
-                    {copied ? 'Copied' : 'Copy'}
-                  </button>
-                </dd>
-              </div>
-            </dl>
-          </div>
-        )}
+        {signIn !== null && signIn.source === 'created' && signInPanel}
       </section>
 
       <section className="bg-card rounded-lg border p-5">
@@ -428,24 +588,31 @@ export function PreviewManager() {
             />
           </div>
         </div>
-        <button
-          type="button"
-          disabled={!canAdopt}
-          onClick={() =>
-            void run(async () => {
-              const message = await adoptPreviewAccount({
-                email: adoptEmail.trim().toLowerCase(),
-                label: adoptLabel,
-              });
-              setAdoptEmail('');
-              setAdoptLabel('');
-              return message;
-            }, 'That account could not be marked.')
-          }
-          className="border-input mt-5 rounded-md border px-4 py-2 text-sm font-medium disabled:opacity-50"
-        >
-          Mark as a test account
-        </button>
+        <div className="mt-5 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            disabled={!canAdopt}
+            onClick={() =>
+              void run(
+                async () => {
+                  const message = await adoptPreviewAccount({
+                    email: adoptEmail.trim().toLowerCase(),
+                    label: adoptLabel,
+                  });
+                  setAdoptEmail('');
+                  setAdoptLabel('');
+                  return message;
+                },
+                'That account could not be marked.',
+                'adopt'
+              )
+            }
+            className="border-input rounded-md border px-4 py-2 text-sm font-medium disabled:opacity-50"
+          >
+            Mark as a test account
+          </button>
+          {feedback('adopt')}
+        </div>
       </section>
 
       <section>
@@ -468,31 +635,36 @@ export function PreviewManager() {
                 <tr>
                   <th className="px-4 py-2.5 font-medium">Email</th>
                   <th className="px-4 py-2.5 font-medium">What it is for</th>
-                  <th className="px-4 py-2.5 font-medium">Audit</th>
+                  {/*
+                    Named for the question it answers rather than for the table it reads from. The
+                    badge alone said whether an audit was open; it never said where the audit had
+                    got to, and the only phase on the row was the one sitting in the Fill in
+                    control — a command, read as a state, which is the confusion this column fixes.
+                  */}
+                  <th className="px-4 py-2.5 font-medium">Where it is now</th>
                   <th className="px-4 py-2.5 font-medium">Made by</th>
                   <th className="px-4 py-2.5 font-medium">Made</th>
-                  {/*
-                    Visible, and named for what the control underneath writes. It used to be
-                    `sr-only`, which left the controls reading as `Mid-audit` next to a badge also
-                    reading `Mid-audit` — the same word twice in one row, once as a state and once
-                    as a command, with nothing to say which was which.
-                  */}
                   <th className="px-4 py-2.5 text-right font-medium">
                     <span className="flex items-center justify-end gap-1.5">
-                      Fill in an audit
+                      What you can do
                       <FieldHelp title="What these do">
                         <p>
-                          Pick a <strong>phase</strong> and press <strong>Fill in</strong>. It
-                          writes a whole audit for this account as far as that phase: made-up
-                          answers and a made-up conversation, both put through the same engine a
-                          leader&rsquo;s own answers go through, and it leaves the account sitting
-                          there.
+                          <strong>Fill in</strong> takes a <strong>phase</strong> and writes a whole
+                          audit for this account as far as it: made-up answers and a made-up
+                          conversation, both put through the same engine a leader&rsquo;s own
+                          answers go through, and it leaves the account sitting there.
+                        </p>
+                        <p className="mt-2">
+                          It <strong>changes where the account is</strong>, and there is no undo. An
+                          account showing <em>Nothing filled in</em> stops being one you can walk
+                          from the start, and it spends one of the account&rsquo;s audits. If the
+                          walk from the start is what you wanted, leave it alone — or remove this
+                          account and make another.
                         </p>
                         <p className="mt-2">
                           Each one starts a <strong>new</strong> audit rather than moving the one
-                          already there, and the badge in the Audit column is whichever is most
-                          recent. So an account already showing <strong>In progress</strong> has to
-                          be finished or let go first, from the account itself.
+                          already there, so an account with an audit already open has to be finished
+                          or let go first, from the account itself. You will be told if it refuses.
                         </p>
                         <p className="mt-2">
                           <strong>At the summary</strong> is how you reach the summary, the report
@@ -500,6 +672,14 @@ export function PreviewManager() {
                           &lsquo;finish my audit&rsquo;. Nothing here presses that: finishing is
                           what sends the <strong>completion email</strong> to the address in the
                           first column, and it should be your decision to send it.
+                        </p>
+                        <p className="mt-2">
+                          <strong>Sign-in details</strong> gives the account a{' '}
+                          <strong>new password</strong> and shows it, so you can get back into an
+                          account whose password you no longer have. Nothing stores the old one —
+                          keeping a live password in the database for the sake of this screen would
+                          be worse than reissuing it — so the old one stops working. The audit on
+                          the account is untouched.
                         </p>
                         <p className="mt-2">
                           <strong>Remove</strong> erases the account and everything it built up.
@@ -527,6 +707,9 @@ export function PreviewManager() {
                       >
                         {STATE_LABEL[account.state]}
                       </span>
+                      <p className="text-muted-foreground mt-1 max-w-64 text-xs">
+                        {whereItIs(account)}
+                      </p>
                     </td>
                     <td className="text-muted-foreground px-4 py-2.5">
                       {account.createdByName ?? '—'}
@@ -547,7 +730,7 @@ export function PreviewManager() {
                       <select
                         id={`fill-phase-${account.userId}`}
                         disabled={busy}
-                        value={rowTargets[account.userId] ?? LAST_PHASE_KEY}
+                        value={rowTargets[account.userId] ?? NO_TARGET}
                         onChange={(e) =>
                           setRowTargets((current) => ({
                             ...current,
@@ -556,6 +739,12 @@ export function PreviewManager() {
                         }
                         className="border-input bg-background rounded-md border px-2 py-1 text-xs disabled:opacity-50"
                       >
+                        {/*
+                          The placeholder is the default and is not a phase — see `NO_TARGET`. It is
+                          selectable rather than `disabled` so an operator who opened the menu by
+                          mistake can back out of it without picking something.
+                        */}
+                        <option value={NO_TARGET}>Fill in to…</option>
                         {/*
                           `fresh` is absent on purpose. It is a thing an account can be *created* as,
                           not a thing this button could do to one: there is no fabrication that
@@ -572,34 +761,35 @@ export function PreviewManager() {
                       </select>
                       <button
                         type="button"
-                        disabled={busy}
-                        onClick={() =>
-                          void run(
-                            () =>
-                              fastForwardPreviewAccount(
-                                account.userId,
-                                targetToRequest(rowTargets[account.userId] ?? LAST_PHASE_KEY)
-                              ),
-                            'That account could not be advanced.'
-                          )
-                        }
+                        disabled={busy || (rowTargets[account.userId] ?? NO_TARGET) === NO_TARGET}
+                        onClick={() => void fillIn(account)}
                         className="border-input hover:bg-muted ml-2 rounded-md border px-2 py-1 text-xs font-medium disabled:opacity-50"
                       >
                         Fill in
                       </button>
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() =>
-                          void run(
-                            () => removePreviewAccount(account.userId),
-                            'That test account could not be removed.'
-                          )
-                        }
-                        className="text-destructive ml-3 text-xs underline underline-offset-2 disabled:opacity-50"
-                      >
-                        Remove
-                      </button>
+                      <div className="mt-1.5 flex items-center justify-end gap-3">
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => void resetPassword(account)}
+                          className="text-xs underline underline-offset-2 disabled:opacity-50"
+                        >
+                          Sign-in details
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() =>
+                            void run(
+                              () => removePreviewAccount(account.userId),
+                              'That test account could not be removed.'
+                            )
+                          }
+                          className="text-destructive text-xs underline underline-offset-2 disabled:opacity-50"
+                        >
+                          Remove
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -607,6 +797,9 @@ export function PreviewManager() {
             </table>
           </div>
         )}
+        {/* Under the table, because that is where the buttons that produced them are. */}
+        {feedbackAt === 'table' && <div className="mt-3 space-y-1">{feedback('table')}</div>}
+        {signIn !== null && signIn.source === 'reset' && signInPanel}
         <p className="text-muted-foreground mt-3 text-xs">
           One thing these accounts do still affect: the framework&rsquo;s own map and module pages
           under Framework count their journeys, and there is no way to leave them out from here.

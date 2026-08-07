@@ -17,12 +17,14 @@ const {
   createPreviewAccount,
   adoptPreviewAccount,
   fastForwardPreviewAccount,
+  resetPreviewAccountPassword,
   removePreviewAccount,
 } = vi.hoisted(() => ({
   listPreviewAccounts: vi.fn(),
   createPreviewAccount: vi.fn(),
   adoptPreviewAccount: vi.fn(),
   fastForwardPreviewAccount: vi.fn(),
+  resetPreviewAccountPassword: vi.fn(),
   removePreviewAccount: vi.fn(),
 }));
 vi.mock('@/components/app/admin/actions', () => ({
@@ -30,6 +32,7 @@ vi.mock('@/components/app/admin/actions', () => ({
   createPreviewAccount,
   adoptPreviewAccount,
   fastForwardPreviewAccount,
+  resetPreviewAccountPassword,
   removePreviewAccount,
 }));
 
@@ -44,6 +47,9 @@ const account = (over: Record<string, unknown> = {}) => ({
   createdByName: 'Rashmir',
   state: 'none' as const,
   latestRunId: null,
+  phaseKey: null,
+  phaseLabel: null,
+  phaseNumber: null,
   ...over,
 });
 
@@ -62,9 +68,24 @@ const CREATED = {
   message: 'Test account created.',
 };
 
+/** The stand-in for `window.confirm`, installed in `beforeEach`. */
+const confirmed = vi.fn<() => boolean>();
+
+const RESET = {
+  account: { userId: 'u1', email: 'test@example.org' },
+  password: 'RwZxCvBnMqW9!',
+  signInUrl: 'https://ryw.test/login',
+  message: 'New password below, shown once.',
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
   listPreviewAccounts.mockResolvedValue([]);
+  // Both destructive row actions confirm first. The test environment has no `window.confirm` of its
+  // own, so it is stubbed rather than left to blow up — and stubbing it is what lets the refusal
+  // paths below assert that saying no really does call nothing.
+  confirmed.mockReturnValue(true);
+  vi.stubGlobal('confirm', confirmed);
 });
 
 describe('PreviewManager — loading the list', () => {
@@ -352,16 +373,20 @@ describe('PreviewManager — acting on a listed account', () => {
     });
   });
 
-  it('defaults a row to the summary, which is the one most operators want', async () => {
+  it('starts a row on no phase at all, with Fill in unusable until one is picked', async () => {
+    // The old default was the last phase, and it was the whole of the confusion: a row for an account
+    // with nothing filled in announced "At the summary (phase 6)", which reads as where the account
+    // IS. A command must not be able to masquerade as a state, so nothing is preselected.
     listPreviewAccounts.mockResolvedValue([account()]);
-    fastForwardPreviewAccount.mockResolvedValue('That test account is waiting at the summary.');
     const user = userEvent.setup();
     render(<PreviewManager />);
 
     const row = await rowFor('test@example.org');
-    await user.click(row.getByRole('button', { name: /^fill in$/i }));
+    expect(row.getByLabelText(/how far to fill in/i)).toHaveValue('');
+    expect(row.getByRole('button', { name: /^fill in$/i })).toBeDisabled();
 
-    expect(fastForwardPreviewAccount).toHaveBeenCalledWith('u1', { to: 'summary' });
+    await user.selectOptions(row.getByLabelText(/how far to fill in/i), 'phase-6-summary');
+    expect(row.getByRole('button', { name: /^fill in$/i })).toBeEnabled();
   });
 
   it('keeps each row’s phase to itself', async () => {
@@ -379,9 +404,27 @@ describe('PreviewManager — acting on a listed account', () => {
     await user.selectOptions(first.getByLabelText(/how far to fill in/i), 'phase-1-current');
 
     const second = await rowFor('second@example.org');
+    expect(second.getByLabelText(/how far to fill in/i)).toHaveValue('');
+    await user.selectOptions(second.getByLabelText(/how far to fill in/i), 'phase-6-summary');
     await user.click(second.getByRole('button', { name: /^fill in$/i }));
 
     expect(fastForwardPreviewAccount).toHaveBeenCalledWith('u2', { to: 'summary' });
+  });
+
+  it('asks before filling in, and writes nothing when the answer is no', async () => {
+    // Filling in spends one of the account's audits and cannot be undone. The confirmation names the
+    // account and the phase rather than asking "are you sure".
+    confirmed.mockReturnValue(false);
+    listPreviewAccounts.mockResolvedValue([account()]);
+    const user = userEvent.setup();
+    render(<PreviewManager />);
+
+    const row = await rowFor('test@example.org');
+    await user.selectOptions(row.getByLabelText(/how far to fill in/i), 'phase-2-energy');
+    await user.click(row.getByRole('button', { name: /^fill in$/i }));
+
+    expect(confirmed).toHaveBeenCalledWith(expect.stringContaining('test@example.org'));
+    expect(fastForwardPreviewAccount).not.toHaveBeenCalled();
   });
 
   it('surfaces the engine’s own refusal from a fast-forward, not a generic message', async () => {
@@ -393,6 +436,7 @@ describe('PreviewManager — acting on a listed account', () => {
     render(<PreviewManager />);
 
     const row = await rowFor('test@example.org');
+    await user.selectOptions(row.getByLabelText(/how far to fill in/i), 'phase-6-summary');
     await user.click(row.getByRole('button', { name: /^fill in$/i }));
 
     expect(await screen.findByText(/refused to leave phase-1-current/i)).toBeInTheDocument();
@@ -410,5 +454,118 @@ describe('PreviewManager — acting on a listed account', () => {
     expect(removePreviewAccount).toHaveBeenCalledWith('u1');
     expect(await screen.findByText('Test account removed.')).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByText('test@example.org')).not.toBeInTheDocument());
+  });
+});
+
+describe('PreviewManager — getting back into an account', () => {
+  it('mints a new password and shows it', async () => {
+    // The reason this exists: the password from creation is stored nowhere, so an operator who closed
+    // that panel used to have to remove the account — and the audit on it — to recover the login.
+    listPreviewAccounts.mockResolvedValue([account()]);
+    resetPreviewAccountPassword.mockResolvedValue(RESET);
+    const user = userEvent.setup();
+    render(<PreviewManager />);
+
+    const row = await rowFor('test@example.org');
+    await user.click(row.getByRole('button', { name: /sign-in details/i }));
+
+    expect(resetPreviewAccountPassword).toHaveBeenCalledWith('u1');
+    expect(await screen.findByText(RESET.password)).toBeInTheDocument();
+  });
+
+  it('asks first, because the old password stops working', async () => {
+    confirmed.mockReturnValue(false);
+    listPreviewAccounts.mockResolvedValue([account()]);
+    const user = userEvent.setup();
+    render(<PreviewManager />);
+
+    const row = await rowFor('test@example.org');
+    await user.click(row.getByRole('button', { name: /sign-in details/i }));
+
+    expect(resetPreviewAccountPassword).not.toHaveBeenCalled();
+  });
+
+  it('puts the credential away when the operator does something else', async () => {
+    // Left up, the panel would sit under the table showing the sign-in details of an account that
+    // Remove had just erased.
+    listPreviewAccounts.mockResolvedValue([account()]);
+    resetPreviewAccountPassword.mockResolvedValue(RESET);
+    removePreviewAccount.mockResolvedValue('Test account removed.');
+    const user = userEvent.setup();
+    render(<PreviewManager />);
+
+    const row = await rowFor('test@example.org');
+    await user.click(row.getByRole('button', { name: /sign-in details/i }));
+    expect(await screen.findByText(RESET.password)).toBeInTheDocument();
+
+    await user.click(row.getByRole('button', { name: /remove/i }));
+
+    await waitFor(() => expect(screen.queryByText(RESET.password)).not.toBeInTheDocument());
+  });
+
+  it('surfaces a refusal rather than a blank panel', async () => {
+    listPreviewAccounts.mockResolvedValue([account()]);
+    resetPreviewAccountPassword.mockRejectedValue(new Error('That is not a test account'));
+    const user = userEvent.setup();
+    render(<PreviewManager />);
+
+    const row = await rowFor('test@example.org');
+    await user.click(row.getByRole('button', { name: /sign-in details/i }));
+
+    expect(await screen.findByText('That is not a test account')).toBeInTheDocument();
+  });
+});
+
+describe('PreviewManager — where each account is', () => {
+  it('says an unstarted account has nothing filled in', async () => {
+    listPreviewAccounts.mockResolvedValue([account()]);
+    render(<PreviewManager />);
+
+    const row = await rowFor('test@example.org');
+    expect(row.getByText(/nothing filled in/i)).toBeInTheDocument();
+  });
+
+  it('names the phase an open audit is sitting at', async () => {
+    // The fix for the reported confusion. Where the account IS now comes from the run, in words,
+    // under the badge — not from the phase sitting in a dropdown that writes one.
+    listPreviewAccounts.mockResolvedValue([
+      account({
+        state: 'in_progress',
+        phaseKey: 'phase-4-gap',
+        phaseLabel: 'Gap analysis',
+        phaseNumber: 4,
+      }),
+    ]);
+    render(<PreviewManager />);
+
+    const row = await rowFor('test@example.org');
+    // Scoped to the sentence, not the phrase: the Fill in menu in the same row carries an option
+    // worded almost identically, which is precisely the collision this column had to resolve.
+    expect(row.getByText(/sitting at gap analysis \(phase 4\)\./i)).toBeInTheDocument();
+  });
+
+  it('says the summary stops before ‘finish my audit’', async () => {
+    // The distinction that matters most to an operator: the summary, the report and the sharing
+    // choices all live on that screen *before* the finish button, and finishing takes them away.
+    listPreviewAccounts.mockResolvedValue([
+      account({
+        state: 'in_progress',
+        phaseKey: 'phase-6-summary',
+        phaseLabel: 'Summary',
+        phaseNumber: 6,
+      }),
+    ]);
+    render(<PreviewManager />);
+
+    const row = await rowFor('test@example.org');
+    expect(row.getByText(/before ‘finish my audit’/i)).toBeInTheDocument();
+  });
+
+  it('says a finished audit moved into the history read-back', async () => {
+    listPreviewAccounts.mockResolvedValue([account({ state: 'complete', latestRunId: 'run-1' })]);
+    render(<PreviewManager />);
+
+    const row = await rowFor('test@example.org');
+    expect(row.getByText(/history read-back/i)).toBeInTheDocument();
   });
 });

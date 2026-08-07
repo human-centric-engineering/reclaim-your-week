@@ -66,8 +66,8 @@ function defaultPreviewEmail(adminEmail: string): string {
   return `${adminEmail.slice(0, at)}+rywpreview-${suffix}${adminEmail.slice(at)}`;
 }
 
-export const GET = withAdminAuth(async () => {
-  return successResponse({ accounts: await listPreviewAccounts() });
+export const GET = withAdminAuth(async (_request, session) => {
+  return successResponse({ accounts: await listPreviewAccounts(session.user.id) });
 });
 
 export const POST = withAdminAuth(async (request, session) => {

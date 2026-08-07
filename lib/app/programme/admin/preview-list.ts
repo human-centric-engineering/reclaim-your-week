@@ -13,6 +13,12 @@
  */
 
 import { prisma } from '@/lib/db/client';
+import { phaseNumber } from '@/lib/app/programme/runs/phases';
+import {
+  currentPhaseByRun,
+  phaseLabelForKey,
+  supportViewer,
+} from '@/lib/app/programme/admin/clients';
 
 export interface PreviewAccountRow {
   userId: string;
@@ -27,17 +33,31 @@ export interface PreviewAccountRow {
   state: 'none' | 'in_progress' | 'complete' | 'abandoned';
   /** The most recent run, for a link straight to it. */
   latestRunId: string | null;
+  /**
+   * Where that run is sitting, and its 0–6 number. Null for an account with no audit at all, and for
+   * one whose audit is over — a finished run is not "at" a phase, it is done.
+   *
+   * Read rather than remembered, for the reason the state is: this is the answer to "how was this set
+   * up", and it stays the right answer after somebody signs in as the account and carries on by hand.
+   */
+  phaseKey: string | null;
+  phaseLabel: string | null;
+  phaseNumber: number | null;
 }
 
 /**
- * Every test account, newest first, with the state of its most recent audit.
+ * Every test account, newest first, with the state of its most recent audit and where that audit is.
  *
  * The state is read from the run rather than remembered on the registry row, because the registry
  * records a decision an operator made and the run records what the product did. Storing the second on
  * the first would create a copy that goes stale the moment somebody signs in as the account and
  * carries on by hand, which is exactly the thing these accounts exist to let them do.
+ *
+ * `adminUserId` is here because the phase read is a journey read, and the framework's cross-user
+ * widening is an explicit input rather than a role lookup — see `supportViewer` in `clients.ts`. The
+ * route hands over the authenticated admin's own id, so the override is attributable to a person.
  */
-export async function listPreviewAccounts(): Promise<PreviewAccountRow[]> {
+export async function listPreviewAccounts(adminUserId: string): Promise<PreviewAccountRow[]> {
   const rows = await prisma.reclaimPreviewAccount.findMany({ orderBy: { createdAt: 'desc' } });
   if (rows.length === 0) return [];
 
@@ -72,6 +92,13 @@ export async function listPreviewAccounts(): Promise<PreviewAccountRow[]> {
     if (!latestRun.has(run.userId)) latestRun.set(run.userId, { id: run.id, status: run.status });
   }
 
+  // Two batched queries for the whole list, in-progress runs only — a finished audit is not sitting
+  // at a phase, and asking for one would widen the journey read for an answer nothing renders.
+  const phaseByRun = await currentPhaseByRun(
+    supportViewer(adminUserId),
+    [...latestRun.values()].filter((run) => run.status === 'in_progress').map((run) => run.id)
+  );
+
   return rows.flatMap((row) => {
     const user = userById.get(row.userId);
     // The registry row cascades with the account, so a missing user here is not expected. Dropping it
@@ -79,6 +106,7 @@ export async function listPreviewAccounts(): Promise<PreviewAccountRow[]> {
     if (user === undefined) return [];
 
     const run = latestRun.get(row.userId);
+    const phaseKey = run === undefined ? undefined : phaseByRun.get(run.id);
     return [
       {
         userId: row.userId,
@@ -90,6 +118,9 @@ export async function listPreviewAccounts(): Promise<PreviewAccountRow[]> {
           row.createdByUserId === null ? null : (creatorName.get(row.createdByUserId) ?? null),
         state: run === undefined ? ('none' as const) : (run.status as PreviewAccountRow['state']),
         latestRunId: run?.id ?? null,
+        phaseKey: phaseKey ?? null,
+        phaseLabel: phaseLabelForKey(phaseKey),
+        phaseNumber: phaseKey === undefined ? null : phaseNumber(phaseKey),
       } satisfies PreviewAccountRow,
     ];
   });

@@ -10,6 +10,9 @@
  *   - **a missing user is dropped, not rendered "unknown"** — the registry cascades with the account,
  *     so this should not happen, but a list an operator acts on must never show a phantom row.
  *   - **no per-row fetches** — one call each to `user`, `user` again (creators), `reclaimAuditRun`.
+ *   - **the phase is read for in-progress runs only**, and it is what tells an operator how an
+ *     account was set up. A finished or unstarted audit is not sitting at a phase, and asking for one
+ *     would widen the journey read for an answer nothing renders.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -18,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   previewFindMany: vi.fn(),
   userFindMany: vi.fn(),
   runFindMany: vi.fn(),
+  currentPhaseByRun: vi.fn(),
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -27,6 +31,21 @@ vi.mock('@/lib/db/client', () => ({
     reclaimAuditRun: { findMany: mocks.runFindMany },
   },
 }));
+
+/**
+ * The phase read is the client list's own, mocked here rather than re-implemented.
+ *
+ * `phaseLabelForKey` is deliberately **not** mocked away — it is a pure lookup over the map, and
+ * stubbing it would let this file assert a label the map does not actually have.
+ */
+vi.mock('@/lib/app/programme/admin/clients', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/app/programme/admin/clients')>();
+  return {
+    phaseLabelForKey: actual.phaseLabelForKey,
+    supportViewer: (adminUserId: string) => ({ userId: adminUserId }),
+    currentPhaseByRun: mocks.currentPhaseByRun,
+  };
+});
 
 import { listPreviewAccounts } from '@/lib/app/programme/admin/preview-list';
 
@@ -43,11 +62,12 @@ beforeEach(() => {
   mocks.previewFindMany.mockResolvedValue([]);
   mocks.userFindMany.mockResolvedValue([]);
   mocks.runFindMany.mockResolvedValue([]);
+  mocks.currentPhaseByRun.mockResolvedValue(new Map());
 });
 
 describe('listPreviewAccounts — the empty cases', () => {
   it('returns nothing for no test accounts, with no further queries', async () => {
-    const rows = await listPreviewAccounts();
+    const rows = await listPreviewAccounts('admin-1');
 
     expect(rows).toEqual([]);
     expect(mocks.userFindMany).not.toHaveBeenCalled();
@@ -64,7 +84,7 @@ describe('listPreviewAccounts — state', () => {
       )
     );
 
-    const [row] = await listPreviewAccounts();
+    const [row] = await listPreviewAccounts('admin-1');
 
     expect(row?.state).toBe('none');
     expect(row?.latestRunId).toBeNull();
@@ -77,7 +97,7 @@ describe('listPreviewAccounts — state', () => {
     mocks.userFindMany.mockResolvedValue([{ id: 'u1', name: 'Sam', email: 'sam@example.org' }]);
     mocks.runFindMany.mockResolvedValue([{ id: 'run-1', userId: 'u1', status: 'complete' }]);
 
-    const [row] = await listPreviewAccounts();
+    const [row] = await listPreviewAccounts('admin-1');
 
     expect(row?.state).toBe('complete');
     expect(row?.latestRunId).toBe('run-1');
@@ -95,10 +115,75 @@ describe('listPreviewAccounts — state', () => {
       { id: 'run-1', userId: 'u1', status: 'complete' },
     ]);
 
-    const [row] = await listPreviewAccounts();
+    const [row] = await listPreviewAccounts('admin-1');
 
     expect(row?.state).toBe('in_progress');
     expect(row?.latestRunId).toBe('run-2');
+  });
+});
+
+describe('listPreviewAccounts — where the audit is', () => {
+  it('reports the phase key, its label and its number for an open audit', async () => {
+    // This is what the screen shows under the state badge, and it is the answer to "how was this
+    // account set up". Before it existed the only phase on the row was the one sitting in the Fill
+    // in control — a command, which operators read as a state.
+    mocks.previewFindMany.mockResolvedValue([registryRow()]);
+    mocks.userFindMany.mockResolvedValue([{ id: 'u1', name: 'Sam', email: 'sam@example.org' }]);
+    mocks.runFindMany.mockResolvedValue([{ id: 'run-1', userId: 'u1', status: 'in_progress' }]);
+    mocks.currentPhaseByRun.mockResolvedValue(new Map([['run-1', 'phase-4-gap']]));
+
+    const [row] = await listPreviewAccounts('admin-1');
+
+    expect(row?.phaseKey).toBe('phase-4-gap');
+    expect(row?.phaseLabel).toBe('Gap analysis');
+    expect(row?.phaseNumber).toBe(4);
+  });
+
+  it('asks for the phase of in-progress runs only', async () => {
+    // A finished or abandoned audit is not sitting at a phase. Passing its id would widen the
+    // journey read — a cross-user read — to produce something nothing renders.
+    mocks.previewFindMany.mockResolvedValue([
+      registryRow(),
+      registryRow({ userId: 'u2' }),
+      registryRow({ userId: 'u3' }),
+    ]);
+    mocks.userFindMany.mockResolvedValue([
+      { id: 'u1', name: 'A', email: 'a@x.org' },
+      { id: 'u2', name: 'B', email: 'b@x.org' },
+      { id: 'u3', name: 'C', email: 'c@x.org' },
+    ]);
+    mocks.runFindMany.mockResolvedValue([
+      { id: 'run-1', userId: 'u1', status: 'in_progress' },
+      { id: 'run-2', userId: 'u2', status: 'complete' },
+    ]);
+
+    await listPreviewAccounts('admin-1');
+
+    expect(mocks.currentPhaseByRun).toHaveBeenCalledTimes(1);
+    expect(mocks.currentPhaseByRun.mock.calls[0]?.[1]).toEqual(['run-1']);
+  });
+
+  it('leaves the phase null for an account with no audit at all', async () => {
+    mocks.previewFindMany.mockResolvedValue([registryRow()]);
+    mocks.userFindMany.mockResolvedValue([{ id: 'u1', name: 'Sam', email: 'sam@example.org' }]);
+
+    const [row] = await listPreviewAccounts('admin-1');
+
+    expect(row?.phaseKey).toBeNull();
+    expect(row?.phaseLabel).toBeNull();
+    expect(row?.phaseNumber).toBeNull();
+  });
+
+  it('passes the calling admin’s own id through to the journey viewer', async () => {
+    // The framework's cross-user widening is an explicit input attributable to a person, not a role
+    // lookup — so the id this list is given has to be the one that reaches the journey read.
+    mocks.previewFindMany.mockResolvedValue([registryRow()]);
+    mocks.userFindMany.mockResolvedValue([{ id: 'u1', name: 'Sam', email: 'sam@example.org' }]);
+    mocks.runFindMany.mockResolvedValue([{ id: 'run-1', userId: 'u1', status: 'in_progress' }]);
+
+    await listPreviewAccounts('rashmir-the-admin');
+
+    expect(mocks.currentPhaseByRun.mock.calls[0]?.[0]).toEqual({ userId: 'rashmir-the-admin' });
   });
 });
 
@@ -113,7 +198,7 @@ describe('listPreviewAccounts — who made it', () => {
       )
     );
 
-    const [row] = await listPreviewAccounts();
+    const [row] = await listPreviewAccounts('admin-1');
 
     expect(row?.createdByName).toBe('Rashmir');
   });
@@ -122,7 +207,7 @@ describe('listPreviewAccounts — who made it', () => {
     mocks.previewFindMany.mockResolvedValue([registryRow({ createdByUserId: null })]);
     mocks.userFindMany.mockResolvedValue([{ id: 'u1', name: 'Sam', email: 'sam@example.org' }]);
 
-    const [row] = await listPreviewAccounts();
+    const [row] = await listPreviewAccounts('admin-1');
 
     expect(row?.createdByName).toBeNull();
     // No creator id to look up, so the second `user` read must not fire at all.
@@ -139,7 +224,7 @@ describe('listPreviewAccounts — who made it', () => {
       )
     );
 
-    const [row] = await listPreviewAccounts();
+    const [row] = await listPreviewAccounts('admin-1');
 
     expect(row?.createdByName).toBeNull();
   });
@@ -152,7 +237,7 @@ describe('listPreviewAccounts — a missing account', () => {
     mocks.previewFindMany.mockResolvedValue([registryRow(), registryRow({ userId: 'u2' })]);
     mocks.userFindMany.mockResolvedValue([{ id: 'u1', name: 'Sam', email: 'sam@example.org' }]);
 
-    const rows = await listPreviewAccounts();
+    const rows = await listPreviewAccounts('admin-1');
 
     expect(rows).toHaveLength(1);
     expect(rows[0]?.userId).toBe('u1');
@@ -172,7 +257,7 @@ describe('listPreviewAccounts — no per-row fetches', () => {
       }))
     );
 
-    await listPreviewAccounts();
+    await listPreviewAccounts('admin-1');
 
     // One call for the accounts themselves, one for their creators, one for their runs.
     expect(mocks.userFindMany).toHaveBeenCalledTimes(2);
@@ -183,7 +268,7 @@ describe('listPreviewAccounts — no per-row fetches', () => {
     mocks.previewFindMany.mockResolvedValue([registryRow()]);
     mocks.userFindMany.mockResolvedValue([{ id: 'u1', name: 'Sam', email: 'sam@example.org' }]);
 
-    await listPreviewAccounts();
+    await listPreviewAccounts('admin-1');
 
     expect(mocks.previewFindMany).toHaveBeenCalledWith({ orderBy: { createdAt: 'desc' } });
   });
